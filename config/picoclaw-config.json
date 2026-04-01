@@ -11,7 +11,7 @@
 	"model_list": [
 		{
 			"model_name": "local-qwen",
-			"model": "ollama/qwen2.5:7b",
+			"model": "ollama/qwen2.5:1.5b",
 			"api_base": "http://127.0.0.1:11434/v1"
 		}
 	],
