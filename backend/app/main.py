@@ -80,6 +80,7 @@ def guard_user_text(text: str) -> tuple[bool, str]:
         return False, "Я не помогаю с небезопасными запросами. Могу помочь только по зерновой продукции и оформлению заявки."
 
     allowed = [
+        "привет", "здравствуйте", "добрый",
         "кто вы", "чем занимаетесь", "ассортимент", "пш", "ячм", "кукуруз", "зерн", "цена", "налич",
         "класс", "качест", "тонн", "объем", "объ", "достав", "логист", "отгруз", "заявк", "контакт",
     ]
@@ -87,6 +88,37 @@ def guard_user_text(text: str) -> tuple[bool, str]:
         return False, "Я консультирую только по продукции, цене, наличию, логистике и заявкам ООО «Петрохлеб-Кубань»."
 
     return True, ""
+
+
+def quick_reply(text: str) -> Optional[str]:
+    s = text.lower().strip()
+
+    if any(x in s for x in ["привет", "здравствуйте", "добрый"]):
+        return (
+            "Здравствуйте! Я ассистент ООО «Петрохлеб-Кубань». "
+            "Подскажу по наличию, цене, логистике и оформлению заявки. "
+            "Укажите, пожалуйста, товар, класс и ориентировочный объем."
+        )
+
+    if "кто вы" in s or "чем занимаетесь" in s:
+        return (
+            "ООО «Петрохлеб-Кубань» занимается закупкой, хранением, логистикой, продажей зерновой продукции и ВЭД. "
+            "Могу помочь по наличию, цене и срокам отгрузки. Какой товар вас интересует?"
+        )
+
+    if ("цена" in s or "стоим" in s) and ("объем" in s or "объ" in s or "миним" in s):
+        return (
+            "Цена и минимальный объем зависят от культуры, класса качества, объема партии и точки поставки. "
+            "Напишите, пожалуйста: товар, класс, объем (тонны) и регион доставки — дам ориентир и передам заявку менеджеру."
+        )
+
+    if "товар" in s or "ассортимент" in s or "налич" in s:
+        return (
+            "Работаем по зерновым культурам (в т.ч. пшеница, ячмень, кукуруза). "
+            "Чтобы проверить актуальное наличие, уточните культуру, класс и нужный объем."
+        )
+
+    return None
 
 
 @app.on_event("startup")
@@ -127,6 +159,15 @@ async def chat_stream(payload: ChatIn, session: Session = Depends(get_session)):
     session.add(ChatMessage(session_id=chat_session.id, role="user", text=payload.text, blocked=not ok, reason="blocked" if not ok else ""))
     session.commit()
 
+    fast = quick_reply(payload.text)
+    if fast:
+        def fast_gen():
+            yield json.dumps({"session_id": chat_session.id, "token": fast, "done": True}) + "\n"
+
+        session.add(ChatMessage(session_id=chat_session.id, role="assistant", text=fast))
+        session.commit()
+        return StreamingResponse(fast_gen(), media_type="application/x-ndjson")
+
     if not ok:
         def reject_gen():
             yield json.dumps({"session_id": chat_session.id, "token": reject, "done": True}) + "\n"
@@ -155,7 +196,7 @@ async def chat_stream(payload: ChatIn, session: Session = Depends(get_session)):
                     "prompt": prompt,
                     "stream": True,
                     "keep_alive": "45m",
-                    "options": {"temperature": 0.1, "num_predict": 170, "repeat_penalty": 1.08},
+                    "options": {"temperature": 0.05, "num_predict": 90, "repeat_penalty": 1.1},
                 },
             ) as r:
                 async for line in r.aiter_lines():
