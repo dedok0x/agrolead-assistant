@@ -13,9 +13,10 @@
 ## Архитектура
 
 - `webui (nginx)` — фронтенд и reverse-proxy.
+- `db (PostgreSQL)` — основное хранилище данных (клиенты/чаты/лиды/номенклатура).
 - `api (FastAPI)` — бизнес-логика, guardrails, admin API, статистика.
 - `ollama` — инференс локальной модели.
-- `sqlite` — хранение в `app_data` volume (`/data/app.db`).
+- `picoclaw` (опционально, profile `picoclaw`) — вспомогательный сервис интеграционного контура.
 
 ## Структура
 
@@ -40,6 +41,12 @@ cp .env.example .env
 ```bash
 chmod +x deploy/install_picoclaw.sh deploy/deploy.sh
 bash deploy/deploy.sh
+```
+
+Для запуска профиля Picoclaw:
+
+```bash
+ENABLE_PICOCLAW=1 bash deploy/install_picoclaw.sh
 ```
 
 3. Подтянуть модель (если не подтянулась автоматически):

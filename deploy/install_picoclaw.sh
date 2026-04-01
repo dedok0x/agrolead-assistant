@@ -42,11 +42,16 @@ if [[ ! -f "$ENV_FILE" ]]; then
   fi
 fi
 
-echo "[4/5] Pull and run stack (api + ollama + webui)"
+echo "[4/5] Pull and run stack (db + api + ollama + webui)"
 cd "$ROOT_DIR"
 
 docker compose pull
 docker compose up -d
+
+if [[ "${ENABLE_PICOCLAW:-0}" == "1" ]]; then
+  echo "INFO: Starting optional picoclaw profile"
+  docker compose --profile picoclaw up -d picoclaw
+fi
 
 MODEL_NAME=$(grep '^MODEL_NAME=' "$ENV_FILE" | cut -d '=' -f2- || true)
 if [[ -n "${MODEL_NAME:-}" ]]; then

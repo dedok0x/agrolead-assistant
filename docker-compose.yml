@@ -1,4 +1,26 @@
 services:
+  db:
+    image: postgres:16-alpine
+    container_name: agrolead-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-agrolead}
+      POSTGRES_USER: ${POSTGRES_USER:-agrolead}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-agrolead123}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-agrolead} -d ${POSTGRES_DB:-agrolead}",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+
   api:
     build:
       context: ./backend
@@ -7,6 +29,7 @@ services:
     network_mode: host
     environment:
       TZ: ${TZ:-Europe/Moscow}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://agrolead:agrolead123@db:5432/agrolead}
       MODEL_NAME: ${MODEL_NAME:-qwen2.5:0.5b}
       OLLAMA_BASE: ${OLLAMA_BASE:-http://127.0.0.1:11434}
       MODEL_NUM_CTX: ${MODEL_NUM_CTX:-8192}
@@ -14,13 +37,19 @@ services:
       ADMIN_USER: ${ADMIN_USER:-admin}
       ADMIN_PASS: ${ADMIN_PASS:-315920}
       ADMIN_TOKEN: ${ADMIN_TOKEN:-agrolead-admin-token}
-    volumes:
-      - app_data:/data
     depends_on:
-      - ollama
+      db:
+        condition: service_healthy
+      ollama:
+        condition: service_started
     healthcheck:
       test:
-        ["CMD-SHELL", "wget -qO- http://localhost:8000/api/health || exit 1"]
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')",
+        ]
       interval: 30s
       timeout: 5s
       retries: 5
@@ -48,6 +77,16 @@ services:
       - ./web/nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - ./ssl:/etc/nginx/ssl:ro
 
+  picoclaw:
+    image: ghcr.io/picoclaw/picoclaw:latest
+    container_name: picoclaw
+    restart: unless-stopped
+    profiles: ["picoclaw"]
+    ports:
+      - "8787:8787"
+    volumes:
+      - ./config/picoclaw-config.json:/app/config.json:ro
+
 volumes:
-  app_data:
+  pg_data:
   ollama_data:
