@@ -114,11 +114,37 @@ def quick_reply(text: str) -> Optional[str]:
 
     if "товар" in s or "ассортимент" in s or "налич" in s:
         return (
-            "Работаем по зерновым культурам (в т.ч. пшеница, ячмень, кукуруза). "
-            "Чтобы проверить актуальное наличие, уточните культуру, класс и нужный объем."
+            "По профилю компании работаем с зерновыми культурами: пшеница, ячмень, кукуруза. "
+            "Актуальное наличие и условия зависят от класса и объема партии. "
+            "Уточните, пожалуйста, культуру, класс и объем в тоннах."
         )
 
     return None
+
+
+def sanitize_assistant_text(text: str) -> str:
+    cleaned = text
+    cleaned = cleaned.replace("Клиент:", "").replace("Ассистент:", "")
+    lines = []
+    for line in cleaned.splitlines():
+        l = line.strip()
+        if l.lower().startswith(("клиент:", "ассистент:", "запрос:", "ответ:")):
+            continue
+        lines.append(line)
+    cleaned = "\n".join(lines).strip()
+
+    banned = ["сухофрукт", "бобов", "ягод", "мяс", "овощ", "рецепт", "декоратив"]
+    if any(x in cleaned.lower() for x in banned):
+        return (
+            "По профилю ООО «Петрохлеб-Кубань» консультирую только по зерновой продукции "
+            "(пшеница, ячмень, кукуруза), логистике и оформлению заявки. "
+            "Уточните культуру, класс и объем в тоннах."
+        )
+
+    if len(cleaned) > 700:
+        cleaned = cleaned[:700].rsplit(" ", 1)[0] + "..."
+
+    return cleaned
 
 
 @app.on_event("startup")
@@ -178,7 +204,7 @@ async def chat_stream(payload: ChatIn, session: Session = Depends(get_session)):
 
     recent = session.exec(
         select(ChatMessage).where(ChatMessage.session_id == chat_session.id).order_by(ChatMessage.created_at.desc())
-    ).all()[:12]
+    ).all()[:6]
     history = "\n".join([
         f"{'Клиент' if m.role == 'user' else 'Ассистент'}: {m.text}" for m in reversed(recent)
     ])
@@ -211,7 +237,7 @@ async def chat_stream(payload: ChatIn, session: Session = Depends(get_session)):
                         assistant_full += token
                         yield json.dumps({"session_id": chat_session.id, "token": token, "done": False}) + "\n"
                     if part.get("done"):
-                        clean = assistant_full.replace("Клиент:", "").replace("Ассистент:", "").strip()
+                        clean = sanitize_assistant_text(assistant_full)
                         with Session(engine) as write_session:
                             write_session.add(ChatMessage(session_id=chat_session.id, role="assistant", text=clean))
                             write_session.commit()

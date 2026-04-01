@@ -3,123 +3,228 @@
 	<head>
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
-		<title>Петрохлеб-Кубань — поддержка клиентов</title>
+		<title>Петрохлеб-Кубань — AI ассистент</title>
 		<style>
+			:root {
+				--bg: #ffffff;
+				--bg-soft: #f7f8f5;
+				--ink: #1f2622;
+				--muted: #6b736e;
+				--line: #dfe4dc;
+				--brand: #5d7528;
+				--brand-dark: #2a4200;
+				--radius: 14px;
+			}
+
+			* {
+				box-sizing: border-box;
+			}
+
 			body {
 				margin: 0;
-				font-family: Inter, Arial, sans-serif;
-				background: #f5f7ef;
-				color: #24301f;
+				font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+				color: var(--ink);
+				background: var(--bg);
 			}
-			.top {
-				background: linear-gradient(135deg, #7fa33e, #4f6f2b);
-				color: #fff;
-				padding: 18px;
+
+			.page {
+				min-height: 100vh;
+				display: flex;
+				flex-direction: column;
 			}
-			.wrap {
-				max-width: 1100px;
-				margin: 14px auto;
-				padding: 0 14px;
+
+			.header {
+				border-bottom: 1px solid var(--line);
+				background: var(--bg);
+			}
+
+			.header__inner {
+				max-width: 1240px;
+				margin: 0 auto;
+				padding: 18px 20px;
+				display: flex;
+				justify-content: space-between;
+				align-items: center;
+				gap: 16px;
+			}
+
+			.logo {
+				font-size: 22px;
+				font-weight: 700;
+				letter-spacing: -0.02em;
+				text-transform: uppercase;
+			}
+
+			.sublogo {
+				font-size: 12px;
+				color: var(--muted);
+				text-transform: uppercase;
+				letter-spacing: 0.08em;
+			}
+
+			.main {
+				max-width: 1240px;
+				margin: 0 auto;
+				padding: 26px 20px 30px;
 				display: grid;
-				grid-template-columns: 300px 1fr;
-				gap: 12px;
+				grid-template-columns: 320px minmax(0, 1fr);
+				gap: 18px;
+				width: 100%;
+				flex: 1;
 			}
+
 			.card {
-				background: #fff;
-				border: 1px solid #d6dfc5;
-				border-radius: 12px;
+				border: 1px solid var(--line);
+				border-radius: var(--radius);
+				background: var(--bg);
 			}
+
 			.side {
-				padding: 12px;
+				padding: 18px;
+				background: var(--bg-soft);
 			}
+
+			.side h3 {
+				margin: 0 0 12px;
+				font-size: 15px;
+				text-transform: uppercase;
+				letter-spacing: 0.08em;
+			}
+
+			.muted {
+				color: var(--muted);
+				font-size: 13px;
+				line-height: 1.5;
+			}
+
 			.chips {
 				display: flex;
 				flex-wrap: wrap;
 				gap: 8px;
-				margin-top: 10px;
+				margin-top: 14px;
 			}
+
 			.chip {
-				border: 1px solid #c8d9aa;
-				background: #eef5df;
+				appearance: none;
+				border: 1px solid #cad3c4;
+				background: #fff;
+				color: #364036;
 				border-radius: 999px;
-				padding: 6px 10px;
-				cursor: pointer;
+				padding: 8px 12px;
 				font-size: 12px;
+				cursor: pointer;
+				transition: 0.2s ease;
 			}
+
+			.chip:hover {
+				border-color: var(--brand);
+				color: var(--brand-dark);
+			}
+
 			.chat {
 				display: flex;
 				flex-direction: column;
-				min-height: 76vh;
+				min-height: 74vh;
 			}
-			.head {
+
+			.chat__head {
 				display: flex;
 				justify-content: space-between;
-				padding: 12px;
-				border-bottom: 1px solid #e3e9d8;
+				align-items: center;
+				padding: 14px 16px;
+				border-bottom: 1px solid var(--line);
 			}
+
+			.chat__title {
+				font-size: 14px;
+				font-weight: 700;
+				letter-spacing: 0.08em;
+				text-transform: uppercase;
+			}
+
 			.stream {
-				padding: 12px;
-				height: 58vh;
-				overflow: auto;
 				display: flex;
 				flex-direction: column;
 				gap: 10px;
+				padding: 16px;
+				height: 58vh;
+				overflow: auto;
 			}
+
 			.msg {
-				max-width: 80%;
-				padding: 10px 12px;
-				border-radius: 12px;
+				max-width: 82%;
+				padding: 11px 12px;
+				border-radius: 10px;
+				line-height: 1.45;
 				white-space: pre-wrap;
-				line-height: 1.4;
+				font-size: 14px;
 			}
-			.u {
+
+			.msg.u {
 				align-self: flex-end;
-				background: #e7efdb;
-				border: 1px solid #ccd8bc;
+				background: #ecf1e6;
+				border: 1px solid #d3dcc8;
 			}
-			.b {
+
+			.msg.b {
 				align-self: flex-start;
-				background: #f0f7e6;
-				border: 1px solid #d2e3b7;
+				background: #fff;
+				border: 1px solid #e2e6df;
 			}
+
 			.composer {
 				display: grid;
 				grid-template-columns: 1fr auto auto;
 				gap: 10px;
-				padding: 12px;
-				border-top: 1px solid #e3e9d8;
+				padding: 14px;
+				border-top: 1px solid var(--line);
 			}
+
 			textarea {
 				width: 100%;
-				min-height: 78px;
-				border: 1px solid #cedbb7;
-				border-radius: 10px;
-				padding: 10px;
+				min-height: 80px;
 				resize: vertical;
+				border: 1px solid #cfd7cb;
+				border-radius: 10px;
+				padding: 10px 12px;
+				font: inherit;
 			}
+
 			button {
-				border: 1px solid #4f6f2b;
-				background: #4f6f2b;
+				appearance: none;
+				border: 1px solid var(--brand);
+				background: var(--brand);
 				color: #fff;
 				border-radius: 10px;
 				padding: 0 14px;
-				cursor: pointer;
 				font-weight: 700;
+				cursor: pointer;
 			}
-			.ghost {
+
+			button:hover {
+				background: var(--brand-dark);
+				border-color: var(--brand-dark);
+			}
+
+			button.ghost {
 				background: #fff;
-				color: #3e5623;
-				border-color: #b7c9a0;
+				color: #364036;
+				border-color: #c9d2c4;
 			}
-			.muted {
-				color: #6a755d;
-				font-size: 13px;
-				line-height: 1.4;
+
+			button.ghost:hover {
+				background: #f2f5ef;
 			}
-			@media (max-width: 900px) {
-				.wrap {
+
+			@media (max-width: 980px) {
+				.main {
 					grid-template-columns: 1fr;
 				}
+
+				.chat {
+					min-height: 68vh;
+				}
+
 				.stream {
 					height: 50vh;
 				}
@@ -127,66 +232,69 @@
 		</style>
 	</head>
 	<body>
-		<header class="top">
-			<h2 style="margin: 0">ООО «Петрохлеб-Кубань»</h2>
-			<div style="opacity: 0.9">Лид-центр предпродажной поддержки</div>
-		</header>
-		<main class="wrap">
-			<aside class="card side">
-				<h3 style="margin: 0 0 8px">Сценарии</h3>
-				<div class="muted" id="company"></div>
-				<div class="chips" id="chips"></div>
-			</aside>
+		<div class="page">
+			<header class="header">
+				<div class="header__inner">
+					<div>
+						<div class="logo">Петрохлеб-Кубань</div>
+						<div class="sublogo">AI ассистент по зерновым сделкам</div>
+					</div>
+				</div>
+			</header>
 
-			<section class="card chat">
-				<div class="head">
-					<b>Чат поддержки</b><span id="status" class="muted">Онлайн</span>
-				</div>
-				<div class="stream" id="chat"></div>
-				<div class="composer">
-					<textarea
-						id="input"
-						placeholder="Укажите товар, класс, объем, регион и желаемый срок"
-					></textarea>
-					<button id="send">Отправить</button>
-					<button id="clear" class="ghost">Очистить</button>
-				</div>
-			</section>
-		</main>
+			<main class="main">
+				<aside class="card side">
+					<h3>О компании</h3>
+					<div class="muted" id="company"></div>
+					<div class="chips" id="chips"></div>
+				</aside>
+
+				<section class="card chat">
+					<div class="chat__head">
+						<div class="chat__title">Чат с ассистентом</div>
+						<div id="status" class="muted">Готово</div>
+					</div>
+					<div class="stream" id="chat"></div>
+					<div class="composer">
+						<textarea
+							id="input"
+							placeholder="Введите запрос: цена, наличие, логистика, условия поставки"
+						></textarea>
+						<button id="send">Отправить</button>
+						<button id="clear" class="ghost">Очистить</button>
+					</div>
+				</section>
+			</main>
+		</div>
 
 		<script>
-			const STORE = 'agrolead_current_chat_v2'
-			const STORE_SID = 'agrolead_current_session_id'
 			const chatEl = document.getElementById('chat')
 			const inputEl = document.getElementById('input')
 			const statusEl = document.getElementById('status')
 			const chipsEl = document.getElementById('chips')
-			let sessionId = Number(localStorage.getItem(STORE_SID) || 0) || null
-			let history = JSON.parse(localStorage.getItem(STORE) || '[]')
+			let sessionId = null
 
-			function addMsg(text, role, persist = true) {
+			function addMsg(text, role) {
 				const el = document.createElement('div')
 				el.className = `msg ${role}`
 				el.textContent = text
 				chatEl.appendChild(el)
 				chatEl.scrollTop = chatEl.scrollHeight
-				if (persist) {
-					history.push({ role, text })
-					localStorage.setItem(STORE, JSON.stringify(history))
-				}
 				return el
 			}
 
-			function setStatus(t, e = false) {
-				statusEl.textContent = t
-				statusEl.style.color = e ? '#b00020' : '#6a755d'
+			function setStatus(text, error = false) {
+				statusEl.textContent = text
+				statusEl.style.color = error ? '#b00020' : '#6b736e'
 			}
 
 			async function bootstrap() {
 				const res = await fetch('/api/public/bootstrap')
 				const data = await res.json()
-				document.getElementById('company').textContent =
-					`${data.company?.name || ''}. ${data.company?.services || ''}`
+
+				document.getElementById('company').textContent = `${
+					data.company?.name || ''
+				}. ${data.company?.services || ''}`
 				;(data.scenarios || []).forEach(s => {
 					const b = document.createElement('button')
 					b.className = 'chip'
@@ -202,10 +310,12 @@
 			async function send() {
 				const text = inputEl.value.trim()
 				if (!text) return
+
 				addMsg(text, 'u')
 				inputEl.value = ''
-				setStatus('Ассистент печатает...')
-				const bot = addMsg('', 'b', false)
+				setStatus('Генерирую ответ...')
+
+				const bot = addMsg('', 'b')
 
 				try {
 					const res = await fetch('/api/chat/stream', {
@@ -217,55 +327,53 @@
 							client_id: 'web-client',
 						}),
 					})
-					if (!res.ok || !res.body) {
-						throw new Error(`HTTP ${res.status}`)
-					}
+
+					if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`)
+
 					const reader = res.body.getReader()
 					const decoder = new TextDecoder()
 					let buffer = ''
 					let full = ''
+
 					while (true) {
 						const { value, done } = await reader.read()
 						if (done) break
+
 						buffer += decoder.decode(value, { stream: true })
 						const lines = buffer.split('\n')
 						buffer = lines.pop() || ''
+
 						for (const line of lines) {
 							if (!line.trim()) continue
 							const j = JSON.parse(line)
-							if (j.session_id) {
-								sessionId = j.session_id
-								localStorage.setItem(STORE_SID, String(sessionId))
-							}
+							if (j.session_id) sessionId = j.session_id
 							if (j.token) {
 								full += j.token
 								bot.textContent = full
 								chatEl.scrollTop = chatEl.scrollHeight
 							}
-							if (j.done) {
-								bot.textContent = (bot.textContent || '').trim()
-								history.push({ role: 'b', text: bot.textContent })
-								localStorage.setItem(STORE, JSON.stringify(history))
-							}
+							if (j.done) bot.textContent = (bot.textContent || '').trim()
 						}
 					}
-					setStatus('Онлайн')
+
+					setStatus('Готово')
 				} catch (e) {
-					bot.textContent = 'Ошибка обработки запроса. Повторите попытку.'
+					bot.textContent = 'Ошибка запроса. Попробуйте ещё раз.'
 					setStatus(String(e), true)
 				}
 			}
 
 			document.getElementById('send').onclick = send
 			document.getElementById('clear').onclick = () => {
-				history = []
 				sessionId = null
-				localStorage.removeItem(STORE)
-				localStorage.removeItem(STORE_SID)
 				chatEl.innerHTML = ''
-				addMsg('Чат очищен. Уточните, пожалуйста, товар и объем.', 'b')
-				setStatus('Онлайн')
+				addMsg(
+					'Чат очищен. Уточните запрос по закупке, продаже, логистике или хранению.',
+					'b',
+				)
+				setStatus('Готово')
 			}
+
 			inputEl.addEventListener('keydown', e => {
 				if (e.key === 'Enter' && !e.shiftKey) {
 					e.preventDefault()
@@ -274,14 +382,10 @@
 			})
 			;(async () => {
 				await bootstrap()
-				if (history.length) {
-					history.forEach(m => addMsg(m.text, m.role, false))
-					setStatus('История восстановлена')
-				} else
-					addMsg(
-						'Здравствуйте! Подскажу по наличию, цене, логистике и оформлению заявки.',
-						'b',
-					)
+				addMsg(
+					'Здравствуйте! Я помогу по ценам, наличию, поставке и хранению зерновых культур.',
+					'b',
+				)
 			})()
 		</script>
 	</body>
