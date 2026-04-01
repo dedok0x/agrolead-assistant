@@ -1,155 +1,87 @@
-# AgroLead Assistant
+# AgroLead Assistant (FastAPI Architecture)
 
-AI-прототип ИС для автоматизации предпродажной работы в зерновом бизнесе.
+Система лид-обработки для ООО «Петрохлеб-Кубань» с архитектурой под ВКР:
 
-Функции MVP:
+- публичный клиентский чат;
+- полноценная админ-панель;
+- редактирование системного промпта по категориям;
+- хранение сценариев, статистики и истории чатов;
+- локальная LLM через Ollama.
 
-- обработка первичных обращений клиентов;
-- ответы по наличию и цене;
-- квалификация лидов;
-- создание заявки и передача менеджеру.
+## Архитектура
 
----
+- `webui (nginx)` — фронтенд и reverse-proxy.
+- `api (FastAPI)` — бизнес-логика, guardrails, admin API, статистика.
+- `ollama` — инференс локальной модели.
+- `sqlite` — хранение в `app_data` volume (`/data/app.db`).
 
-## 1) Что в репозитории
+## Структура
 
-- `docker-compose.yml` — базовый контур запуска PicoClaw.
-- `.env.example` — шаблон переменных окружения.
-- `deploy/install_picoclaw.sh` — автоматическая установка Docker + Compose на Ubuntu и запуск сервиса.
-- `config/picoclaw-config.json` — фиксированная конфигурация PicoClaw для локальной LLM (Ollama).
-- `web/index.html` — веб-морда для теста gateway (минималистичный стиль).
-- `web/nginx.conf` — nginx proxy до PicoClaw API.
-- `ssl/README.md` — требования к SSL-файлам для HTTPS (443).
-- `docs/architecture.md` — архитектурный каркас для ВКР.
-- `docs/scenarios.md` — минимальные сценарии MVP.
-- `docs/test-report.md` — шаблон протокола тестирования.
+- `backend/app/main.py` — API приложения.
+- `backend/app/models.py` — модели БД.
+- `backend/app/seed.py` — дефолтные данные компании/контактов/промптов.
+- `web/index.html` — клиентский чат.
+- `web/admin.html` — админ-панель.
+- `web/nginx.conf` — TLS + proxy (`/api/*` -> FastAPI).
+- `docker-compose.yml` — оркестрация сервисов.
 
----
+## Быстрый запуск
 
-## 2) Быстрый запуск на Ubuntu
-
-### Шаг 1. Подготовь переменные
+1. Скопируй env:
 
 ```bash
 cp .env.example .env
 ```
 
-Заполни в `.env`:
-
-- `PICOCLAW_IMAGE` — Docker-образ;
-- `APP_PORT` — внешний порт (по умолчанию 18790 для gateway);
-- `DB_URL`, `MODEL_PROVIDER`, `MODEL_NAME`, `API_BASE`.
-
-Для локальной LLM по умолчанию используется Ollama:
-
-- `MODEL_PROVIDER=ollama`
-- `MODEL_NAME=qwen2.5:0.5b`
-- `API_BASE=http://127.0.0.1:11434/v1`
-- `API_KEY` можно оставить пустым.
-
-Для MVP используем SQLite:
-
-- `DB_URL=sqlite:///data/picoclaw.db`
-- данные сохраняются в volume `picoclaw_data`.
-
-Конфиг PicoClaw берётся из файла `config/picoclaw-config.json` (монтируется в контейнер как `/root/.picoclaw/config.json`).
-
-### Шаг 2. Запусти установку и деплой
+2. Запусти деплой:
 
 ```bash
-chmod +x deploy/install_picoclaw.sh
-./deploy/install_picoclaw.sh
+chmod +x deploy/install_picoclaw.sh deploy/deploy.sh
+bash deploy/deploy.sh
 ```
 
-Скрипт:
-
-1. Установит Docker Engine и Docker Compose plugin.
-2. Включит автозапуск Docker.
-3. Поднимет контейнер PicoClaw с политикой `restart: unless-stopped`.
-
----
-
-## 3) Ручной запуск (без скрипта)
+3. Подтянуть модель (если не подтянулась автоматически):
 
 ```bash
-docker compose pull
-docker compose up -d
-
-# первый запуск локальной модели (один раз)
 docker exec -it ollama ollama pull qwen2.5:0.5b
 ```
 
-`docker compose` автоматически читает файл `.env` из текущей директории.
+## URL
 
----
+- Клиентский чат: `https://<DOMAIN>/`
+- Админ-панель: `https://<DOMAIN>/admin` и `https://<DOMAIN>/admin/`
+- API health: `https://<DOMAIN>/api/health`
 
-## 4) Проверка и тест
+## Доступ в админку
 
-```bash
-docker ps
-docker logs -f picoclaw
-curl http://<SERVER_IP>:<APP_PORT>/health
-```
+- Логин: `admin`
+- Пароль: `315920`
 
-### Веб-тест через UI (HTTPS)
+Конфигурируется через `.env`:
 
-После `docker compose up -d` открой:
+- `ADMIN_USER`
+- `ADMIN_PASS`
+- `ADMIN_TOKEN`
 
-- `https://<SERVER_IP>`
-- `https://<DOMAIN>`
+## Что редактируется в /admin
 
-Это тестовая веб-морда в стиле минималистичного сайта:
+- Категории системного промпта (`identity`, `scope`, `safety`, `style`, `lead_capture`).
+- Данные компании (адрес, контакты, услуги, подробные отделы).
+- Сценарии диалогов.
+- Статистика и лента чатов.
 
-- кнопка `Проверить health` бьёт в `/api/health`;
-- кнопка `Отправить тестовый запрос` по умолчанию шлёт запрос в Ollama через `/llm/api/generate`.
+## Встроенные guardrails
 
-Текущая версия UI работает как лид-чат поддержки: без ручных тех.параметров на главной странице, с потоковой выдачей ответа и отраслевым ограничением тематики (зерновая продукция и оформление заявки).
+- блокировка оффтопа и вредоносных запросов;
+- запрет генерации небезопасного контента;
+- фокус на бизнес-домене (зерновая продукция, логистика, заявки);
+- ассистент всегда ведёт диалог к квалификации лида.
 
-Админ-панель:
+## SSL
 
-- URL: `/admin`
-- логин: `admin`
-- пароль: `315920`
+Для HTTPS положи:
 
-В `/admin` доступны:
+- `ssl/fullchain.pem`
+- `ssl/privkey.key`
 
-- вкладка с промптами и картой сценариев;
-- инструкция по наполнению сценариев;
-- текущие чаты и базовая статистика.
-
-Перед запуском HTTPS положи файлы в папку `ssl/`:
-
-- `ssl/fullchain.pem` — цепочка (leaf + intermediate)
-- `ssl/privkey.key` — приватный ключ
-
-Если в контейнере другой health endpoint — замени путь `/health` на нужный.
-
-Важно: образ запускает gateway через entrypoint. В compose передаётся только флаг `--allow-empty`, поэтому сервис не должен постоянно перезапускаться.
-
-PicoClaw и Ollama работают в `network_mode: host`, а веб-морда проксирует API на `host.docker.internal:18790`.
-
-Проверка автозапуска:
-
-```bash
-sudo reboot
-# после загрузки
-docker ps
-```
-
----
-
-## 5) Как развивать диплом после MVP
-
-1. При росте нагрузки перейти с SQLite на PostgreSQL и Redis в `docker-compose.yml`.
-2. Ввести миграции схемы данных.
-3. Добавить структурированное логирование и метрики.
-4. Провести регрессионные прогоны сценариев A/B/C/D.
-5. Оформить диаграммы и результаты тестов в `docs/`.
-
----
-
-## 6) Полезные документы в этом репозитории
-
-- Архитектура: `docs/architecture.md`
-- Сценарии MVP: `docs/scenarios.md`
-- Протокол тестов: `docs/test-report.md`
+Контейнер `webui` использует их в `web/nginx.conf`.

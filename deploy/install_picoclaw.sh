@@ -42,27 +42,14 @@ if [[ ! -f "$ENV_FILE" ]]; then
   fi
 fi
 
-echo "[4/5] Pull and run PicoClaw container"
+echo "[4/5] Pull and run stack (api + ollama + webui)"
 cd "$ROOT_DIR"
-
-PICOCLAW_IMAGE=$(grep '^PICOCLAW_IMAGE=' "$ENV_FILE" | cut -d '=' -f2- || true)
-if [[ -z "${PICOCLAW_IMAGE:-}" ]]; then
-  echo "ERROR: PICOCLAW_IMAGE is empty in $ENV_FILE"
-  exit 1
-fi
-
-if [[ "$PICOCLAW_IMAGE" == *"your-org/picoclaw"* ]]; then
-  echo "ERROR: placeholder image detected in $ENV_FILE"
-  echo "Set real image, e.g. ghcr.io/<org>/<repo>:<tag>"
-  exit 1
-fi
 
 docker compose pull
 docker compose up -d
 
-MODEL_PROVIDER=$(grep '^MODEL_PROVIDER=' "$ENV_FILE" | cut -d '=' -f2- || true)
 MODEL_NAME=$(grep '^MODEL_NAME=' "$ENV_FILE" | cut -d '=' -f2- || true)
-if [[ "${MODEL_PROVIDER:-}" == "ollama" && -n "${MODEL_NAME:-}" ]]; then
+if [[ -n "${MODEL_NAME:-}" ]]; then
   echo "INFO: Pull local model in Ollama: $MODEL_NAME"
   docker exec ollama ollama pull "$MODEL_NAME" || true
 fi
@@ -70,9 +57,6 @@ fi
 echo "[5/5] Smoke checks"
 docker compose ps
 
-APP_PORT=$(grep '^APP_PORT=' "$ENV_FILE" | cut -d '=' -f2- || true)
-if [[ -n "${APP_PORT:-}" ]]; then
-  echo "Try health endpoint: curl http://<SERVER_IP>:${APP_PORT}/health"
-fi
+echo "Try health endpoint: curl http://127.0.0.1:8000/api/health"
 
 echo "Done"

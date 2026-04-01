@@ -8,12 +8,12 @@
 			body {
 				margin: 0;
 				font-family: Inter, Arial, sans-serif;
-				background: #f5f7ef;
+				background: #f4f7ee;
 				color: #24301f;
 			}
 			.wrap {
-				max-width: 1100px;
-				margin: 20px auto;
+				max-width: 1200px;
+				margin: 18px auto;
 				padding: 0 14px;
 			}
 			.card {
@@ -23,45 +23,48 @@
 				padding: 14px;
 				margin-bottom: 12px;
 			}
-			input,
-			button,
-			textarea {
-				font: inherit;
-			}
-			input {
-				padding: 8px;
-				border: 1px solid #cfd9be;
-				border-radius: 8px;
-			}
-			button {
-				padding: 8px 12px;
-				border-radius: 8px;
-				border: 1px solid #4f6f2b;
-				background: #4f6f2b;
-				color: #fff;
-				cursor: pointer;
-			}
 			.tabs {
 				display: flex;
 				gap: 8px;
 				flex-wrap: wrap;
 			}
 			.tab {
+				padding: 8px 12px;
+				border-radius: 8px;
+				border: 1px solid #c8d9aa;
 				background: #edf4de;
-				color: #2a3b1f;
-				border-color: #c8d9aa;
+				cursor: pointer;
 			}
 			.hidden {
 				display: none;
 			}
-			pre {
-				white-space: pre-wrap;
-				background: #f7f9f1;
-				border: 1px solid #dfe7cf;
-				padding: 10px;
+			input,
+			textarea,
+			button {
+				font: inherit;
+			}
+			input,
+			textarea {
+				width: 100%;
+				padding: 8px;
+				border: 1px solid #cedbb7;
 				border-radius: 8px;
-				max-height: 320px;
-				overflow: auto;
+			}
+			textarea {
+				min-height: 80px;
+			}
+			button {
+				padding: 8px 12px;
+				border: 1px solid #4f6f2b;
+				background: #4f6f2b;
+				color: #fff;
+				border-radius: 8px;
+				cursor: pointer;
+			}
+			.grid {
+				display: grid;
+				grid-template-columns: 1fr 1fr;
+				gap: 10px;
 			}
 			table {
 				width: 100%;
@@ -74,166 +77,279 @@
 				font-size: 13px;
 				text-align: left;
 			}
+			pre {
+				white-space: pre-wrap;
+				background: #f7f9f1;
+				border: 1px solid #dfe7cf;
+				padding: 10px;
+				border-radius: 8px;
+				max-height: 330px;
+				overflow: auto;
+			}
 		</style>
 	</head>
 	<body>
 		<div class="wrap">
-			<div class="card" id="loginCard">
-				<h2>Admin вход</h2>
-				<div
-					style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center"
-				>
+			<div class="card" id="login-card">
+				<h2>Вход в /admin</h2>
+				<div class="grid">
 					<input id="login" placeholder="Логин" value="admin" />
 					<input id="pass" placeholder="Пароль" type="password" />
-					<button id="enter">Войти</button>
+				</div>
+				<div style="margin-top: 10px">
+					<button id="login-btn">Войти</button>
 				</div>
 			</div>
 
 			<div id="panel" class="hidden">
 				<div class="card">
-					<h2>/admin — управление сценариями и аналитикой</h2>
+					<h2 style="margin-top: 0">Панель администратора</h2>
 					<div class="tabs">
-						<button class="tab" data-tab="prompts">Промпты и сценарии</button>
+						<button class="tab" data-tab="prompts">
+							Системный промпт (категории)
+						</button>
+						<button class="tab" data-tab="company">Данные компании</button>
+						<button class="tab" data-tab="scenarios">Сценарии</button>
+						<button class="tab" data-tab="stats">Статистика и чаты</button>
 						<button class="tab" data-tab="guide">Инструкция</button>
-						<button class="tab" data-tab="stats">Чаты и статистика</button>
 					</div>
 				</div>
 
-				<div class="card tab-content" id="tab-prompts">
-					<h3>Вариации промптов</h3>
-					<pre id="prompts"></pre>
+				<section id="tab-prompts" class="card tab-pane">
+					<h3>Редактирование системного промпта по категориям</h3>
+					<div id="prompts-list"></div>
+					<div style="margin-top: 10px">
+						<button id="save-prompts">Сохранить промпты</button>
+					</div>
+				</section>
+
+				<section id="tab-company" class="card tab-pane hidden">
+					<h3>Данные компании</h3>
+					<div class="grid">
+						<input id="c-name" placeholder="Название" />
+						<input id="c-email" placeholder="Email" />
+					</div>
+					<div class="grid" style="margin-top: 8px">
+						<input id="c-phones" placeholder="Телефоны" />
+						<input id="c-services" placeholder="Услуги" />
+					</div>
+					<div style="margin-top: 8px">
+						<textarea id="c-address" placeholder="Адрес"></textarea>
+					</div>
+					<div style="margin-top: 8px">
+						<textarea
+							id="c-contacts"
+							placeholder="Подробные контакты"
+						></textarea>
+					</div>
+					<div style="margin-top: 10px">
+						<button id="save-company">Сохранить компанию</button>
+					</div>
+				</section>
+
+				<section id="tab-scenarios" class="card tab-pane hidden">
 					<h3>Сценарии взаимодействия</h3>
-					<pre id="scenarios"></pre>
-				</div>
+					<textarea id="scenarios-json" style="min-height: 260px"></textarea>
+					<div style="margin-top: 10px">
+						<button id="save-scenarios">Сохранить сценарии</button>
+					</div>
+				</section>
 
-				<div class="card tab-content hidden" id="tab-guide">
-					<h3>Как заполнять сценарии</h3>
-					<pre>
-1) Добавляйте кейсы по структуре:
-- цель клиента
-- обязательные уточнения (товар, класс, объём, регион, срок)
-- критерий передачи в лид
-
-2) Для каждого сценария задавайте:
-- шаблон короткого ответа
-- условия отказа/оффтопа
-- обязательный финальный вопрос для квалификации.
-
-3) Регулярно проверяйте:
-- долю отказов по оффтопу
-- среднюю длину ответа
-- процент диалогов, где запрошен контакт.
-        </pre
-					>
-				</div>
-
-				<div class="card tab-content hidden" id="tab-stats">
-					<h3>Текущая статистика</h3>
+				<section id="tab-stats" class="card tab-pane hidden">
+					<h3>Статистика</h3>
 					<table>
 						<tr>
 							<th>Метрика</th>
 							<th>Значение</th>
 						</tr>
 						<tr>
-							<td>Запросы</td>
-							<td id="s-requests">0</td>
+							<td>Сессии</td>
+							<td id="s-sessions">0</td>
 						</tr>
 						<tr>
-							<td>Блокировано (оффтоп/вредоносное)</td>
+							<td>Сообщения</td>
+							<td id="s-messages">0</td>
+						</tr>
+						<tr>
+							<td>Блокировки</td>
 							<td id="s-blocked">0</td>
 						</tr>
 						<tr>
 							<td>Лид-сигналы</td>
 							<td id="s-leads">0</td>
 						</tr>
-						<tr>
-							<td>Сессий</td>
-							<td id="s-sessions">0</td>
-						</tr>
 					</table>
 					<h3>Последние чаты</h3>
-					<pre id="sessions"></pre>
-				</div>
+					<pre id="chat-log">Загрузка...</pre>
+				</section>
+
+				<section id="tab-guide" class="card tab-pane hidden">
+					<h3>Инструкция по заполнению сценариев</h3>
+					<pre>
+1) Сценарий всегда должен вести к квалификации лида.
+2) Обязательные поля в каждом кейсе: товар, класс, объем, регион, срок, контакт.
+3) В категории prompt:
+- identity: роль ассистента
+- scope: предметная область
+- safety: запреты/ограничения
+- style: стиль и длина ответа
+- lead_capture: правила сбора лида
+4) После правок прогоняйте 10-15 тестовых диалогов и смотрите статистику блокировок и лид-сигналов.</pre
+					>
+				</section>
 			</div>
 		</div>
 
 		<script>
-			const USER = 'admin'
-			const PASS = '315920'
-			const STORE_SESSIONS = 'agrolead_chat_sessions'
-			const STORE_STATS = 'agrolead_stats'
+			let token = ''
 
-			const PROMPTS = {
-				system:
-					'Ассистент ООО «Петрохлеб-Кубань». Только зерновая тематика: ассортимент, цена, качество, объём, логистика, заявка.',
-				offTopic: 'Вежливый отказ и возврат к теме закупки зерна.',
-				leadGoal: 'Собрать лид: товар, класс, объём, регион, срок, контакт.',
-			}
-
-			const SCENARIOS = [
-				'S1: Кто вы / чем занимаетесь',
-				'S2: Запрос наличия и цены',
-				'S3: Уточнение класса и параметров качества',
-				'S4: Уточнение тоннажа и сроков',
-				'S5: Логистика и условия отгрузки',
-				'S6: Сбор контакта и передача менеджеру',
-				'S7: Оффтоп/вредоносный запрос -> отказ',
-			]
-
-			document.getElementById('enter').onclick = () => {
-				const l = document.getElementById('login').value.trim()
-				const p = document.getElementById('pass').value.trim()
-				if (l !== USER || p !== PASS) return alert('Неверный логин или пароль')
-				document.getElementById('loginCard').classList.add('hidden')
-				document.getElementById('panel').classList.remove('hidden')
-				loadData()
-			}
-
-			document.querySelectorAll('.tab').forEach(b => {
-				b.onclick = () => {
+			const tabs = () => document.querySelectorAll('.tab-pane')
+			document.querySelectorAll('.tab').forEach(btn => {
+				btn.onclick = () => {
+					tabs().forEach(t => t.classList.add('hidden'))
 					document
-						.querySelectorAll('.tab-content')
-						.forEach(x => x.classList.add('hidden'))
-					document
-						.getElementById(`tab-${b.dataset.tab}`)
+						.getElementById(`tab-${btn.dataset.tab}`)
 						.classList.remove('hidden')
 				}
 			})
 
-			function loadData() {
-				document.getElementById('prompts').textContent = JSON.stringify(
-					PROMPTS,
+			async function api(url, opts = {}) {
+				const headers = {
+					'Content-Type': 'application/json',
+					...(opts.headers || {}),
+				}
+				if (token) headers['x-admin-token'] = token
+				const res = await fetch(url, { ...opts, headers })
+				if (!res.ok) throw new Error(`HTTP ${res.status}`)
+				return res.json()
+			}
+
+			async function loadAll() {
+				const [prompts, company, scenarios, stats, chats] = await Promise.all([
+					api('/api/admin/prompts'),
+					api('/api/admin/company'),
+					api('/api/admin/scenarios'),
+					api('/api/admin/stats'),
+					api('/api/admin/chats?limit=120'),
+				])
+
+				const pWrap = document.getElementById('prompts-list')
+				pWrap.innerHTML = ''
+				prompts.forEach((p, i) => {
+					const block = document.createElement('div')
+					block.style.marginBottom = '10px'
+					block.innerHTML = `<label><b>${p.key}</b> (${p.title})</label><textarea data-i="${i}" style="min-height:90px">${p.content}</textarea>`
+					pWrap.appendChild(block)
+				})
+				pWrap.dataset.raw = JSON.stringify(prompts)
+
+				document.getElementById('c-name').value = company?.name || ''
+				document.getElementById('c-email').value = company?.email || ''
+				document.getElementById('c-phones').value = company?.phones || ''
+				document.getElementById('c-services').value = company?.services || ''
+				document.getElementById('c-address').value = company?.address || ''
+				document.getElementById('c-contacts').value =
+					company?.contacts_markdown || ''
+
+				document.getElementById('scenarios-json').value = JSON.stringify(
+					scenarios,
 					null,
 					2,
 				)
-				document.getElementById('scenarios').textContent = SCENARIOS.join('\n')
 
-				const s = JSON.parse(
-					localStorage.getItem(STORE_STATS) ||
-						'{"requests":0,"blocked":0,"leads":0}',
-				)
-				const sessions = JSON.parse(
-					localStorage.getItem(STORE_SESSIONS) || '[]',
-				)
-
-				document.getElementById('s-requests').textContent = s.requests || 0
-				document.getElementById('s-blocked').textContent = s.blocked || 0
-				document.getElementById('s-leads').textContent = s.leads || 0
-				document.getElementById('s-sessions').textContent = sessions.length
-
-				const last = sessions
-					.slice(-5)
-					.map(ss => {
-						const preview = (ss.messages || [])
-							.slice(-4)
-							.map(m => `${m.role}: ${m.text}`)
-							.join('\n')
-						return `#${ss.id} | ${ss.startedAt}\n${preview}`
-					})
-					.join('\n\n---\n\n')
-				document.getElementById('sessions').textContent =
-					last || 'Пока нет данных.'
+				document.getElementById('s-sessions').textContent = stats.sessions
+				document.getElementById('s-messages').textContent = stats.messages
+				document.getElementById('s-blocked').textContent = stats.blocked
+				document.getElementById('s-leads').textContent = stats.lead_signals
+				document.getElementById('chat-log').textContent = chats
+					.map(c => `[${c.created_at}] #${c.session_id} ${c.role}: ${c.text}`)
+					.join('\n')
 			}
+
+			document.getElementById('login-btn').onclick = async () => {
+				try {
+					const data = await api('/api/admin/login', {
+						method: 'POST',
+						body: JSON.stringify({
+							username: document.getElementById('login').value,
+							password: document.getElementById('pass').value,
+						}),
+					})
+					token = data.token
+					localStorage.setItem('agrolead_admin_token', token)
+					document.getElementById('login-card').classList.add('hidden')
+					document.getElementById('panel').classList.remove('hidden')
+					await loadAll()
+				} catch {
+					alert('Ошибка входа')
+				}
+			}
+
+			document.getElementById('save-prompts').onclick = async () => {
+				const prompts = JSON.parse(
+					document.getElementById('prompts-list').dataset.raw || '[]',
+				)
+				document
+					.querySelectorAll('#prompts-list textarea')
+					.forEach((t, idx) => (prompts[idx].content = t.value))
+				await api('/api/admin/prompts', {
+					method: 'PUT',
+					body: JSON.stringify(
+						prompts.map(p => ({
+							key: p.key,
+							title: p.title,
+							content: p.content,
+						})),
+					),
+				})
+				alert('Промпты сохранены')
+			}
+
+			document.getElementById('save-company').onclick = async () => {
+				await api('/api/admin/company', {
+					method: 'PUT',
+					body: JSON.stringify({
+						name: document.getElementById('c-name').value,
+						email: document.getElementById('c-email').value,
+						phones: document.getElementById('c-phones').value,
+						services: document.getElementById('c-services').value,
+						address: document.getElementById('c-address').value,
+						contacts_markdown: document.getElementById('c-contacts').value,
+					}),
+				})
+				alert('Данные компании сохранены')
+			}
+
+			document.getElementById('save-scenarios').onclick = async () => {
+				const items = JSON.parse(
+					document.getElementById('scenarios-json').value,
+				)
+				await api('/api/admin/scenarios', {
+					method: 'PUT',
+					body: JSON.stringify(
+						items.map(i => ({
+							title: i.title,
+							description: i.description,
+							active: i.active !== false,
+						})),
+					),
+				})
+				alert('Сценарии сохранены')
+			}
+			;(async () => {
+				const cached = localStorage.getItem('agrolead_admin_token')
+				if (cached) {
+					token = cached
+					document.getElementById('login-card').classList.add('hidden')
+					document.getElementById('panel').classList.remove('hidden')
+					try {
+						await loadAll()
+					} catch {
+						token = ''
+						localStorage.removeItem('agrolead_admin_token')
+					}
+				}
+			})()
 		</script>
 	</body>
 </html>

@@ -3,33 +3,25 @@
 	<head>
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
-		<title>ООО «Петрохлеб-Кубань» — Поддержка клиентов</title>
+		<title>Петрохлеб-Кубань — поддержка клиентов</title>
 		<style>
 			body {
 				margin: 0;
 				font-family: Inter, Arial, sans-serif;
-				background: #f4f7ee;
+				background: #f5f7ef;
 				color: #24301f;
 			}
 			.top {
-				padding: 18px 16px;
 				background: linear-gradient(135deg, #7fa33e, #4f6f2b);
 				color: #fff;
-			}
-			.top h1 {
-				margin: 0;
-				font-size: 24px;
-			}
-			.top p {
-				margin: 6px 0 0;
-				opacity: 0.9;
+				padding: 18px;
 			}
 			.wrap {
 				max-width: 1100px;
 				margin: 14px auto;
 				padding: 0 14px;
 				display: grid;
-				grid-template-columns: 290px 1fr;
+				grid-template-columns: 300px 1fr;
 				gap: 12px;
 			}
 			.card {
@@ -40,14 +32,6 @@
 			.side {
 				padding: 12px;
 			}
-			.side h3 {
-				margin: 0 0 8px;
-			}
-			.muted {
-				color: #6a755d;
-				font-size: 13px;
-				line-height: 1.4;
-			}
 			.chips {
 				display: flex;
 				flex-wrap: wrap;
@@ -55,36 +39,31 @@
 				margin-top: 10px;
 			}
 			.chip {
-				font-size: 12px;
-				padding: 6px 10px;
-				border-radius: 999px;
-				background: #eef5df;
 				border: 1px solid #c8d9aa;
+				background: #eef5df;
+				border-radius: 999px;
+				padding: 6px 10px;
 				cursor: pointer;
+				font-size: 12px;
 			}
 			.chat {
 				display: flex;
 				flex-direction: column;
 				min-height: 76vh;
 			}
-			.chat-head {
+			.head {
 				display: flex;
 				justify-content: space-between;
-				align-items: center;
 				padding: 12px;
 				border-bottom: 1px solid #e3e9d8;
 			}
-			.status {
-				font-size: 12px;
-				color: #6a755d;
-			}
 			.stream {
 				padding: 12px;
+				height: 58vh;
+				overflow: auto;
 				display: flex;
 				flex-direction: column;
 				gap: 10px;
-				overflow: auto;
-				height: 58vh;
 			}
 			.msg {
 				max-width: 80%;
@@ -103,35 +82,39 @@
 				background: #f0f7e6;
 				border: 1px solid #d2e3b7;
 			}
-			.t {
-				align-self: flex-start;
-				color: #6a755d;
-				font-size: 13px;
-			}
 			.composer {
 				display: grid;
 				grid-template-columns: 1fr auto auto;
 				gap: 10px;
-				border-top: 1px solid #e3e9d8;
 				padding: 12px;
+				border-top: 1px solid #e3e9d8;
 			}
 			textarea {
 				width: 100%;
-				min-height: 80px;
-				max-height: 200px;
-				resize: vertical;
+				min-height: 78px;
 				border: 1px solid #cedbb7;
 				border-radius: 10px;
 				padding: 10px;
+				resize: vertical;
 			}
 			button {
 				border: 1px solid #4f6f2b;
 				background: #4f6f2b;
 				color: #fff;
 				border-radius: 10px;
-				padding: 0 16px;
-				font-weight: 700;
+				padding: 0 14px;
 				cursor: pointer;
+				font-weight: 700;
+			}
+			.ghost {
+				background: #fff;
+				color: #3e5623;
+				border-color: #b7c9a0;
+			}
+			.muted {
+				color: #6a755d;
+				font-size: 13px;
+				line-height: 1.4;
 			}
 			@media (max-width: 900px) {
 				.wrap {
@@ -145,257 +128,102 @@
 	</head>
 	<body>
 		<header class="top">
-			<h1>ООО «Петрохлеб-Кубань»</h1>
-			<p>Лид-центр предпродажной поддержки</p>
+			<h2 style="margin: 0">ООО «Петрохлеб-Кубань»</h2>
+			<div style="opacity: 0.9">Лид-центр предпродажной поддержки</div>
 		</header>
-
 		<main class="wrap">
 			<aside class="card side">
-				<h3>Карта диалогов</h3>
-				<div class="muted">
-					Основные сценарии: знакомство, ассортимент, цена/наличие, тоннаж,
-					логистика, сбор контакта, передача лида.
-				</div>
+				<h3 style="margin: 0 0 8px">Сценарии</h3>
+				<div class="muted" id="company"></div>
 				<div class="chips" id="chips"></div>
-				<hr
-					style="border: none; border-top: 1px solid #e3e9d8; margin: 12px 0"
-				/>
-				<div class="muted">
-					<b>Политика:</b> бот не отвечает на темы вне зерновой продукции, не
-					генерирует вредоносный/технический злоупотребляющий контент.
-				</div>
 			</aside>
 
 			<section class="card chat">
-				<div class="chat-head">
-					<div><b>Чат поддержки клиентов</b></div>
-					<div class="status" id="status">Готов к работе</div>
+				<div class="head">
+					<b>Чат поддержки</b><span id="status" class="muted">Онлайн</span>
 				</div>
 				<div class="stream" id="chat"></div>
 				<div class="composer">
 					<textarea
 						id="input"
-						placeholder="Например: Нужна пшеница 3 класса, 120 тонн, поставка в Краснодар"
+						placeholder="Укажите товар, класс, объем, регион и желаемый срок"
 					></textarea>
 					<button id="send">Отправить</button>
-					<button
-						id="clear"
-						style="background: #fff; color: #415a24; border-color: #b7c9a0"
-					>
-						Очистить чат
-					</button>
+					<button id="clear" class="ghost">Очистить</button>
 				</div>
 			</section>
 		</main>
 
 		<script>
-			const ENDPOINT = '/llm/api/generate'
-			const MODEL = 'qwen2.5:0.5b'
-			const STORE_SESSIONS = 'agrolead_chat_sessions'
-			const STORE_CURRENT = 'agrolead_current_chat'
-			const STORE_STATS = 'agrolead_stats'
-
-			const DIALOG_MAP = [
-				'Кто вы и чем занимаетесь?',
-				'Какие товары в наличии?',
-				'Какая цена и минимальный объём?',
-				'Какие классы/параметры качества?',
-				'Какие сроки и условия доставки?',
-				'Как оформить заявку и передать менеджеру?',
-			]
-
-			const ALLOWED = [
-				'пшен',
-				'пшено',
-				'ячмен',
-				'кукуруз',
-				'зерн',
-				'цена',
-				'стоим',
-				'налич',
-				'класс',
-				'тонн',
-				'объ',
-				'логист',
-				'достав',
-				'отгруз',
-				'качест',
-				'заявк',
-				'контакт',
-				'краснодар',
-				'кто вы',
-				'чем занимаетесь',
-				'ассортимент',
-			]
-			const BLOCKED = [
-				'ddos',
-				'ддос',
-				'взлом',
-				'hack',
-				'эксплойт',
-				'shellcode',
-				'ботнет',
-				'malware',
-				'вирус',
-				'phishing',
-				'sql injection',
-				'xss',
-				'rce',
-				'код для атаки',
-			]
-
-			const SYSTEM = `Ты — клиентский ассистент ООО «Петрохлеб-Кубань» (зерновая продукция).
-Цель: квалифицировать лид и передать в продажу.
-Разрешённые темы:
-- кто вы, чем занимаетесь;
-- ассортимент и наличие;
-- цена/диапазон, класс, качество;
-- объём, тоннаж, сроки, логистика;
-- оформление заявки и запрос контакта.
-Запрещено:
-- генерация кода, кибербезопасность/атаки, любые вредоносные инструкции;
-- оффтоп (политика, развлекательные темы и т.п.).
-Если оффтоп: вежливо откажись и верни к теме закупки зерна.
-Никогда не выдумывай цены, остатки, контакты или сроки.
-Не выводи служебные префиксы «Клиент:» и «Ассистент:».
-Стиль: кратко, по делу, 2-5 предложений и 1 уточняющий вопрос.`
-
+			const STORE = 'agrolead_current_chat_v2'
+			const STORE_SID = 'agrolead_current_session_id'
 			const chatEl = document.getElementById('chat')
 			const inputEl = document.getElementById('input')
-			const sendBtn = document.getElementById('send')
-			const clearBtn = document.getElementById('clear')
 			const statusEl = document.getElementById('status')
 			const chipsEl = document.getElementById('chips')
+			let sessionId = Number(localStorage.getItem(STORE_SID) || 0) || null
+			let history = JSON.parse(localStorage.getItem(STORE) || '[]')
 
-			let history = []
-			const session = {
-				id: Date.now().toString(),
-				startedAt: new Date().toISOString(),
-				messages: [],
-			}
-
-			DIALOG_MAP.forEach(s => {
-				const c = document.createElement('button')
-				c.className = 'chip'
-				c.textContent = s
-				c.onclick = () => {
-					inputEl.value = s
-					inputEl.focus()
-				}
-				chipsEl.appendChild(c)
-			})
-
-			function statsInc(field) {
-				const s = JSON.parse(
-					localStorage.getItem(STORE_STATS) ||
-						'{"requests":0,"blocked":0,"leads":0}',
-				)
-				s[field] = (s[field] || 0) + 1
-				localStorage.setItem(STORE_STATS, JSON.stringify(s))
-			}
-
-			function persistSession() {
-				const arr = JSON.parse(localStorage.getItem(STORE_SESSIONS) || '[]')
-				const i = arr.findIndex(x => x.id === session.id)
-				if (i >= 0) arr[i] = session
-				else arr.push(session)
-				localStorage.setItem(STORE_SESSIONS, JSON.stringify(arr.slice(-50)))
-			}
-
-			function setStatus(t, err = false) {
-				statusEl.textContent = t
-				statusEl.style.color = err ? '#b00020' : '#6a755d'
-			}
-			function addMsg(t, r, persist = true) {
+			function addMsg(text, role, persist = true) {
 				const el = document.createElement('div')
-				el.className = `msg ${r}`
-				el.textContent = t
+				el.className = `msg ${role}`
+				el.textContent = text
 				chatEl.appendChild(el)
 				chatEl.scrollTop = chatEl.scrollHeight
 				if (persist) {
-					session.messages.push({
-						role: r === 'u' ? 'user' : 'bot',
-						text: t,
-						ts: new Date().toISOString(),
-					})
-					localStorage.setItem(STORE_CURRENT, JSON.stringify(session.messages))
-					persistSession()
+					history.push({ role, text })
+					localStorage.setItem(STORE, JSON.stringify(history))
 				}
 				return el
 			}
 
-			function blocked(text) {
-				const s = text.toLowerCase()
-				return BLOCKED.some(k => s.includes(k))
+			function setStatus(t, e = false) {
+				statusEl.textContent = t
+				statusEl.style.color = e ? '#b00020' : '#6a755d'
 			}
-			function relevant(text) {
-				const s = text.toLowerCase()
-				return ALLOWED.some(k => s.includes(k))
-			}
-			function promptFor(user) {
-				const ctx = history
-					.slice(-6)
-					.map(m => `${m.role === 'user' ? 'Запрос' : 'Ответ'}: ${m.text}`)
-					.join('\n')
-				return `${SYSTEM}\n\n${ctx}\nКлиент: ${user}\nАссистент:`
+
+			async function bootstrap() {
+				const res = await fetch('/api/public/bootstrap')
+				const data = await res.json()
+				document.getElementById('company').textContent =
+					`${data.company?.name || ''}. ${data.company?.services || ''}`
+				;(data.scenarios || []).forEach(s => {
+					const b = document.createElement('button')
+					b.className = 'chip'
+					b.textContent = s.title
+					b.onclick = () => {
+						inputEl.value = s.title
+						inputEl.focus()
+					}
+					chipsEl.appendChild(b)
+				})
 			}
 
 			async function send() {
 				const text = inputEl.value.trim()
 				if (!text) return
 				addMsg(text, 'u')
-				history.push({ role: 'user', text })
 				inputEl.value = ''
-				statsInc('requests')
-
-				if (blocked(text)) {
-					const r =
-						'Я не помогаю с небезопасными или вредоносными запросами. Могу помочь только с ассортиментом зерна, ценой, объёмом, логистикой и оформлением заявки.'
-					addMsg(r, 'b')
-					history.push({ role: 'bot', text: r })
-					statsInc('blocked')
-					return
-				}
-				if (!relevant(text)) {
-					const r =
-						'Я консультирую только по продукции и поставкам ООО «Петрохлеб-Кубань». Уточните, пожалуйста, интересующий товар, объём и регион поставки.'
-					addMsg(r, 'b')
-					history.push({ role: 'bot', text: r })
-					statsInc('blocked')
-					return
-				}
-
-				sendBtn.disabled = true
 				setStatus('Ассистент печатает...')
-				const typing = document.createElement('div')
-				typing.className = 't'
-				typing.textContent = 'Ассистент печатает...'
-				chatEl.appendChild(typing)
-				const bot = addMsg('', 'b')
-				let full = ''
+				const bot = addMsg('', 'b', false)
 
 				try {
-					const res = await fetch(ENDPOINT, {
+					const res = await fetch('/api/chat/stream', {
 						method: 'POST',
 						headers: { 'Content-Type': 'application/json' },
 						body: JSON.stringify({
-							model: MODEL,
-							prompt: promptFor(text),
-							stream: true,
-							keep_alive: '45m',
-							options: {
-								temperature: 0.1,
-								num_predict: 140,
-								repeat_penalty: 1.08,
-							},
+							text,
+							session_id: sessionId,
+							client_id: 'web-client',
 						}),
 					})
-					if (!res.ok || !res.body)
-						throw new Error(`HTTP ${res.status}: ${await res.text()}`)
-
+					if (!res.ok || !res.body) {
+						throw new Error(`HTTP ${res.status}`)
+					}
 					const reader = res.body.getReader()
 					const decoder = new TextDecoder()
 					let buffer = ''
+					let full = ''
 					while (true) {
 						const { value, done } = await reader.read()
 						if (done) break
@@ -404,46 +232,38 @@
 						buffer = lines.pop() || ''
 						for (const line of lines) {
 							if (!line.trim()) continue
-							try {
-								const j = JSON.parse(line)
-								if (j.response) {
-									full += j.response
-									bot.textContent = full
-									chatEl.scrollTop = chatEl.scrollHeight
-								}
-							} catch {}
+							const j = JSON.parse(line)
+							if (j.session_id) {
+								sessionId = j.session_id
+								localStorage.setItem(STORE_SID, String(sessionId))
+							}
+							if (j.token) {
+								full += j.token
+								bot.textContent = full
+								chatEl.scrollTop = chatEl.scrollHeight
+							}
+							if (j.done) {
+								bot.textContent = (bot.textContent || '').trim()
+								history.push({ role: 'b', text: bot.textContent })
+								localStorage.setItem(STORE, JSON.stringify(history))
+							}
 						}
 					}
-					const finalText = (
-						full || 'Уточните, пожалуйста, товар, объём и регион поставки.'
-					)
-						.replace(/^(Клиент|Ассистент|Запрос|Ответ):\s*/gim, '')
-						.trim()
-					bot.textContent = finalText
-					history.push({ role: 'bot', text: finalText })
-					if (/контакт|телефон|почт|заявк/i.test(finalText)) statsInc('leads')
 					setStatus('Онлайн')
 				} catch (e) {
-					bot.textContent =
-						'Сервис временно недоступен. Повторите запрос через минуту.'
-					setStatus(`Ошибка: ${e.message}`, true)
-				} finally {
-					typing.remove()
-					sendBtn.disabled = false
-					persistSession()
+					bot.textContent = 'Ошибка обработки запроса. Повторите попытку.'
+					setStatus(String(e), true)
 				}
 			}
 
-			sendBtn.onclick = send
-			clearBtn.onclick = () => {
+			document.getElementById('send').onclick = send
+			document.getElementById('clear').onclick = () => {
 				history = []
-				session.messages = []
-				localStorage.removeItem(STORE_CURRENT)
+				sessionId = null
+				localStorage.removeItem(STORE)
+				localStorage.removeItem(STORE_SID)
 				chatEl.innerHTML = ''
-				addMsg(
-					'История очищена. Готов помочь по продукции и заявкам ООО «Петрохлеб-Кубань».',
-					'b',
-				)
+				addMsg('Чат очищен. Уточните, пожалуйста, товар и объем.', 'b')
 				setStatus('Онлайн')
 			}
 			inputEl.addEventListener('keydown', e => {
@@ -452,21 +272,17 @@
 					send()
 				}
 			})
-
-			const restored = JSON.parse(localStorage.getItem(STORE_CURRENT) || '[]')
-			if (restored.length) {
-				restored.forEach(m => {
-					addMsg(m.text, m.role === 'user' ? 'u' : 'b', false)
-					history.push({ role: m.role, text: m.text })
-				})
-				setStatus('История восстановлена')
-			} else {
-				addMsg(
-					'Здравствуйте! Я ассистент ООО «Петрохлеб-Кубань». Подскажу по наличию, цене, объёму и доставке. Что вас интересует?',
-					'b',
-				)
-				setStatus('Онлайн')
-			}
+			;(async () => {
+				await bootstrap()
+				if (history.length) {
+					history.forEach(m => addMsg(m.text, m.role, false))
+					setStatus('История восстановлена')
+				} else
+					addMsg(
+						'Здравствуйте! Подскажу по наличию, цене, логистике и оформлению заявки.',
+						'b',
+					)
+			})()
 		</script>
 	</body>
 </html>

@@ -1,0 +1,66 @@
+from sqlmodel import Session, select
+
+from .models import CompanyProfile, PromptCategory, Scenario
+
+
+DEFAULT_CONTACTS = """КОММЕРЧЕСКИЙ ОТДЕЛ:
+Бондаренко Николай Николаевич — +7 (861) 992 13 61 (доб. 105), bondarenko@petrokhlebkuban.ru
+Владимиров Владимир Васильевич — +7 (861) 992 13 61 (доб. 106), vladimirov@petrokhlebkuban.ru
+Ульянов Александр Владимирович — +7 (861) 992 13 61 (доб. 125), ulyanov@petrokhlebkuban.ru
+
+ОТДЕЛ ПРОДАЖ:
+Вехов Олег Владимирович — +7 (861) 992 13 61 (доб. 104), bexob@mail.ru
+Чередниченко Алексей Викторович — +7 (861) 992 13 61 (доб. 107), cherednichenko@petrokhlebkuban.ru
+
+ОТДЕЛ АВТОЛОГИСТИКИ:
+Струцкий Валерий Владимирович — +7 (861) 992 13 61 (доб. 102), strutskiy@petrokhlebkuban.ru
+Голубцова Анастасия Владимировна — +7 (861) 992 13 61 (доб. 129), zd@petrokhlebkuban.ru
+
+ОТДЕЛ ВЭД:
+Корбула Александр Александрович — +7 (861) 992 13 61, korbula@petrokhlebkuban.ru
+Моздор София Евгеньевна — +7 (861) 992 13 61 (доб. 110), pobegaylenko@petrokhlebkuban.ru, execution@petrokhlebkuban.ru
+
+ДИРЕКТОР:
+Фисик Максим Васильевич — +7 (861) 992 13 61, mail@petrokhlebkuban.ru
+"""
+
+
+def seed_defaults(session: Session) -> None:
+    profile = session.exec(select(CompanyProfile)).first()
+    if not profile:
+        session.add(
+            CompanyProfile(
+                name='ООО "Петрохлеб-Кубань"',
+                address='350063 Краснодарский край, г. Краснодар, ул. Октябрьская, д. 8, 2 этаж',
+                phones='+7 861 992 13 61, +7 861 992 13 63',
+                email='mail@petrokhlebkuban.ru',
+                services='Закупка, Логистика, Хранение, Продажа, Внешнеэкономическая деятельность',
+                contacts_markdown=DEFAULT_CONTACTS,
+            )
+        )
+
+    prompt_defaults = {
+        "identity": "Ты — клиентский ассистент ООО «Петрохлеб-Кубань». Отвечаешь от лица компании, только по зерновой тематике.",
+        "scope": "Разрешены: информация о компании, ассортимент, наличие, цена/диапазон, класс/качество, объем, логистика, сроки, оформление заявки.",
+        "safety": "Запрещено: код, кибератаки, вредоносные инструкции, оффтоп. На такие запросы отвечай отказом и возвращай к теме закупки зерна.",
+        "style": "Формат: 2-5 предложений, деловой стиль, без выдуманных фактов. В конце 1 уточняющий вопрос для квалификации лида.",
+        "lead_capture": "Всегда собирай: товар, класс, объем, регион/точка поставки, срок, контакт клиента.",
+    }
+    for key, content in prompt_defaults.items():
+        exists = session.exec(select(PromptCategory).where(PromptCategory.key == key)).first()
+        if not exists:
+            session.add(PromptCategory(key=key, title=key, content=content))
+
+    if not session.exec(select(Scenario)).first():
+        session.add_all(
+            [
+                Scenario(title='Кто вы и чем занимаетесь?', description='Короткое представление компании и ролей ассистента.'),
+                Scenario(title='Какие товары в наличии?', description='Перечень номенклатуры + уточнение класса/объема.'),
+                Scenario(title='Какая цена и минимальный объем?', description='Диапазон цены + запрос параметров сделки.'),
+                Scenario(title='Какой срок и способ доставки?', description='Логистика: авто/жд/вода + сроки.'),
+                Scenario(title='Как оформить заявку?', description='Запрос контактов и передача менеджеру.'),
+            ]
+        )
+
+    session.commit()
+

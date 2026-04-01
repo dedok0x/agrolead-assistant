@@ -1,25 +1,24 @@
 services:
-  picoclaw:
-    image: ${PICOCLAW_IMAGE}
-    container_name: ${CONTAINER_NAME:-picoclaw}
+  api:
+    build:
+      context: ./backend
+    container_name: agrolead-api
     restart: unless-stopped
-    command: ["--allow-empty"]
     network_mode: host
     environment:
       TZ: ${TZ:-Europe/Moscow}
-      API_KEY: ${API_KEY:-}
-      DB_URL: ${DB_URL:-sqlite:///data/picoclaw.db}
-      MODEL_PROVIDER: ${MODEL_PROVIDER:-ollama}
       MODEL_NAME: ${MODEL_NAME:-qwen2.5:0.5b}
-      API_BASE: ${API_BASE:-http://127.0.0.1:11434/v1}
+      OLLAMA_BASE: ${OLLAMA_BASE:-http://127.0.0.1:11434}
+      ADMIN_USER: ${ADMIN_USER:-admin}
+      ADMIN_PASS: ${ADMIN_PASS:-315920}
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-agrolead-admin-token}
     volumes:
-      - picoclaw_data:/data
-      - ./config/picoclaw-config.json:/root/.picoclaw/config.json:ro
-      - picoclaw_workspace:/root/.picoclaw/workspace
+      - app_data:/data
     depends_on:
       - ollama
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:18790/health || exit 1"]
+      test:
+        ["CMD-SHELL", "wget -qO- http://localhost:8000/api/health || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 5
@@ -43,10 +42,10 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - ./web/index.html:/usr/share/nginx/html/index.html:ro
+      - ./web/admin.html:/usr/share/nginx/html/admin.html:ro
       - ./web/nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - ./ssl:/etc/nginx/ssl:ro
 
 volumes:
-  picoclaw_data:
-  picoclaw_workspace:
+  app_data:
   ollama_data:
