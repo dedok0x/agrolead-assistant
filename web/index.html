@@ -3,227 +3,403 @@
 	<head>
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width,initial-scale=1" />
-		<title>AgroLead Web Test</title>
+		<title>ООО «Петрохлеб-Кубань» — Лид-центр</title>
 		<style>
 			:root {
-				--bg: #f7f7f7;
-				--txt: #111;
-				--muted: #666;
-				--line: #ddd;
-				--accent: #111;
+				--bg: #f5f6ef;
+				--panel: #ffffff;
+				--line: #d8dfc8;
+				--brand: #486b2a;
+				--brand-2: #7a9a39;
+				--text: #1f2a1a;
+				--muted: #6a755d;
 			}
 			* {
 				box-sizing: border-box;
 			}
 			body {
 				margin: 0;
-				font-family: Georgia, 'Times New Roman', serif;
-				background: var(--bg);
-				color: var(--txt);
+				font-family:
+					Inter,
+					Segoe UI,
+					Arial,
+					sans-serif;
+				color: var(--text);
+				background: linear-gradient(180deg, #eff4e6 0%, var(--bg) 100%);
 			}
-			.wrap {
-				max-width: 980px;
+			.hero {
+				padding: 26px 18px;
+				border-bottom: 1px solid var(--line);
+				background: radial-gradient(
+					circle at top right,
+					#d8e7bf 0%,
+					#eff4e6 45%,
+					#f5f6ef 100%
+				);
+			}
+			.hero-inner {
+				max-width: 1000px;
 				margin: 0 auto;
-				padding: 40px 20px;
 			}
-			h1 {
-				font-size: 44px;
-				line-height: 1.1;
-				margin: 0 0 10px;
+			.title {
+				margin: 0;
+				font-size: 28px;
+				font-weight: 800;
 			}
-			p.lead {
-				margin: 0 0 24px;
+			.subtitle {
+				margin: 6px 0 0;
 				color: var(--muted);
-				font-size: 18px;
+			}
+
+			.layout {
+				max-width: 1000px;
+				margin: 18px auto;
+				padding: 0 18px 18px;
+				display: grid;
+				grid-template-columns: 280px 1fr;
+				gap: 14px;
 			}
 			.card {
-				background: #fff;
+				background: var(--panel);
 				border: 1px solid var(--line);
-				padding: 20px;
-				margin-bottom: 18px;
+				border-radius: 14px;
 			}
-			label {
-				display: block;
-				font-size: 13px;
+			.side {
+				padding: 14px;
+			}
+			.pill {
+				display: inline-flex;
+				align-items: center;
+				gap: 8px;
+				border: 1px solid #b7c9a0;
+				color: #36551f;
+				background: #f0f7e6;
+				border-radius: 999px;
+				padding: 6px 10px;
+				font-size: 12px;
+				font-weight: 700;
+			}
+			.muted {
 				color: var(--muted);
-				margin-bottom: 6px;
+				font-size: 13px;
+				line-height: 1.45;
 			}
-			input,
+			.help-list {
+				margin: 10px 0 0;
+				padding-left: 16px;
+				color: var(--muted);
+				font-size: 13px;
+			}
+
+			.chat-wrap {
+				display: flex;
+				flex-direction: column;
+				min-height: 72vh;
+			}
+			.chat-head {
+				display: flex;
+				justify-content: space-between;
+				align-items: center;
+				padding: 12px 14px;
+				border-bottom: 1px solid var(--line);
+			}
+			.chat-title {
+				margin: 0;
+				font-size: 15px;
+				font-weight: 700;
+			}
+			.status {
+				font-size: 12px;
+				color: var(--muted);
+			}
+			.chat {
+				padding: 14px;
+				display: flex;
+				flex-direction: column;
+				gap: 10px;
+				overflow: auto;
+				height: 56vh;
+			}
+			.msg {
+				max-width: 78%;
+				border-radius: 12px;
+				padding: 10px 12px;
+				white-space: pre-wrap;
+				line-height: 1.4;
+			}
+			.bot {
+				align-self: flex-start;
+				background: #f0f7e6;
+				border: 1px solid #cfe0b7;
+			}
+			.user {
+				align-self: flex-end;
+				background: #e7efe0;
+				border: 1px solid #cfddc2;
+			}
+			.typing {
+				align-self: flex-start;
+				color: var(--muted);
+				font-size: 13px;
+			}
+
+			.composer {
+				border-top: 1px solid var(--line);
+				padding: 12px;
+				display: grid;
+				grid-template-columns: 1fr auto;
+				gap: 10px;
+			}
 			textarea {
 				width: 100%;
+				min-height: 74px;
+				max-height: 200px;
+				resize: vertical;
 				border: 1px solid var(--line);
+				border-radius: 10px;
 				padding: 10px;
 				font: inherit;
-				background: #fff;
-			}
-			textarea {
-				min-height: 130px;
-				resize: vertical;
-			}
-			.row {
-				display: grid;
-				grid-template-columns: 1fr 1fr;
-				gap: 12px;
-			}
-			.btns {
-				display: flex;
-				gap: 10px;
-				flex-wrap: wrap;
-				margin-top: 12px;
 			}
 			button {
-				border: 1px solid var(--accent);
-				background: var(--accent);
+				border: 1px solid var(--brand);
+				background: linear-gradient(
+					180deg,
+					var(--brand-2) 0%,
+					var(--brand) 100%
+				);
 				color: #fff;
-				padding: 10px 14px;
+				border-radius: 10px;
+				padding: 0 16px;
+				font-weight: 700;
 				cursor: pointer;
 			}
-			button.alt {
-				background: #fff;
-				color: var(--txt);
+			button:disabled {
+				opacity: 0.6;
+				cursor: not-allowed;
 			}
-			pre {
-				white-space: pre-wrap;
-				word-break: break-word;
-				background: #fff;
-				border: 1px solid var(--line);
-				padding: 12px;
-				margin: 0;
-				min-height: 120px;
-			}
-			.ok {
-				color: #0a7a2a;
-			}
-			.err {
-				color: #b00020;
+
+			@media (max-width: 900px) {
+				.layout {
+					grid-template-columns: 1fr;
+				}
+				.chat-wrap {
+					min-height: 65vh;
+				}
+				.chat {
+					height: 48vh;
+				}
 			}
 		</style>
 	</head>
 	<body>
-		<main class="wrap">
-			<h1>AgroLead Assistant</h1>
-			<p class="lead">
-				Веб-морда для теста PicoClaw через gateway (минималистичный стиль).
-			</p>
+		<header class="hero">
+			<div class="hero-inner">
+				<h1 class="title">ООО «Петрохлеб-Кубань»</h1>
+				<p class="subtitle">
+					Лид-центр поддержки клиентов по зерновой продукции
+				</p>
+			</div>
+		</header>
 
-			<section class="card">
-				<div class="row">
-					<div>
-						<label>API endpoint (через nginx proxy)</label>
-						<input id="endpoint" value="/llm/api/generate" />
-					</div>
-					<div>
-						<label>Model name</label>
-						<input id="model" value="qwen2.5:0.5b" />
-					</div>
-				</div>
-				<div style="margin-top: 12px">
-					<label>Тестовый запрос</label>
-					<textarea id="prompt">
-Ты ассистент отдела продаж зерновой компании. Дай короткий ответ клиенту: «Есть ли пшеница 3 класса и какая ориентировочная цена?»</textarea
-					>
-				</div>
-				<div class="btns">
-					<button id="healthBtn" class="alt">Проверить health</button>
-					<button id="sendBtn">Отправить тестовый запрос</button>
-				</div>
-			</section>
+		<main class="layout">
+			<aside class="card side">
+				<div class="pill">● Онлайн-консультант</div>
+				<p class="muted">
+					Ассистент обрабатывает только профильные запросы: наличие, цена,
+					объём, класс/параметры зерна, условия отгрузки и оформление заявки.
+				</p>
+				<ul class="help-list">
+					<li>Пшеница, ячмень, кукуруза</li>
+					<li>Класс, влажность, качество</li>
+					<li>Тоннаж и логистика</li>
+					<li>Передача лида менеджеру</li>
+				</ul>
+			</aside>
 
-			<section class="card">
-				<label>Статус</label>
-				<pre id="status">Ожидание проверки...</pre>
-			</section>
-
-			<section class="card">
-				<label>Ответ</label>
-				<pre id="output">Пока пусто.</pre>
+			<section class="card chat-wrap">
+				<div class="chat-head">
+					<h2 class="chat-title">Чат поддержки клиентов</h2>
+					<div class="status" id="status">Готов к работе</div>
+				</div>
+				<div class="chat" id="chat"></div>
+				<div class="composer">
+					<textarea
+						id="input"
+						placeholder="Например: Нужна пшеница 3 класса, 200 тонн, отгрузка на следующей неделе"
+					></textarea>
+					<button id="send">Отправить</button>
+				</div>
 			</section>
 		</main>
 
 		<script>
-			const statusEl = document.getElementById('status')
-			const outputEl = document.getElementById('output')
+			const ENDPOINT = '/llm/api/generate'
+			const MODEL = 'qwen2.5:0.5b'
 
-			function setStatus(text, ok = true) {
-				statusEl.textContent = text
-				statusEl.className = ok ? 'ok' : 'err'
+			const SYSTEM_PROMPT = `Ты — ассистент отдела предпродаж ООО «Петрохлеб-Кубань».
+Отвечай только по теме зерновой продукции и заявки на покупку.
+Разрешённые темы: наличие, цена, класс зерна, качество, объём, срок, логистика, оформление заявки.
+Если вопрос вне темы (политика, программирование, личные советы и т.п.) — вежливо откажись и верни к теме закупки зерна.
+Стиль: кратко, делово, 2-4 предложения.
+Всегда стремись уточнить и собрать лид: товар, класс, объём, регион/точка поставки, срок, контакт.`
+
+			const KEYWORDS = [
+				'пшениц',
+				'ячмен',
+				'кукуруз',
+				'зерн',
+				'тонн',
+				'объ',
+				'класс',
+				'цена',
+				'налич',
+				'влажн',
+				'качест',
+				'отгруз',
+				'достав',
+				'логист',
+				'заявк',
+				'контакт',
+				'лид',
+			]
+
+			const chatEl = document.getElementById('chat')
+			const inputEl = document.getElementById('input')
+			const sendBtn = document.getElementById('send')
+			const statusEl = document.getElementById('status')
+
+			let history = []
+
+			function addMsg(text, role = 'bot') {
+				const el = document.createElement('div')
+				el.className = `msg ${role}`
+				el.textContent = text
+				chatEl.appendChild(el)
+				chatEl.scrollTop = chatEl.scrollHeight
+				return el
 			}
 
-			document
-				.getElementById('healthBtn')
-				.addEventListener('click', async () => {
-					try {
-						const res = await fetch('/api/health')
-						const txt = await res.text()
-						setStatus(`health: HTTP ${res.status} | ${txt}`, res.ok)
-					} catch (e) {
-						setStatus(`health error: ${e.message}`, false)
-					}
-				})
+			function setStatus(text, isError = false) {
+				statusEl.textContent = text
+				statusEl.style.color = isError ? '#b00020' : '#6a755d'
+			}
 
-			document.getElementById('sendBtn').addEventListener('click', async () => {
-				const endpoint = document.getElementById('endpoint').value.trim()
-				const model = document.getElementById('model').value.trim()
-				const prompt = document.getElementById('prompt').value.trim()
-				outputEl.textContent = 'Отправка запроса...'
+			function isRelevant(text) {
+				const s = text.toLowerCase()
+				return KEYWORDS.some(k => s.includes(k))
+			}
 
-				const isOllama = endpoint.includes('/llm/api/generate')
-				const body = isOllama
-					? {
-							model,
-							prompt,
-							stream: true,
-							keep_alive: '30m',
-							options: {
-								temperature: 0.1,
-								num_predict: 96,
-							},
-						}
-					: {
-							model,
-							messages: [{ role: 'user', content: prompt }],
-							temperature: 0.2,
-						}
+			function buildPrompt(userText) {
+				const trimmedHistory = history
+					.slice(-4)
+					.map(m => `${m.role === 'user' ? 'Клиент' : 'Ассистент'}: ${m.text}`)
+					.join('\n')
+				return `${SYSTEM_PROMPT}\n\n${trimmedHistory}\nКлиент: ${userText}\nАссистент:`
+			}
+
+			async function send() {
+				const text = inputEl.value.trim()
+				if (!text) return
+
+				addMsg(text, 'user')
+				history.push({ role: 'user', text })
+				inputEl.value = ''
+
+				if (!isRelevant(text)) {
+					const reject =
+						'Я консультирую только по продукции ООО «Петрохлеб-Кубань»: наличие, цена, качество, объём и оформление заявки. Уточните, пожалуйста, интересующий товар и объём.'
+					addMsg(reject, 'bot')
+					history.push({ role: 'bot', text: reject })
+					return
+				}
+
+				sendBtn.disabled = true
+				setStatus('Формирую ответ...')
+
+				const typing = document.createElement('div')
+				typing.className = 'typing'
+				typing.textContent = 'Ассистент печатает...'
+				chatEl.appendChild(typing)
+				chatEl.scrollTop = chatEl.scrollHeight
+
+				const botEl = addMsg('', 'bot')
+				let full = ''
 
 				try {
-					const res = await fetch(endpoint, {
+					const body = {
+						model: MODEL,
+						prompt: buildPrompt(text),
+						stream: true,
+						keep_alive: '30m',
+						options: {
+							temperature: 0.1,
+							num_predict: 100,
+							repeat_penalty: 1.05,
+						},
+					}
+
+					const res = await fetch(ENDPOINT, {
 						method: 'POST',
 						headers: { 'Content-Type': 'application/json' },
 						body: JSON.stringify(body),
 					})
-					setStatus(`chat: HTTP ${res.status}`, res.ok)
-					if (isOllama && res.ok && res.body) {
-						const reader = res.body.getReader()
-						const decoder = new TextDecoder()
-						let buffer = ''
-						let full = ''
 
-						while (true) {
-							const { value, done } = await reader.read()
-							if (done) break
-							buffer += decoder.decode(value, { stream: true })
-							const lines = buffer.split('\n')
-							buffer = lines.pop() || ''
-							for (const line of lines) {
-								if (!line.trim()) continue
-								try {
-									const part = JSON.parse(line)
-									if (part.response) {
-										full += part.response
-										outputEl.textContent = full
-									}
-								} catch {}
-							}
-						}
-					} else {
+					if (!res.ok || !res.body) {
 						const txt = await res.text()
-						outputEl.textContent = txt
+						throw new Error(`HTTP ${res.status}: ${txt}`)
 					}
+
+					const reader = res.body.getReader()
+					const decoder = new TextDecoder()
+					let buffer = ''
+
+					while (true) {
+						const { value, done } = await reader.read()
+						if (done) break
+
+						buffer += decoder.decode(value, { stream: true })
+						const lines = buffer.split('\n')
+						buffer = lines.pop() || ''
+
+						for (const line of lines) {
+							if (!line.trim()) continue
+							try {
+								const part = JSON.parse(line)
+								if (part.response) {
+									full += part.response
+									botEl.textContent = full
+									chatEl.scrollTop = chatEl.scrollHeight
+								}
+							} catch {}
+						}
+					}
+
+					const finalText = (full || 'Готово.').trim()
+					botEl.textContent = finalText
+					history.push({ role: 'bot', text: finalText })
+					setStatus('Онлайн')
 				} catch (e) {
-					setStatus(`chat error: ${e.message}`, false)
-					outputEl.textContent = e.stack || e.message
+					botEl.textContent =
+						'Сейчас не удалось сформировать ответ. Попробуйте повторить запрос.'
+					setStatus(`Ошибка: ${e.message}`, true)
+				} finally {
+					typing.remove()
+					sendBtn.disabled = false
+				}
+			}
+
+			sendBtn.addEventListener('click', send)
+			inputEl.addEventListener('keydown', e => {
+				if (e.key === 'Enter' && !e.shiftKey) {
+					e.preventDefault()
+					send()
 				}
 			})
+
+			addMsg(
+				'Здравствуйте! Я ассистент ООО «Петрохлеб-Кубань». Подскажу по наличию, цене и помогу оформить заявку.',
+				'bot',
+			)
 		</script>
 	</body>
 </html>
