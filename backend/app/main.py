@@ -209,40 +209,53 @@ async def chat_stream(payload: ChatIn, session: Session = Depends(get_session)):
         f"{'Клиент' if m.role == 'user' else 'Ассистент'}: {m.text}" for m in reversed(recent)
     ])
 
-    prompt = f"{build_system_prompt(session)}\n\n{history}\nКлиент: {payload.text}\nАссистент:"
+    prompt = f"{build_system_prompt(session)}\n\n{history}\nАссистент:"
 
     async def gen():
         assistant_full = ""
-        async with httpx.AsyncClient(timeout=None) as client:
-            async with client.stream(
-                "POST",
-                f"{OLLAMA_BASE}/api/generate",
-                json={
-                    "model": MODEL_NAME,
-                    "prompt": prompt,
-                    "stream": True,
-                    "keep_alive": "45m",
-                    "options": {"temperature": 0.05, "num_predict": 90, "repeat_penalty": 1.1},
-                },
-            ) as r:
-                async for line in r.aiter_lines():
-                    if not line:
-                        continue
-                    try:
-                        part = json.loads(line)
-                    except Exception:
-                        continue
-                    token = part.get("response", "")
-                    if token:
-                        assistant_full += token
-                        yield json.dumps({"session_id": chat_session.id, "token": token, "done": False}) + "\n"
-                    if part.get("done"):
-                        clean = sanitize_assistant_text(assistant_full)
-                        with Session(engine) as write_session:
-                            write_session.add(ChatMessage(session_id=chat_session.id, role="assistant", text=clean))
-                            write_session.commit()
-                        yield json.dumps({"session_id": chat_session.id, "token": "", "done": True}) + "\n"
-                        break
+        try:
+            async with httpx.AsyncClient(timeout=None) as client:
+                async with client.stream(
+                    "POST",
+                    f"{OLLAMA_BASE}/api/generate",
+                    json={
+                        "model": MODEL_NAME,
+                        "prompt": prompt,
+                        "stream": True,
+                        "keep_alive": "45m",
+                        "options": {"temperature": 0.05, "num_predict": 90, "repeat_penalty": 1.1},
+                    },
+                ) as r:
+                    if r.status_code >= 400:
+                        raise HTTPException(status_code=502, detail=f"LLM upstream error: HTTP {r.status_code}")
+
+                    async for line in r.aiter_lines():
+                        if not line:
+                            continue
+                        try:
+                            part = json.loads(line)
+                        except Exception:
+                            continue
+                        token = part.get("response", "")
+                        if token:
+                            assistant_full += token
+                            yield json.dumps({"session_id": chat_session.id, "token": token, "done": False}) + "\n"
+                        if part.get("done"):
+                            clean = sanitize_assistant_text(assistant_full)
+                            with Session(engine) as write_session:
+                                write_session.add(ChatMessage(session_id=chat_session.id, role="assistant", text=clean))
+                                write_session.commit()
+                            yield json.dumps({"session_id": chat_session.id, "token": "", "done": True}) + "\n"
+                            break
+        except Exception:
+            fallback = (
+                "Сервис генерации временно недоступен. "
+                "Уточните, пожалуйста, товар, класс и объем в тоннах — передам заявку менеджеру."
+            )
+            with Session(engine) as write_session:
+                write_session.add(ChatMessage(session_id=chat_session.id, role="assistant", text=fallback, blocked=True, reason="llm_unavailable"))
+                write_session.commit()
+            yield json.dumps({"session_id": chat_session.id, "token": fallback, "done": True}) + "\n"
 
     return StreamingResponse(gen(), media_type="application/x-ndjson")
 

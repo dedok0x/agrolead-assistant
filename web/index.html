@@ -289,22 +289,28 @@
 			}
 
 			async function bootstrap() {
-				const res = await fetch('/api/public/bootstrap')
-				const data = await res.json()
+				try {
+					const res = await fetch('/api/public/bootstrap')
+					if (!res.ok) throw new Error(`HTTP ${res.status}`)
+					const data = await res.json()
 
-				document.getElementById('company').textContent = `${
-					data.company?.name || ''
-				}. ${data.company?.services || ''}`
-				;(data.scenarios || []).forEach(s => {
-					const b = document.createElement('button')
-					b.className = 'chip'
-					b.textContent = s.title
-					b.onclick = () => {
-						inputEl.value = s.title
-						inputEl.focus()
-					}
-					chipsEl.appendChild(b)
-				})
+					document.getElementById('company').textContent = `${
+						data.company?.name || ''
+					}. ${data.company?.services || ''}`
+					;(data.scenarios || []).forEach(s => {
+						const b = document.createElement('button')
+						b.className = 'chip'
+						b.textContent = s.title
+						b.onclick = () => {
+							inputEl.value = s.title
+							inputEl.focus()
+						}
+						chipsEl.appendChild(b)
+					})
+				} catch {
+					document.getElementById('company').textContent =
+						'Данные о компании временно недоступны. Вы можете задать вопрос в чат.'
+				}
 			}
 
 			async function send() {
@@ -315,7 +321,7 @@
 				inputEl.value = ''
 				setStatus('Генерирую ответ...')
 
-				const bot = addMsg('', 'b')
+				let bot = null
 
 				try {
 					const res = await fetch('/api/chat/stream', {
@@ -345,21 +351,30 @@
 
 						for (const line of lines) {
 							if (!line.trim()) continue
-							const j = JSON.parse(line)
+							let j = null
+							try {
+								j = JSON.parse(line)
+							} catch {
+								continue
+							}
 							if (j.session_id) sessionId = j.session_id
 							if (j.token) {
+								if (!bot) bot = addMsg('', 'b')
 								full += j.token
 								bot.textContent = full
 								chatEl.scrollTop = chatEl.scrollHeight
 							}
-							if (j.done) bot.textContent = (bot.textContent || '').trim()
+							if (j.done && bot)
+								bot.textContent = (bot.textContent || '').trim()
 						}
 					}
 
 					setStatus('Готово')
 				} catch (e) {
-					bot.textContent = 'Ошибка запроса. Попробуйте ещё раз.'
-					setStatus(String(e), true)
+					if (!bot) bot = addMsg('', 'b')
+					bot.textContent =
+						'Ошибка запроса. Проверьте соединение с сервером и попробуйте ещё раз.'
+					setStatus('Сетевой сбой или недоступен API', true)
 				}
 			}
 
