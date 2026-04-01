@@ -33,7 +33,7 @@ cp .env.example .env
 Заполни в `.env`:
 
 - `PICOCLAW_IMAGE` — Docker-образ;
-- `APP_PORT` — внешний порт;
+- `APP_PORT` — внешний порт (по умолчанию 18790 для gateway);
 - `DB_URL`, `MODEL_PROVIDER`, `MODEL_NAME`, `API_BASE`.
 
 Для локальной LLM по умолчанию используется Ollama:
@@ -84,6 +84,8 @@ curl http://<SERVER_IP>:<APP_PORT>/health
 ```
 
 Если в контейнере другой health endpoint — замени путь `/health` на нужный.
+
+Важно: сервис запускается в режиме gateway (долгоживущий процесс), поэтому не должен постоянно перезапускаться.
 
 Проверка автозапуска:
 
