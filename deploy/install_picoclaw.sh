@@ -10,7 +10,7 @@ sudo apt-get update -y
 sudo apt-get install -y ca-certificates curl gnupg lsb-release
 
 sudo install -m 0755 -d /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --yes --dearmor -o /etc/apt/keyrings/docker.gpg
 sudo chmod a+r /etc/apt/keyrings/docker.gpg
 
 echo \
@@ -32,9 +32,14 @@ if [[ ! -f "$COMPOSE_FILE" ]]; then
 fi
 
 if [[ ! -f "$ENV_FILE" ]]; then
-  echo "ERROR: $ENV_FILE not found"
-  echo "Create it from template: cp $ROOT_DIR/.env.example $ROOT_DIR/.env"
-  exit 1
+  if [[ -f "$ROOT_DIR/.env.example" ]]; then
+    echo "WARN: $ENV_FILE not found, creating from .env.example"
+    cp "$ROOT_DIR/.env.example" "$ENV_FILE"
+    echo "INFO: $ENV_FILE created. Please edit real values after first run."
+  else
+    echo "ERROR: $ENV_FILE not found and $ROOT_DIR/.env.example is missing"
+    exit 1
+  fi
 fi
 
 echo "[4/5] Pull and run PicoClaw container"
@@ -51,4 +56,3 @@ if [[ -n "${APP_PORT:-}" ]]; then
 fi
 
 echo "Done"
-
