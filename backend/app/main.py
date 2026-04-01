@@ -10,7 +10,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlmodel import Session, select
 
-from .db import init_db, get_session
+from .db import init_db, get_session, engine
 from .models import CompanyProfile, PromptCategory, Scenario, ChatSession, ChatMessage
 from .seed import seed_defaults
 
@@ -92,7 +92,7 @@ def guard_user_text(text: str) -> tuple[bool, str]:
 @app.on_event("startup")
 def startup() -> None:
     init_db()
-    with next(get_session()) as session:
+    with Session(engine) as session:
         seed_defaults(session)
 
 
@@ -171,8 +171,9 @@ async def chat_stream(payload: ChatIn, session: Session = Depends(get_session)):
                         yield json.dumps({"session_id": chat_session.id, "token": token, "done": False}) + "\n"
                     if part.get("done"):
                         clean = assistant_full.replace("Клиент:", "").replace("Ассистент:", "").strip()
-                        session.add(ChatMessage(session_id=chat_session.id, role="assistant", text=clean))
-                        session.commit()
+                        with Session(engine) as write_session:
+                            write_session.add(ChatMessage(session_id=chat_session.id, role="assistant", text=clean))
+                            write_session.commit()
                         yield json.dumps({"session_id": chat_session.id, "token": "", "done": True}) + "\n"
                         break
 
@@ -232,7 +233,10 @@ def get_scenarios(_: None = Depends(require_admin), session: Session = Depends(g
 
 @app.put("/api/admin/scenarios")
 def put_scenarios(items: list[ScenarioIn], _: None = Depends(require_admin), session: Session = Depends(get_session)):
-    session.exec("DELETE FROM scenario")
+    old = session.exec(select(Scenario)).all()
+    for s in old:
+        session.delete(s)
+    session.commit()
     for i in items:
         session.add(Scenario(**i.model_dump()))
     session.commit()
