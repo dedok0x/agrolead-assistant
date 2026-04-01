@@ -43,7 +43,7 @@ cp .env.example .env
 Для локальной LLM по умолчанию используется Ollama:
 
 - `MODEL_PROVIDER=ollama`
-- `MODEL_NAME=qwen2.5:1.5b`
+- `MODEL_NAME=qwen2.5:0.5b`
 - `API_BASE=http://127.0.0.1:11434/v1`
 - `API_KEY` можно оставить пустым.
 
@@ -76,7 +76,7 @@ docker compose pull
 docker compose up -d
 
 # первый запуск локальной модели (один раз)
-docker exec -it ollama ollama pull qwen2.5:1.5b
+docker exec -it ollama ollama pull qwen2.5:0.5b
 ```
 
 `docker compose` автоматически читает файл `.env` из текущей директории.

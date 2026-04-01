@@ -114,7 +114,7 @@
 					</div>
 					<div>
 						<label>Model name</label>
-						<input id="model" value="qwen2.5:1.5b" />
+						<input id="model" value="qwen2.5:0.5b" />
 					</div>
 				</div>
 				<div style="margin-top: 12px">
@@ -169,7 +169,16 @@
 
 				const isOllama = endpoint.includes('/llm/api/generate')
 				const body = isOllama
-					? { model, prompt, stream: false }
+					? {
+							model,
+							prompt,
+							stream: true,
+							keep_alive: '30m',
+							options: {
+								temperature: 0.1,
+								num_predict: 96,
+							},
+						}
 					: {
 							model,
 							messages: [{ role: 'user', content: prompt }],
@@ -182,16 +191,32 @@
 						headers: { 'Content-Type': 'application/json' },
 						body: JSON.stringify(body),
 					})
-					const txt = await res.text()
 					setStatus(`chat: HTTP ${res.status}`, res.ok)
-					if (isOllama && res.ok) {
-						try {
-							const data = JSON.parse(txt)
-							outputEl.textContent = data.response || txt
-						} catch {
-							outputEl.textContent = txt
+					if (isOllama && res.ok && res.body) {
+						const reader = res.body.getReader()
+						const decoder = new TextDecoder()
+						let buffer = ''
+						let full = ''
+
+						while (true) {
+							const { value, done } = await reader.read()
+							if (done) break
+							buffer += decoder.decode(value, { stream: true })
+							const lines = buffer.split('\n')
+							buffer = lines.pop() || ''
+							for (const line of lines) {
+								if (!line.trim()) continue
+								try {
+									const part = JSON.parse(line)
+									if (part.response) {
+										full += part.response
+										outputEl.textContent = full
+									}
+								} catch {}
+							}
 						}
 					} else {
+						const txt = await res.text()
 						outputEl.textContent = txt
 					}
 				} catch (e) {

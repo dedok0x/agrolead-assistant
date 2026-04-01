@@ -10,7 +10,7 @@ services:
       API_KEY: ${API_KEY:-}
       DB_URL: ${DB_URL:-sqlite:///data/picoclaw.db}
       MODEL_PROVIDER: ${MODEL_PROVIDER:-ollama}
-      MODEL_NAME: ${MODEL_NAME:-qwen2.5:1.5b}
+      MODEL_NAME: ${MODEL_NAME:-qwen2.5:0.5b}
       API_BASE: ${API_BASE:-http://127.0.0.1:11434/v1}
     volumes:
       - picoclaw_data:/data
