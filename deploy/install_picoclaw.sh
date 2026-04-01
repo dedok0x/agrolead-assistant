@@ -57,8 +57,8 @@ if [[ "$PICOCLAW_IMAGE" == *"your-org/picoclaw"* ]]; then
   exit 1
 fi
 
-docker compose --env-file "$ENV_FILE" pull
-docker compose --env-file "$ENV_FILE" up -d
+docker compose pull
+docker compose up -d
 
 MODEL_PROVIDER=$(grep '^MODEL_PROVIDER=' "$ENV_FILE" | cut -d '=' -f2- || true)
 MODEL_NAME=$(grep '^MODEL_NAME=' "$ENV_FILE" | cut -d '=' -f2- || true)
@@ -68,7 +68,7 @@ if [[ "${MODEL_PROVIDER:-}" == "ollama" && -n "${MODEL_NAME:-}" ]]; then
 fi
 
 echo "[5/5] Smoke checks"
-docker compose --env-file "$ENV_FILE" ps
+docker compose ps
 
 APP_PORT=$(grep '^APP_PORT=' "$ENV_FILE" | cut -d '=' -f2- || true)
 if [[ -n "${APP_PORT:-}" ]]; then

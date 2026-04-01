@@ -66,12 +66,14 @@ chmod +x deploy/install_picoclaw.sh
 ## 3) Ручной запуск (без скрипта)
 
 ```bash
-docker compose --env-file .env pull
-docker compose --env-file .env up -d
+docker compose pull
+docker compose up -d
 
 # первый запуск локальной модели (один раз)
 docker exec -it ollama ollama pull qwen2.5:7b
 ```
+
+`docker compose` автоматически читает файл `.env` из текущей директории.
 
 ---
 
