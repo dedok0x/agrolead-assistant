@@ -49,6 +49,19 @@ fi
 log "Smoke: состояния контейнеров"
 docker compose ps
 
+log "Ожидание готовности API"
+for i in $(seq 1 30); do
+  if curl -fsS http://127.0.0.1:8000/api/health >/tmp/agro_health_wait.json 2>/dev/null; then
+    ok "API готов"
+    break
+  fi
+  sleep 2
+  if [[ "$i" == "30" ]]; then
+    docker compose logs --tail 120 api || true
+    fail "API не стал доступен в течение 60 секунд"
+  fi
+done
+
 log "Smoke: API health"
 curl -fsS http://127.0.0.1:8000/api/health >/tmp/agro_health.json || fail "api/health недоступен"
 ok "api/health"
