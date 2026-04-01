@@ -3,7 +3,7 @@ services:
     image: ${PICOCLAW_IMAGE}
     container_name: ${CONTAINER_NAME:-picoclaw}
     restart: unless-stopped
-    command: ["gateway"]
+    command: ["--allow-empty"]
     ports:
       - "${APP_PORT:-18790}:18790"
     environment:
