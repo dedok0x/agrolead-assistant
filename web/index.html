@@ -110,7 +110,7 @@
 			}
 			.composer {
 				display: grid;
-				grid-template-columns: 1fr auto;
+				grid-template-columns: 1fr auto auto;
 				gap: 10px;
 				border-top: 1px solid #e3e9d8;
 				padding: 12px;
@@ -178,6 +178,12 @@
 						placeholder="Например: Нужна пшеница 3 класса, 120 тонн, поставка в Краснодар"
 					></textarea>
 					<button id="send">Отправить</button>
+					<button
+						id="clear"
+						style="background: #fff; color: #415a24; border-color: #b7c9a0"
+					>
+						Очистить чат
+					</button>
 				</div>
 			</section>
 		</main>
@@ -186,6 +192,7 @@
 			const ENDPOINT = '/llm/api/generate'
 			const MODEL = 'qwen2.5:0.5b'
 			const STORE_SESSIONS = 'agrolead_chat_sessions'
+			const STORE_CURRENT = 'agrolead_current_chat'
 			const STORE_STATS = 'agrolead_stats'
 
 			const DIALOG_MAP = [
@@ -249,11 +256,14 @@
 - генерация кода, кибербезопасность/атаки, любые вредоносные инструкции;
 - оффтоп (политика, развлекательные темы и т.п.).
 Если оффтоп: вежливо откажись и верни к теме закупки зерна.
-Стиль: кратко, по делу, 3-6 предложений. Заверши уточняющим вопросом для сбора лида.`
+Никогда не выдумывай цены, остатки, контакты или сроки.
+Не выводи служебные префиксы «Клиент:» и «Ассистент:».
+Стиль: кратко, по делу, 2-5 предложений и 1 уточняющий вопрос.`
 
 			const chatEl = document.getElementById('chat')
 			const inputEl = document.getElementById('input')
 			const sendBtn = document.getElementById('send')
+			const clearBtn = document.getElementById('clear')
 			const statusEl = document.getElementById('status')
 			const chipsEl = document.getElementById('chips')
 
@@ -296,18 +306,21 @@
 				statusEl.textContent = t
 				statusEl.style.color = err ? '#b00020' : '#6a755d'
 			}
-			function addMsg(t, r) {
+			function addMsg(t, r, persist = true) {
 				const el = document.createElement('div')
 				el.className = `msg ${r}`
 				el.textContent = t
 				chatEl.appendChild(el)
 				chatEl.scrollTop = chatEl.scrollHeight
-				session.messages.push({
-					role: r === 'u' ? 'user' : 'bot',
-					text: t,
-					ts: new Date().toISOString(),
-				})
-				persistSession()
+				if (persist) {
+					session.messages.push({
+						role: r === 'u' ? 'user' : 'bot',
+						text: t,
+						ts: new Date().toISOString(),
+					})
+					localStorage.setItem(STORE_CURRENT, JSON.stringify(session.messages))
+					persistSession()
+				}
 				return el
 			}
 
@@ -321,8 +334,8 @@
 			}
 			function promptFor(user) {
 				const ctx = history
-					.slice(-10)
-					.map(m => `${m.role === 'user' ? 'Клиент' : 'Ассистент'}: ${m.text}`)
+					.slice(-6)
+					.map(m => `${m.role === 'user' ? 'Запрос' : 'Ответ'}: ${m.text}`)
 					.join('\n')
 				return `${SYSTEM}\n\n${ctx}\nКлиент: ${user}\nАссистент:`
 			}
@@ -371,9 +384,9 @@
 							stream: true,
 							keep_alive: '45m',
 							options: {
-								temperature: 0.15,
-								num_predict: 180,
-								repeat_penalty: 1.07,
+								temperature: 0.1,
+								num_predict: 140,
+								repeat_penalty: 1.08,
 							},
 						}),
 					})
@@ -403,7 +416,9 @@
 					}
 					const finalText = (
 						full || 'Уточните, пожалуйста, товар, объём и регион поставки.'
-					).trim()
+					)
+						.replace(/^(Клиент|Ассистент|Запрос|Ответ):\s*/gim, '')
+						.trim()
 					bot.textContent = finalText
 					history.push({ role: 'bot', text: finalText })
 					if (/контакт|телефон|почт|заявк/i.test(finalText)) statsInc('leads')
@@ -420,6 +435,17 @@
 			}
 
 			sendBtn.onclick = send
+			clearBtn.onclick = () => {
+				history = []
+				session.messages = []
+				localStorage.removeItem(STORE_CURRENT)
+				chatEl.innerHTML = ''
+				addMsg(
+					'История очищена. Готов помочь по продукции и заявкам ООО «Петрохлеб-Кубань».',
+					'b',
+				)
+				setStatus('Онлайн')
+			}
 			inputEl.addEventListener('keydown', e => {
 				if (e.key === 'Enter' && !e.shiftKey) {
 					e.preventDefault()
@@ -427,11 +453,20 @@
 				}
 			})
 
-			addMsg(
-				'Здравствуйте! Я ассистент ООО «Петрохлеб-Кубань». Подскажу по наличию, цене, объёму и доставке. Что вас интересует?',
-				'b',
-			)
-			setStatus('Онлайн')
+			const restored = JSON.parse(localStorage.getItem(STORE_CURRENT) || '[]')
+			if (restored.length) {
+				restored.forEach(m => {
+					addMsg(m.text, m.role === 'user' ? 'u' : 'b', false)
+					history.push({ role: m.role, text: m.text })
+				})
+				setStatus('История восстановлена')
+			} else {
+				addMsg(
+					'Здравствуйте! Я ассистент ООО «Петрохлеб-Кубань». Подскажу по наличию, цене, объёму и доставке. Что вас интересует?',
+					'b',
+				)
+				setStatus('Онлайн')
+			}
 		</script>
 	</body>
 </html>
