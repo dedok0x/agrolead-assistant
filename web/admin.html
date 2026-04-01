@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="ru">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Admin — Петрохлеб-Кубань</title>
+		<style>
+			body {
+				margin: 0;
+				font-family: Inter, Arial, sans-serif;
+				background: #f5f7ef;
+				color: #24301f;
+			}
+			.wrap {
+				max-width: 1100px;
+				margin: 20px auto;
+				padding: 0 14px;
+			}
+			.card {
+				background: #fff;
+				border: 1px solid #d6dfc5;
+				border-radius: 12px;
+				padding: 14px;
+				margin-bottom: 12px;
+			}
+			input,
+			button,
+			textarea {
+				font: inherit;
+			}
+			input {
+				padding: 8px;
+				border: 1px solid #cfd9be;
+				border-radius: 8px;
+			}
+			button {
+				padding: 8px 12px;
+				border-radius: 8px;
+				border: 1px solid #4f6f2b;
+				background: #4f6f2b;
+				color: #fff;
+				cursor: pointer;
+			}
+			.tabs {
+				display: flex;
+				gap: 8px;
+				flex-wrap: wrap;
+			}
+			.tab {
+				background: #edf4de;
+				color: #2a3b1f;
+				border-color: #c8d9aa;
+			}
+			.hidden {
+				display: none;
+			}
+			pre {
+				white-space: pre-wrap;
+				background: #f7f9f1;
+				border: 1px solid #dfe7cf;
+				padding: 10px;
+				border-radius: 8px;
+				max-height: 320px;
+				overflow: auto;
+			}
+			table {
+				width: 100%;
+				border-collapse: collapse;
+			}
+			th,
+			td {
+				border: 1px solid #e2e8d5;
+				padding: 8px;
+				font-size: 13px;
+				text-align: left;
+			}
+		</style>
+	</head>
+	<body>
+		<div class="wrap">
+			<div class="card" id="loginCard">
+				<h2>Admin вход</h2>
+				<div
+					style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center"
+				>
+					<input id="login" placeholder="Логин" value="admin" />
+					<input id="pass" placeholder="Пароль" type="password" />
+					<button id="enter">Войти</button>
+				</div>
+			</div>
+
+			<div id="panel" class="hidden">
+				<div class="card">
+					<h2>/admin — управление сценариями и аналитикой</h2>
+					<div class="tabs">
+						<button class="tab" data-tab="prompts">Промпты и сценарии</button>
+						<button class="tab" data-tab="guide">Инструкция</button>
+						<button class="tab" data-tab="stats">Чаты и статистика</button>
+					</div>
+				</div>
+
+				<div class="card tab-content" id="tab-prompts">
+					<h3>Вариации промптов</h3>
+					<pre id="prompts"></pre>
+					<h3>Сценарии взаимодействия</h3>
+					<pre id="scenarios"></pre>
+				</div>
+
+				<div class="card tab-content hidden" id="tab-guide">
+					<h3>Как заполнять сценарии</h3>
+					<pre>
+1) Добавляйте кейсы по структуре:
+- цель клиента
+- обязательные уточнения (товар, класс, объём, регион, срок)
+- критерий передачи в лид
+
+2) Для каждого сценария задавайте:
+- шаблон короткого ответа
+- условия отказа/оффтопа
+- обязательный финальный вопрос для квалификации.
+
+3) Регулярно проверяйте:
+- долю отказов по оффтопу
+- среднюю длину ответа
+- процент диалогов, где запрошен контакт.
+        </pre
+					>
+				</div>
+
+				<div class="card tab-content hidden" id="tab-stats">
+					<h3>Текущая статистика</h3>
+					<table>
+						<tr>
+							<th>Метрика</th>
+							<th>Значение</th>
+						</tr>
+						<tr>
+							<td>Запросы</td>
+							<td id="s-requests">0</td>
+						</tr>
+						<tr>
+							<td>Блокировано (оффтоп/вредоносное)</td>
+							<td id="s-blocked">0</td>
+						</tr>
+						<tr>
+							<td>Лид-сигналы</td>
+							<td id="s-leads">0</td>
+						</tr>
+						<tr>
+							<td>Сессий</td>
+							<td id="s-sessions">0</td>
+						</tr>
+					</table>
+					<h3>Последние чаты</h3>
+					<pre id="sessions"></pre>
+				</div>
+			</div>
+		</div>
+
+		<script>
+			const USER = 'admin'
+			const PASS = '315920'
+			const STORE_SESSIONS = 'agrolead_chat_sessions'
+			const STORE_STATS = 'agrolead_stats'
+
+			const PROMPTS = {
+				system:
+					'Ассистент ООО «Петрохлеб-Кубань». Только зерновая тематика: ассортимент, цена, качество, объём, логистика, заявка.',
+				offTopic: 'Вежливый отказ и возврат к теме закупки зерна.',
+				leadGoal: 'Собрать лид: товар, класс, объём, регион, срок, контакт.',
+			}
+
+			const SCENARIOS = [
+				'S1: Кто вы / чем занимаетесь',
+				'S2: Запрос наличия и цены',
+				'S3: Уточнение класса и параметров качества',
+				'S4: Уточнение тоннажа и сроков',
+				'S5: Логистика и условия отгрузки',
+				'S6: Сбор контакта и передача менеджеру',
+				'S7: Оффтоп/вредоносный запрос -> отказ',
+			]
+
+			document.getElementById('enter').onclick = () => {
+				const l = document.getElementById('login').value.trim()
+				const p = document.getElementById('pass').value.trim()
+				if (l !== USER || p !== PASS) return alert('Неверный логин или пароль')
+				document.getElementById('loginCard').classList.add('hidden')
+				document.getElementById('panel').classList.remove('hidden')
+				loadData()
+			}
+
+			document.querySelectorAll('.tab').forEach(b => {
+				b.onclick = () => {
+					document
+						.querySelectorAll('.tab-content')
+						.forEach(x => x.classList.add('hidden'))
+					document
+						.getElementById(`tab-${b.dataset.tab}`)
+						.classList.remove('hidden')
+				}
+			})
+
+			function loadData() {
+				document.getElementById('prompts').textContent = JSON.stringify(
+					PROMPTS,
+					null,
+					2,
+				)
+				document.getElementById('scenarios').textContent = SCENARIOS.join('\n')
+
+				const s = JSON.parse(
+					localStorage.getItem(STORE_STATS) ||
+						'{"requests":0,"blocked":0,"leads":0}',
+				)
+				const sessions = JSON.parse(
+					localStorage.getItem(STORE_SESSIONS) || '[]',
+				)
+
+				document.getElementById('s-requests').textContent = s.requests || 0
+				document.getElementById('s-blocked').textContent = s.blocked || 0
+				document.getElementById('s-leads').textContent = s.leads || 0
+				document.getElementById('s-sessions').textContent = sessions.length
+
+				const last = sessions
+					.slice(-5)
+					.map(ss => {
+						const preview = (ss.messages || [])
+							.slice(-4)
+							.map(m => `${m.role}: ${m.text}`)
+							.join('\n')
+						return `#${ss.id} | ${ss.startedAt}\n${preview}`
+					})
+					.join('\n\n---\n\n')
+				document.getElementById('sessions').textContent =
+					last || 'Пока нет данных.'
+			}
+		</script>
+	</body>
+</html>

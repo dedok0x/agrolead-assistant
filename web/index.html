@@ -2,230 +2,180 @@
 <html lang="ru">
 	<head>
 		<meta charset="UTF-8" />
-		<meta name="viewport" content="width=device-width,initial-scale=1" />
-		<title>ООО «Петрохлеб-Кубань» — Лид-центр</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>ООО «Петрохлеб-Кубань» — Поддержка клиентов</title>
 		<style>
-			:root {
-				--bg: #f5f6ef;
-				--panel: #ffffff;
-				--line: #d8dfc8;
-				--brand: #486b2a;
-				--brand-2: #7a9a39;
-				--text: #1f2a1a;
-				--muted: #6a755d;
-			}
-			* {
-				box-sizing: border-box;
-			}
 			body {
 				margin: 0;
-				font-family:
-					Inter,
-					Segoe UI,
-					Arial,
-					sans-serif;
-				color: var(--text);
-				background: linear-gradient(180deg, #eff4e6 0%, var(--bg) 100%);
+				font-family: Inter, Arial, sans-serif;
+				background: #f4f7ee;
+				color: #24301f;
 			}
-			.hero {
-				padding: 26px 18px;
-				border-bottom: 1px solid var(--line);
-				background: radial-gradient(
-					circle at top right,
-					#d8e7bf 0%,
-					#eff4e6 45%,
-					#f5f6ef 100%
-				);
+			.top {
+				padding: 18px 16px;
+				background: linear-gradient(135deg, #7fa33e, #4f6f2b);
+				color: #fff;
 			}
-			.hero-inner {
-				max-width: 1000px;
-				margin: 0 auto;
-			}
-			.title {
+			.top h1 {
 				margin: 0;
-				font-size: 28px;
-				font-weight: 800;
+				font-size: 24px;
 			}
-			.subtitle {
+			.top p {
 				margin: 6px 0 0;
-				color: var(--muted);
+				opacity: 0.9;
 			}
-
-			.layout {
-				max-width: 1000px;
-				margin: 18px auto;
-				padding: 0 18px 18px;
+			.wrap {
+				max-width: 1100px;
+				margin: 14px auto;
+				padding: 0 14px;
 				display: grid;
-				grid-template-columns: 280px 1fr;
-				gap: 14px;
+				grid-template-columns: 290px 1fr;
+				gap: 12px;
 			}
 			.card {
-				background: var(--panel);
-				border: 1px solid var(--line);
-				border-radius: 14px;
+				background: #fff;
+				border: 1px solid #d6dfc5;
+				border-radius: 12px;
 			}
 			.side {
-				padding: 14px;
+				padding: 12px;
 			}
-			.pill {
-				display: inline-flex;
-				align-items: center;
-				gap: 8px;
-				border: 1px solid #b7c9a0;
-				color: #36551f;
-				background: #f0f7e6;
-				border-radius: 999px;
-				padding: 6px 10px;
-				font-size: 12px;
-				font-weight: 700;
+			.side h3 {
+				margin: 0 0 8px;
 			}
 			.muted {
-				color: var(--muted);
+				color: #6a755d;
 				font-size: 13px;
-				line-height: 1.45;
+				line-height: 1.4;
 			}
-			.help-list {
-				margin: 10px 0 0;
-				padding-left: 16px;
-				color: var(--muted);
-				font-size: 13px;
+			.chips {
+				display: flex;
+				flex-wrap: wrap;
+				gap: 8px;
+				margin-top: 10px;
 			}
-
-			.chat-wrap {
+			.chip {
+				font-size: 12px;
+				padding: 6px 10px;
+				border-radius: 999px;
+				background: #eef5df;
+				border: 1px solid #c8d9aa;
+				cursor: pointer;
+			}
+			.chat {
 				display: flex;
 				flex-direction: column;
-				min-height: 72vh;
+				min-height: 76vh;
 			}
 			.chat-head {
 				display: flex;
 				justify-content: space-between;
 				align-items: center;
-				padding: 12px 14px;
-				border-bottom: 1px solid var(--line);
-			}
-			.chat-title {
-				margin: 0;
-				font-size: 15px;
-				font-weight: 700;
+				padding: 12px;
+				border-bottom: 1px solid #e3e9d8;
 			}
 			.status {
 				font-size: 12px;
-				color: var(--muted);
+				color: #6a755d;
 			}
-			.chat {
-				padding: 14px;
+			.stream {
+				padding: 12px;
 				display: flex;
 				flex-direction: column;
 				gap: 10px;
 				overflow: auto;
-				height: 56vh;
+				height: 58vh;
 			}
 			.msg {
-				max-width: 78%;
-				border-radius: 12px;
+				max-width: 80%;
 				padding: 10px 12px;
+				border-radius: 12px;
 				white-space: pre-wrap;
 				line-height: 1.4;
 			}
-			.bot {
+			.u {
+				align-self: flex-end;
+				background: #e7efdb;
+				border: 1px solid #ccd8bc;
+			}
+			.b {
 				align-self: flex-start;
 				background: #f0f7e6;
-				border: 1px solid #cfe0b7;
+				border: 1px solid #d2e3b7;
 			}
-			.user {
-				align-self: flex-end;
-				background: #e7efe0;
-				border: 1px solid #cfddc2;
-			}
-			.typing {
+			.t {
 				align-self: flex-start;
-				color: var(--muted);
+				color: #6a755d;
 				font-size: 13px;
 			}
-
 			.composer {
-				border-top: 1px solid var(--line);
-				padding: 12px;
 				display: grid;
 				grid-template-columns: 1fr auto;
 				gap: 10px;
+				border-top: 1px solid #e3e9d8;
+				padding: 12px;
 			}
 			textarea {
 				width: 100%;
-				min-height: 74px;
+				min-height: 80px;
 				max-height: 200px;
 				resize: vertical;
-				border: 1px solid var(--line);
+				border: 1px solid #cedbb7;
 				border-radius: 10px;
 				padding: 10px;
-				font: inherit;
 			}
 			button {
-				border: 1px solid var(--brand);
-				background: linear-gradient(
-					180deg,
-					var(--brand-2) 0%,
-					var(--brand) 100%
-				);
+				border: 1px solid #4f6f2b;
+				background: #4f6f2b;
 				color: #fff;
 				border-radius: 10px;
 				padding: 0 16px;
 				font-weight: 700;
 				cursor: pointer;
 			}
-			button:disabled {
-				opacity: 0.6;
-				cursor: not-allowed;
-			}
-
 			@media (max-width: 900px) {
-				.layout {
+				.wrap {
 					grid-template-columns: 1fr;
 				}
-				.chat-wrap {
-					min-height: 65vh;
-				}
-				.chat {
-					height: 48vh;
+				.stream {
+					height: 50vh;
 				}
 			}
 		</style>
 	</head>
 	<body>
-		<header class="hero">
-			<div class="hero-inner">
-				<h1 class="title">ООО «Петрохлеб-Кубань»</h1>
-				<p class="subtitle">
-					Лид-центр поддержки клиентов по зерновой продукции
-				</p>
-			</div>
+		<header class="top">
+			<h1>ООО «Петрохлеб-Кубань»</h1>
+			<p>Лид-центр предпродажной поддержки</p>
 		</header>
 
-		<main class="layout">
+		<main class="wrap">
 			<aside class="card side">
-				<div class="pill">● Онлайн-консультант</div>
-				<p class="muted">
-					Ассистент обрабатывает только профильные запросы: наличие, цена,
-					объём, класс/параметры зерна, условия отгрузки и оформление заявки.
-				</p>
-				<ul class="help-list">
-					<li>Пшеница, ячмень, кукуруза</li>
-					<li>Класс, влажность, качество</li>
-					<li>Тоннаж и логистика</li>
-					<li>Передача лида менеджеру</li>
-				</ul>
+				<h3>Карта диалогов</h3>
+				<div class="muted">
+					Основные сценарии: знакомство, ассортимент, цена/наличие, тоннаж,
+					логистика, сбор контакта, передача лида.
+				</div>
+				<div class="chips" id="chips"></div>
+				<hr
+					style="border: none; border-top: 1px solid #e3e9d8; margin: 12px 0"
+				/>
+				<div class="muted">
+					<b>Политика:</b> бот не отвечает на темы вне зерновой продукции, не
+					генерирует вредоносный/технический злоупотребляющий контент.
+				</div>
 			</aside>
 
-			<section class="card chat-wrap">
+			<section class="card chat">
 				<div class="chat-head">
-					<h2 class="chat-title">Чат поддержки клиентов</h2>
+					<div><b>Чат поддержки клиентов</b></div>
 					<div class="status" id="status">Готов к работе</div>
 				</div>
-				<div class="chat" id="chat"></div>
+				<div class="stream" id="chat"></div>
 				<div class="composer">
 					<textarea
 						id="input"
-						placeholder="Например: Нужна пшеница 3 класса, 200 тонн, отгрузка на следующей неделе"
+						placeholder="Например: Нужна пшеница 3 класса, 120 тонн, поставка в Краснодар"
 					></textarea>
 					<button id="send">Отправить</button>
 				</div>
@@ -235,165 +185,241 @@
 		<script>
 			const ENDPOINT = '/llm/api/generate'
 			const MODEL = 'qwen2.5:0.5b'
+			const STORE_SESSIONS = 'agrolead_chat_sessions'
+			const STORE_STATS = 'agrolead_stats'
 
-			const SYSTEM_PROMPT = `Ты — ассистент отдела предпродаж ООО «Петрохлеб-Кубань».
-Отвечай только по теме зерновой продукции и заявки на покупку.
-Разрешённые темы: наличие, цена, класс зерна, качество, объём, срок, логистика, оформление заявки.
-Если вопрос вне темы (политика, программирование, личные советы и т.п.) — вежливо откажись и верни к теме закупки зерна.
-Стиль: кратко, делово, 2-4 предложения.
-Всегда стремись уточнить и собрать лид: товар, класс, объём, регион/точка поставки, срок, контакт.`
+			const DIALOG_MAP = [
+				'Кто вы и чем занимаетесь?',
+				'Какие товары в наличии?',
+				'Какая цена и минимальный объём?',
+				'Какие классы/параметры качества?',
+				'Какие сроки и условия доставки?',
+				'Как оформить заявку и передать менеджеру?',
+			]
 
-			const KEYWORDS = [
+			const ALLOWED = [
 				'пшен',
 				'пшено',
 				'ячмен',
 				'кукуруз',
 				'зерн',
-				'тонн',
-				'объ',
-				'класс',
 				'цена',
 				'стоим',
-				'скок',
-				'сколько',
 				'налич',
-				'влажн',
-				'качест',
-				'отгруз',
-				'достав',
+				'класс',
+				'тонн',
+				'объ',
 				'логист',
+				'достав',
+				'отгруз',
+				'качест',
 				'заявк',
 				'контакт',
-				'лид',
 				'краснодар',
+				'кто вы',
+				'чем занимаетесь',
+				'ассортимент',
 			]
+			const BLOCKED = [
+				'ddos',
+				'ддос',
+				'взлом',
+				'hack',
+				'эксплойт',
+				'shellcode',
+				'ботнет',
+				'malware',
+				'вирус',
+				'phishing',
+				'sql injection',
+				'xss',
+				'rce',
+				'код для атаки',
+			]
+
+			const SYSTEM = `Ты — клиентский ассистент ООО «Петрохлеб-Кубань» (зерновая продукция).
+Цель: квалифицировать лид и передать в продажу.
+Разрешённые темы:
+- кто вы, чем занимаетесь;
+- ассортимент и наличие;
+- цена/диапазон, класс, качество;
+- объём, тоннаж, сроки, логистика;
+- оформление заявки и запрос контакта.
+Запрещено:
+- генерация кода, кибербезопасность/атаки, любые вредоносные инструкции;
+- оффтоп (политика, развлекательные темы и т.п.).
+Если оффтоп: вежливо откажись и верни к теме закупки зерна.
+Стиль: кратко, по делу, 3-6 предложений. Заверши уточняющим вопросом для сбора лида.`
 
 			const chatEl = document.getElementById('chat')
 			const inputEl = document.getElementById('input')
 			const sendBtn = document.getElementById('send')
 			const statusEl = document.getElementById('status')
+			const chipsEl = document.getElementById('chips')
 
 			let history = []
+			const session = {
+				id: Date.now().toString(),
+				startedAt: new Date().toISOString(),
+				messages: [],
+			}
 
-			function addMsg(text, role = 'bot') {
+			DIALOG_MAP.forEach(s => {
+				const c = document.createElement('button')
+				c.className = 'chip'
+				c.textContent = s
+				c.onclick = () => {
+					inputEl.value = s
+					inputEl.focus()
+				}
+				chipsEl.appendChild(c)
+			})
+
+			function statsInc(field) {
+				const s = JSON.parse(
+					localStorage.getItem(STORE_STATS) ||
+						'{"requests":0,"blocked":0,"leads":0}',
+				)
+				s[field] = (s[field] || 0) + 1
+				localStorage.setItem(STORE_STATS, JSON.stringify(s))
+			}
+
+			function persistSession() {
+				const arr = JSON.parse(localStorage.getItem(STORE_SESSIONS) || '[]')
+				const i = arr.findIndex(x => x.id === session.id)
+				if (i >= 0) arr[i] = session
+				else arr.push(session)
+				localStorage.setItem(STORE_SESSIONS, JSON.stringify(arr.slice(-50)))
+			}
+
+			function setStatus(t, err = false) {
+				statusEl.textContent = t
+				statusEl.style.color = err ? '#b00020' : '#6a755d'
+			}
+			function addMsg(t, r) {
 				const el = document.createElement('div')
-				el.className = `msg ${role}`
-				el.textContent = text
+				el.className = `msg ${r}`
+				el.textContent = t
 				chatEl.appendChild(el)
 				chatEl.scrollTop = chatEl.scrollHeight
+				session.messages.push({
+					role: r === 'u' ? 'user' : 'bot',
+					text: t,
+					ts: new Date().toISOString(),
+				})
+				persistSession()
 				return el
 			}
 
-			function setStatus(text, isError = false) {
-				statusEl.textContent = text
-				statusEl.style.color = isError ? '#b00020' : '#6a755d'
-			}
-
-			function isRelevant(text) {
+			function blocked(text) {
 				const s = text.toLowerCase()
-				return KEYWORDS.some(k => s.includes(k))
+				return BLOCKED.some(k => s.includes(k))
 			}
-
-			function buildPrompt(userText) {
-				const trimmedHistory = history
-					.slice(-8)
+			function relevant(text) {
+				const s = text.toLowerCase()
+				return ALLOWED.some(k => s.includes(k))
+			}
+			function promptFor(user) {
+				const ctx = history
+					.slice(-10)
 					.map(m => `${m.role === 'user' ? 'Клиент' : 'Ассистент'}: ${m.text}`)
 					.join('\n')
-				return `${SYSTEM_PROMPT}\n\n${trimmedHistory}\nКлиент: ${userText}\nАссистент:`
+				return `${SYSTEM}\n\n${ctx}\nКлиент: ${user}\nАссистент:`
 			}
 
 			async function send() {
 				const text = inputEl.value.trim()
 				if (!text) return
-
-				addMsg(text, 'user')
+				addMsg(text, 'u')
 				history.push({ role: 'user', text })
 				inputEl.value = ''
+				statsInc('requests')
 
-				if (!isRelevant(text)) {
-					const reject =
-						'Я консультирую только по продукции ООО «Петрохлеб-Кубань»: наличие, цена, качество, объём и оформление заявки. Уточните, пожалуйста, интересующий товар и объём.'
-					addMsg(reject, 'bot')
-					history.push({ role: 'bot', text: reject })
+				if (blocked(text)) {
+					const r =
+						'Я не помогаю с небезопасными или вредоносными запросами. Могу помочь только с ассортиментом зерна, ценой, объёмом, логистикой и оформлением заявки.'
+					addMsg(r, 'b')
+					history.push({ role: 'bot', text: r })
+					statsInc('blocked')
+					return
+				}
+				if (!relevant(text)) {
+					const r =
+						'Я консультирую только по продукции и поставкам ООО «Петрохлеб-Кубань». Уточните, пожалуйста, интересующий товар, объём и регион поставки.'
+					addMsg(r, 'b')
+					history.push({ role: 'bot', text: r })
+					statsInc('blocked')
 					return
 				}
 
 				sendBtn.disabled = true
-				setStatus('Формирую ответ...')
-
+				setStatus('Ассистент печатает...')
 				const typing = document.createElement('div')
-				typing.className = 'typing'
+				typing.className = 't'
 				typing.textContent = 'Ассистент печатает...'
 				chatEl.appendChild(typing)
-				chatEl.scrollTop = chatEl.scrollHeight
-
-				const botEl = addMsg('', 'bot')
+				const bot = addMsg('', 'b')
 				let full = ''
 
 				try {
-					const body = {
-						model: MODEL,
-						prompt: buildPrompt(text),
-						stream: true,
-						keep_alive: '30m',
-						options: {
-							temperature: 0.1,
-							num_predict: 220,
-							repeat_penalty: 1.05,
-						},
-					}
-
 					const res = await fetch(ENDPOINT, {
 						method: 'POST',
 						headers: { 'Content-Type': 'application/json' },
-						body: JSON.stringify(body),
+						body: JSON.stringify({
+							model: MODEL,
+							prompt: promptFor(text),
+							stream: true,
+							keep_alive: '45m',
+							options: {
+								temperature: 0.15,
+								num_predict: 180,
+								repeat_penalty: 1.07,
+							},
+						}),
 					})
-
-					if (!res.ok || !res.body) {
-						const txt = await res.text()
-						throw new Error(`HTTP ${res.status}: ${txt}`)
-					}
+					if (!res.ok || !res.body)
+						throw new Error(`HTTP ${res.status}: ${await res.text()}`)
 
 					const reader = res.body.getReader()
 					const decoder = new TextDecoder()
 					let buffer = ''
-
 					while (true) {
 						const { value, done } = await reader.read()
 						if (done) break
-
 						buffer += decoder.decode(value, { stream: true })
 						const lines = buffer.split('\n')
 						buffer = lines.pop() || ''
-
 						for (const line of lines) {
 							if (!line.trim()) continue
 							try {
-								const part = JSON.parse(line)
-								if (part.response) {
-									full += part.response
-									botEl.textContent = full
+								const j = JSON.parse(line)
+								if (j.response) {
+									full += j.response
+									bot.textContent = full
 									chatEl.scrollTop = chatEl.scrollHeight
 								}
 							} catch {}
 						}
 					}
-
-					const finalText = (full || 'Готово.').trim()
-					botEl.textContent = finalText
+					const finalText = (
+						full || 'Уточните, пожалуйста, товар, объём и регион поставки.'
+					).trim()
+					bot.textContent = finalText
 					history.push({ role: 'bot', text: finalText })
+					if (/контакт|телефон|почт|заявк/i.test(finalText)) statsInc('leads')
 					setStatus('Онлайн')
 				} catch (e) {
-					botEl.textContent =
-						'Сейчас не удалось сформировать ответ. Попробуйте повторить запрос.'
+					bot.textContent =
+						'Сервис временно недоступен. Повторите запрос через минуту.'
 					setStatus(`Ошибка: ${e.message}`, true)
 				} finally {
 					typing.remove()
 					sendBtn.disabled = false
+					persistSession()
 				}
 			}
 
-			sendBtn.addEventListener('click', send)
+			sendBtn.onclick = send
 			inputEl.addEventListener('keydown', e => {
 				if (e.key === 'Enter' && !e.shiftKey) {
 					e.preventDefault()
@@ -402,9 +428,10 @@
 			})
 
 			addMsg(
-				'Здравствуйте! Я ассистент ООО «Петрохлеб-Кубань». Подскажу по наличию, цене и помогу оформить заявку.',
-				'bot',
+				'Здравствуйте! Я ассистент ООО «Петрохлеб-Кубань». Подскажу по наличию, цене, объёму и доставке. Что вас интересует?',
+				'b',
 			)
+			setStatus('Онлайн')
 		</script>
 	</body>
 </html>
