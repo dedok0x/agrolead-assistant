@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="ru">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width,initial-scale=1" />
+		<title>AgroLead Web Test</title>
+		<style>
+			:root {
+				--bg: #f7f7f7;
+				--txt: #111;
+				--muted: #666;
+				--line: #ddd;
+				--accent: #111;
+			}
+			* {
+				box-sizing: border-box;
+			}
+			body {
+				margin: 0;
+				font-family: Georgia, 'Times New Roman', serif;
+				background: var(--bg);
+				color: var(--txt);
+			}
+			.wrap {
+				max-width: 980px;
+				margin: 0 auto;
+				padding: 40px 20px;
+			}
+			h1 {
+				font-size: 44px;
+				line-height: 1.1;
+				margin: 0 0 10px;
+			}
+			p.lead {
+				margin: 0 0 24px;
+				color: var(--muted);
+				font-size: 18px;
+			}
+			.card {
+				background: #fff;
+				border: 1px solid var(--line);
+				padding: 20px;
+				margin-bottom: 18px;
+			}
+			label {
+				display: block;
+				font-size: 13px;
+				color: var(--muted);
+				margin-bottom: 6px;
+			}
+			input,
+			textarea {
+				width: 100%;
+				border: 1px solid var(--line);
+				padding: 10px;
+				font: inherit;
+				background: #fff;
+			}
+			textarea {
+				min-height: 130px;
+				resize: vertical;
+			}
+			.row {
+				display: grid;
+				grid-template-columns: 1fr 1fr;
+				gap: 12px;
+			}
+			.btns {
+				display: flex;
+				gap: 10px;
+				flex-wrap: wrap;
+				margin-top: 12px;
+			}
+			button {
+				border: 1px solid var(--accent);
+				background: var(--accent);
+				color: #fff;
+				padding: 10px 14px;
+				cursor: pointer;
+			}
+			button.alt {
+				background: #fff;
+				color: var(--txt);
+			}
+			pre {
+				white-space: pre-wrap;
+				word-break: break-word;
+				background: #fff;
+				border: 1px solid var(--line);
+				padding: 12px;
+				margin: 0;
+				min-height: 120px;
+			}
+			.ok {
+				color: #0a7a2a;
+			}
+			.err {
+				color: #b00020;
+			}
+		</style>
+	</head>
+	<body>
+		<main class="wrap">
+			<h1>AgroLead Assistant</h1>
+			<p class="lead">
+				Веб-морда для теста PicoClaw через gateway (минималистичный стиль).
+			</p>
+
+			<section class="card">
+				<div class="row">
+					<div>
+						<label>API endpoint (через nginx proxy)</label>
+						<input id="endpoint" value="/api/v1/chat/completions" />
+					</div>
+					<div>
+						<label>Model name</label>
+						<input id="model" value="local-qwen" />
+					</div>
+				</div>
+				<div style="margin-top: 12px">
+					<label>Тестовый запрос</label>
+					<textarea id="prompt">
+Ты ассистент отдела продаж зерновой компании. Дай короткий ответ клиенту: «Есть ли пшеница 3 класса и какая ориентировочная цена?»</textarea
+					>
+				</div>
+				<div class="btns">
+					<button id="healthBtn" class="alt">Проверить health</button>
+					<button id="sendBtn">Отправить тестовый запрос</button>
+				</div>
+			</section>
+
+			<section class="card">
+				<label>Статус</label>
+				<pre id="status">Ожидание проверки...</pre>
+			</section>
+
+			<section class="card">
+				<label>Ответ</label>
+				<pre id="output">Пока пусто.</pre>
+			</section>
+		</main>
+
+		<script>
+			const statusEl = document.getElementById('status')
+			const outputEl = document.getElementById('output')
+
+			function setStatus(text, ok = true) {
+				statusEl.textContent = text
+				statusEl.className = ok ? 'ok' : 'err'
+			}
+
+			document
+				.getElementById('healthBtn')
+				.addEventListener('click', async () => {
+					try {
+						const res = await fetch('/api/health')
+						const txt = await res.text()
+						setStatus(`health: HTTP ${res.status} | ${txt}`, res.ok)
+					} catch (e) {
+						setStatus(`health error: ${e.message}`, false)
+					}
+				})
+
+			document.getElementById('sendBtn').addEventListener('click', async () => {
+				const endpoint = document.getElementById('endpoint').value.trim()
+				const model = document.getElementById('model').value.trim()
+				const prompt = document.getElementById('prompt').value.trim()
+				outputEl.textContent = 'Отправка запроса...'
+
+				const body = {
+					model,
+					messages: [{ role: 'user', content: prompt }],
+					temperature: 0.2,
+				}
+
+				try {
+					const res = await fetch(endpoint, {
+						method: 'POST',
+						headers: { 'Content-Type': 'application/json' },
+						body: JSON.stringify(body),
+					})
+					const txt = await res.text()
+					setStatus(`chat: HTTP ${res.status}`, res.ok)
+					outputEl.textContent = txt
+				} catch (e) {
+					setStatus(`chat error: ${e.message}`, false)
+					outputEl.textContent = e.stack || e.message
+				}
+			})
+		</script>
+	</body>
+</html>

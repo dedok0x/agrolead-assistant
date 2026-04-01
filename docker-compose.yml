@@ -32,6 +32,20 @@ services:
     volumes:
       - ollama_data:/root/.ollama
 
+  webui:
+    image: nginx:alpine
+    container_name: agrolead-webui
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./web/index.html:/usr/share/nginx/html/index.html:ro
+      - ./web/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+
 volumes:
   picoclaw_data:
   picoclaw_workspace:
