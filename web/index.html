@@ -381,10 +381,30 @@
 
 					setStatus('Готово')
 				} catch (e) {
-					if (!bot) bot = addMsg('', 'b')
-					bot.textContent =
-						'Ошибка запроса. Проверьте соединение с сервером и попробуйте ещё раз.'
-					setStatus('Сетевой сбой или недоступен API', true)
+					try {
+						const fallbackRes = await fetch('/api/chat', {
+							method: 'POST',
+							headers: { 'Content-Type': 'application/json' },
+							body: JSON.stringify({
+								text,
+								session_id: sessionId,
+								client_id: 'web-client',
+							}),
+						})
+						if (!fallbackRes.ok) throw new Error(`HTTP ${fallbackRes.status}`)
+						const fallbackData = await fallbackRes.json()
+						if (fallbackData.session_id) sessionId = fallbackData.session_id
+						if (!bot) bot = addMsg('', 'b')
+						bot.textContent =
+							fallbackData.text ||
+							'Временная ошибка стрима. Ответ получен в резервном режиме.'
+						setStatus('Готово (резервный режим)')
+					} catch {
+						if (!bot) bot = addMsg('', 'b')
+						bot.textContent =
+							'Ошибка запроса. Проверьте соединение с сервером и попробуйте ещё раз.'
+						setStatus('Сетевой сбой или недоступен API', true)
+					}
 				}
 			}
 

@@ -82,6 +82,13 @@ curl -kfsS https://127.0.0.1/ >/tmp/agro_web_index.html
 curl -kfsS https://127.0.0.1/admin >/tmp/agro_web_admin.html
 echo "OK web index/admin"
 
+echo "[SMOKE] Web proxy API"
+curl -kfsS https://127.0.0.1/api/health >/tmp/agro_web_api_health.json
+curl -kfsS -H "Content-Type: application/json" \
+  -d '{"text":"Интересует пшеница 4 класс, объем 80 тонн","client_id":"smoke-web"}' \
+  https://127.0.0.1/api/chat >/tmp/agro_web_chat.json
+echo "OK web proxy api"
+
 if [[ "${ENABLE_PICOCLAW:-0}" == "1" ]]; then
   echo "[SMOKE] PicoClaw health"
   curl -fsS http://127.0.0.1:8787 >/tmp/picoclaw_health.txt || (echo "PicoClaw check failed" && exit 1)

@@ -365,6 +365,76 @@ async def chat_stream(payload: ChatIn, session: Session = Depends(get_session)):
     return StreamingResponse(gen(), media_type="application/x-ndjson")
 
 
+@app.post("/api/chat")
+async def chat(payload: ChatIn, session: Session = Depends(get_session)):
+    ok, reject = guard_user_text(payload.text)
+    chat_session = None
+    if payload.session_id:
+        chat_session = session.get(ChatSession, payload.session_id)
+    if not chat_session:
+        chat_session = ChatSession(client_id=payload.client_id or str(uuid4()))
+        session.add(chat_session)
+        session.commit()
+        session.refresh(chat_session)
+
+    session.add(ChatMessage(session_id=chat_session.id, role="user", text=payload.text, blocked=not ok, reason="blocked" if not ok else ""))
+    session.commit()
+    upsert_lead_from_text(session, chat_session.id, payload.text)
+
+    fast = quick_reply(payload.text)
+    if fast:
+        session.add(ChatMessage(session_id=chat_session.id, role="assistant", text=fast))
+        session.commit()
+        return {"session_id": chat_session.id, "text": fast, "done": True}
+
+    if not ok:
+        session.add(ChatMessage(session_id=chat_session.id, role="assistant", text=reject, blocked=True, reason="policy"))
+        session.commit()
+        return {"session_id": chat_session.id, "text": reject, "done": True}
+
+    recent = session.exec(
+        select(ChatMessage).where(ChatMessage.session_id == chat_session.id).order_by(ChatMessage.created_at.desc())
+    ).all()[:6]
+    history = "\n".join([
+        f"{'Клиент' if m.role == 'user' else 'Ассистент'}: {m.text}" for m in reversed(recent)
+    ])
+    prompt = f"{build_system_prompt(session)}\n\n{history}\nАссистент:"
+
+    try:
+        async with httpx.AsyncClient(timeout=120) as client:
+            r = await client.post(
+                f"{OLLAMA_BASE}/api/generate",
+                json={
+                    "model": MODEL_NAME,
+                    "prompt": prompt,
+                    "stream": False,
+                    "keep_alive": "45m",
+                    "options": {
+                        "temperature": 0.05,
+                        "num_predict": MODEL_NUM_PREDICT,
+                        "repeat_penalty": 1.1,
+                        "num_ctx": MODEL_NUM_CTX,
+                    },
+                },
+            )
+            r.raise_for_status()
+            data = r.json()
+            text = sanitize_assistant_text(data.get("response", "").strip())
+            if not text:
+                text = "Уточните, пожалуйста, товар, класс и объем в тоннах — передам заявку менеджеру."
+            session.add(ChatMessage(session_id=chat_session.id, role="assistant", text=text))
+            session.commit()
+            return {"session_id": chat_session.id, "text": text, "done": True}
+    except Exception:
+        fallback = (
+            "Сервис генерации временно недоступен. "
+            "Уточните, пожалуйста, товар, класс и объем в тоннах — передам заявку менеджеру."
+        )
+        session.add(ChatMessage(session_id=chat_session.id, role="assistant", text=fallback, blocked=True, reason="llm_unavailable"))
+        session.commit()
+        return {"session_id": chat_session.id, "text": fallback, "done": True}
+
+
 @app.post("/api/admin/login")
 def admin_login(payload: LoginIn):
     if payload.username != ADMIN_USER or payload.password != ADMIN_PASS:
