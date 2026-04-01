@@ -18,6 +18,13 @@
 - `ollama` — инференс локальной модели.
 - `picoclaw` (опционально, profile `picoclaw`) — вспомогательный сервис интеграционного контура.
 
+Связность сервисов:
+
+- `webui -> /api/* -> api` через proxy в [web/nginx.conf](agrolead-assistant/web/nginx.conf).
+- `api -> db` через `DATABASE_URL` в [agrolead-assistant/.env.example](agrolead-assistant/.env.example).
+- `api -> ollama` через `OLLAMA_BASE` в [agrolead-assistant/.env.example](agrolead-assistant/.env.example).
+- `picoclaw -> ollama` через `OLLAMA_BASE_URL` в [agrolead-assistant/docker-compose.yml](agrolead-assistant/docker-compose.yml).
+
 ## Структура
 
 - `backend/app/main.py` — API приложения.
@@ -39,25 +46,29 @@ cp .env.example .env
 2. Запусти деплой:
 
 ```bash
-chmod +x deploy/install_picoclaw.sh deploy/deploy.sh
+chmod +x deploy/deploy.sh
 bash deploy/deploy.sh
 ```
 
 Для запуска профиля Picoclaw:
 
 ```bash
-ENABLE_PICOCLAW=1 bash deploy/install_picoclaw.sh
+ENABLE_PICOCLAW=1 bash deploy/deploy.sh
 ```
 
 Если у вас другой реестр/тег Picoclaw, переопределите [`PICOCLAW_IMAGE`](agrolead-assistant/.env.example:12).
 
-Скрипт [`install_picoclaw.sh`](agrolead-assistant/deploy/install_picoclaw.sh) выполняет последовательные smoke-проверки:
+Скрипт [`deploy.sh`](agrolead-assistant/deploy/deploy.sh) выполняет последовательные smoke-проверки:
 
 - [`/api/health`](agrolead-assistant/backend/app/main.py:245)
 - [`/api/public/bootstrap`](agrolead-assistant/backend/app/main.py:250)
 - [`/api/chat/stream`](agrolead-assistant/backend/app/main.py:272)
 - [`/`](agrolead-assistant/web/index.html) и [`/admin`](agrolead-assistant/web/admin.html)
-- Picoclaw (если `ENABLE_PICOCLAW=1`)
+- proxy `webui -> /api/health` и `webui -> /api/chat`
+- DB connect (`pg_isready`)
+- API -> DB connect
+- API -> Ollama connect
+- Picoclaw connect (если `ENABLE_PICOCLAW=1`)
 
 3. Подтянуть модель (если не подтянулась автоматически):
 
