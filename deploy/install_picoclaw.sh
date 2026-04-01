@@ -62,6 +62,30 @@ fi
 echo "[5/5] Smoke checks"
 docker compose ps
 
-echo "Try health endpoint: curl http://127.0.0.1:8000/api/health"
+echo "[SMOKE] API health"
+curl -fsS http://127.0.0.1:8000/api/health >/tmp/agro_health.json
+echo "OK api/health"
+
+echo "[SMOKE] API bootstrap"
+curl -fsS http://127.0.0.1:8000/api/public/bootstrap >/tmp/agro_bootstrap.json
+echo "OK api/public/bootstrap"
+
+echo "[SMOKE] API chat stream"
+curl -fsS -H "Content-Type: application/json" \
+  -d '{"text":"Интересует пшеница 3 класс, объем 100 тонн","client_id":"smoke"}' \
+  http://127.0.0.1:8000/api/chat/stream >/tmp/agro_chat.ndjson
+grep -q '"done": true' /tmp/agro_chat.ndjson
+echo "OK api/chat/stream"
+
+echo "[SMOKE] Web pages"
+curl -kfsS https://127.0.0.1/ >/tmp/agro_web_index.html
+curl -kfsS https://127.0.0.1/admin >/tmp/agro_web_admin.html
+echo "OK web index/admin"
+
+if [[ "${ENABLE_PICOCLAW:-0}" == "1" ]]; then
+  echo "[SMOKE] PicoClaw health"
+  curl -fsS http://127.0.0.1:8787 >/tmp/picoclaw_health.txt || (echo "PicoClaw check failed" && exit 1)
+  echo "OK picoclaw"
+fi
 
 echo "Done"

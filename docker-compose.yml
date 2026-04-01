@@ -80,10 +80,14 @@ services:
       - ./ssl:/etc/nginx/ssl:ro
 
   picoclaw:
-    image: ghcr.io/picoclaw/picoclaw:latest
+    image: ${PICOCLAW_IMAGE:-ghcr.io/sipeed/picoclaw:latest}
     container_name: picoclaw
     restart: unless-stopped
     profiles: ["picoclaw"]
+    network_mode: host
+    environment:
+      OLLAMA_BASE_URL: ${OLLAMA_BASE:-http://127.0.0.1:11434}
+      PICOCLAW_LOG_LEVEL: ${PICOCLAW_LOG_LEVEL:-info}
     ports:
       - "8787:8787"
     volumes:
