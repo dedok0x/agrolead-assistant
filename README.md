@@ -34,7 +34,19 @@ cp .env.example .env
 
 - `PICOCLAW_IMAGE` — Docker-образ;
 - `APP_PORT` — внешний порт;
-- `API_KEY`, `DB_URL` и другие обязательные параметры твоего образа.
+- `DB_URL`, `MODEL_PROVIDER`, `MODEL_NAME`, `API_BASE`.
+
+Для локальной LLM по умолчанию используется Ollama:
+
+- `MODEL_PROVIDER=ollama`
+- `MODEL_NAME=qwen2.5:7b`
+- `API_BASE=http://ollama:11434/v1`
+- `API_KEY` можно оставить пустым.
+
+Для MVP используем SQLite:
+
+- `DB_URL=sqlite:///data/picoclaw.db`
+- данные сохраняются в volume `picoclaw_data`.
 
 ### Шаг 2. Запусти установку и деплой
 
@@ -56,6 +68,9 @@ chmod +x deploy/install_picoclaw.sh
 ```bash
 docker compose --env-file .env pull
 docker compose --env-file .env up -d
+
+# первый запуск локальной модели (один раз)
+docker exec -it ollama ollama pull qwen2.5:7b
 ```
 
 ---
@@ -82,7 +97,7 @@ docker ps
 
 ## 5) Как развивать диплом после MVP
 
-1. Добавить PostgreSQL и Redis в `docker-compose.yml`.
+1. При росте нагрузки перейти с SQLite на PostgreSQL и Redis в `docker-compose.yml`.
 2. Ввести миграции схемы данных.
 3. Добавить структурированное логирование и метрики.
 4. Провести регрессионные прогоны сценариев A/B/C/D.
