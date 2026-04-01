@@ -244,7 +244,8 @@
 Всегда стремись уточнить и собрать лид: товар, класс, объём, регион/точка поставки, срок, контакт.`
 
 			const KEYWORDS = [
-				'пшениц',
+				'пшен',
+				'пшено',
 				'ячмен',
 				'кукуруз',
 				'зерн',
@@ -252,6 +253,9 @@
 				'объ',
 				'класс',
 				'цена',
+				'стоим',
+				'скок',
+				'сколько',
 				'налич',
 				'влажн',
 				'качест',
@@ -261,6 +265,7 @@
 				'заявк',
 				'контакт',
 				'лид',
+				'краснодар',
 			]
 
 			const chatEl = document.getElementById('chat')
@@ -291,7 +296,7 @@
 
 			function buildPrompt(userText) {
 				const trimmedHistory = history
-					.slice(-4)
+					.slice(-8)
 					.map(m => `${m.role === 'user' ? 'Клиент' : 'Ассистент'}: ${m.text}`)
 					.join('\n')
 				return `${SYSTEM_PROMPT}\n\n${trimmedHistory}\nКлиент: ${userText}\nАссистент:`
@@ -333,7 +338,7 @@
 						keep_alive: '30m',
 						options: {
 							temperature: 0.1,
-							num_predict: 100,
+							num_predict: 220,
 							repeat_penalty: 1.05,
 						},
 					}
