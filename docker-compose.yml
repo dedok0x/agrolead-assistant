@@ -4,15 +4,14 @@ services:
     container_name: ${CONTAINER_NAME:-picoclaw}
     restart: unless-stopped
     command: ["--allow-empty"]
-    ports:
-      - "${APP_PORT:-18790}:18790"
+    network_mode: host
     environment:
       TZ: ${TZ:-Europe/Moscow}
       API_KEY: ${API_KEY:-}
       DB_URL: ${DB_URL:-sqlite:///data/picoclaw.db}
       MODEL_PROVIDER: ${MODEL_PROVIDER:-ollama}
       MODEL_NAME: ${MODEL_NAME:-qwen2.5:7b}
-      API_BASE: ${API_BASE:-http://ollama:11434/v1}
+      API_BASE: ${API_BASE:-http://127.0.0.1:11434/v1}
     volumes:
       - picoclaw_data:/data
       - picoclaw_home:/root/.picoclaw
@@ -28,8 +27,7 @@ services:
     image: ollama/ollama:latest
     container_name: ollama
     restart: unless-stopped
-    ports:
-      - "11434:11434"
+    network_mode: host
     volumes:
       - ollama_data:/root/.ollama
 

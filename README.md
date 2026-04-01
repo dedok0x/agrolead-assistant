@@ -40,7 +40,7 @@ cp .env.example .env
 
 - `MODEL_PROVIDER=ollama`
 - `MODEL_NAME=qwen2.5:7b`
-- `API_BASE=http://ollama:11434/v1`
+- `API_BASE=http://127.0.0.1:11434/v1`
 - `API_KEY` можно оставить пустым.
 
 Для MVP используем SQLite:
@@ -88,6 +88,8 @@ curl http://<SERVER_IP>:<APP_PORT>/health
 Если в контейнере другой health endpoint — замени путь `/health` на нужный.
 
 Важно: образ запускает gateway через entrypoint. В compose передаётся только флаг `--allow-empty`, поэтому сервис не должен постоянно перезапускаться.
+
+Контур запускается в `network_mode: host`, поэтому PicoClaw и Ollama общаются через `127.0.0.1`.
 
 Проверка автозапуска:
 
