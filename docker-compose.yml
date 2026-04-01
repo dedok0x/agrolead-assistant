@@ -14,7 +14,8 @@ services:
       API_BASE: ${API_BASE:-http://127.0.0.1:11434/v1}
     volumes:
       - picoclaw_data:/data
-      - picoclaw_home:/root/.picoclaw
+      - ./config/picoclaw-config.json:/root/.picoclaw/config.json:ro
+      - picoclaw_workspace:/root/.picoclaw/workspace
     depends_on:
       - ollama
     healthcheck:
@@ -33,5 +34,5 @@ services:
 
 volumes:
   picoclaw_data:
-  picoclaw_home:
+  picoclaw_workspace:
   ollama_data:

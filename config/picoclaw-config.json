@@ -1,0 +1,41 @@
+{
+	"version": 1,
+	"agents": {
+		"defaults": {
+			"workspace": "/root/.picoclaw/workspace",
+			"provider": "ollama",
+			"model_name": "local-qwen",
+			"max_tokens": 32768
+		}
+	},
+	"model_list": [
+		{
+			"model_name": "local-qwen",
+			"model": "ollama/qwen2.5:7b",
+			"api_base": "http://127.0.0.1:11434/v1"
+		}
+	],
+	"gateway": {
+		"host": "127.0.0.1",
+		"port": 18790,
+		"hot_reload": false,
+		"log_level": "info"
+	},
+	"channels": {
+		"telegram": { "enabled": false },
+		"discord": { "enabled": false },
+		"whatsapp": { "enabled": false },
+		"weixin": { "enabled": false },
+		"wecom": { "enabled": false },
+		"slack": { "enabled": false },
+		"line": { "enabled": false },
+		"matrix": { "enabled": false },
+		"qq": { "enabled": false },
+		"dingtalk": { "enabled": false },
+		"onebot": { "enabled": false },
+		"maixcam": { "enabled": false },
+		"pico": { "enabled": false },
+		"pico_client": { "enabled": false },
+		"irc": { "enabled": false }
+	}
+}
