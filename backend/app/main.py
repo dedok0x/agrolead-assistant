@@ -1,5 +1,6 @@
 import json
 import os
+import re
 from datetime import datetime
 from typing import Optional
 from uuid import uuid4
@@ -11,7 +12,16 @@ from pydantic import BaseModel
 from sqlmodel import Session, select
 
 from .db import init_db, get_session, engine
-from .models import CompanyProfile, PromptCategory, Scenario, ChatSession, ChatMessage
+from .models import (
+    CompanyProfile,
+    PromptCategory,
+    Scenario,
+    ChatSession,
+    ChatMessage,
+    ProductItem,
+    Lead,
+    ScenarioTemplate,
+)
 from .seed import seed_defaults
 
 app = FastAPI(title="AgroLead API", version="1.0.0")
@@ -21,6 +31,8 @@ ADMIN_PASS = os.getenv("ADMIN_PASS", "315920")
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "agrolead-admin-token")
 OLLAMA_BASE = os.getenv("OLLAMA_BASE", "http://127.0.0.1:11434")
 MODEL_NAME = os.getenv("MODEL_NAME", "qwen2.5:0.5b")
+MODEL_NUM_CTX = int(os.getenv("MODEL_NUM_CTX", "8192"))
+MODEL_NUM_PREDICT = int(os.getenv("MODEL_NUM_PREDICT", "180"))
 
 
 class LoginIn(BaseModel):
@@ -55,6 +67,33 @@ class ScenarioIn(BaseModel):
     active: bool = True
 
 
+class ProductIn(BaseModel):
+    name: str
+    culture: str
+    grade: str = ""
+    price_from: float = 0
+    price_to: float = 0
+    stock_tons: float = 0
+    quality: str = ""
+    location: str = ""
+    active: bool = True
+
+
+class LeadIn(BaseModel):
+    session_id: Optional[int] = None
+    client_name: str = ""
+    phone: str = ""
+    email: str = ""
+    product: str = ""
+    grade: str = ""
+    volume_tons: str = ""
+    region: str = ""
+    delivery_term: str = ""
+    status: str = "new"
+    source: str = "chat"
+    comment: str = ""
+
+
 def require_admin(x_admin_token: Optional[str] = Header(default=None)) -> None:
     if x_admin_token != ADMIN_TOKEN:
         raise HTTPException(status_code=401, detail="Unauthorized")
@@ -70,7 +109,56 @@ def build_system_prompt(session: Session) -> str:
         if company
         else ""
     )
-    return f"{content}\n\n{company_block}"
+    products = session.exec(
+        select(ProductItem).where(ProductItem.active == True).order_by(ProductItem.stock_tons.desc())
+    ).all()[:12]
+    catalog = "\n".join([
+        f"- {p.name}: {p.price_from:.0f}-{p.price_to:.0f} ₽/т, остаток {p.stock_tons:.0f} т, {p.location}" for p in products
+    ])
+    sales_policy = (
+        "Твоя роль: заменить менеджера первичной линии продаж. "
+        "Всегда веди диалог к квалификации лида: товар, класс, объем, регион, срок, контакт. "
+        "Если данных не хватает — задавай 1 конкретный следующий вопрос. "
+        "Не придумывай недоступные позиции и опирайся на каталог ниже."
+    )
+    return f"{content}\n\n{company_block}\n\n{sales_policy}\n\nКаталог:\n{catalog}"
+
+
+def upsert_lead_from_text(session: Session, chat_session_id: int, text: str) -> None:
+    s = text.lower()
+    phone_match = re.search(r"(?:\+7|8)[\s\-\(\)]*\d[\d\s\-\(\)]{8,}", text)
+    email_match = re.search(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", text)
+    vol_match = re.search(r"(\d+[\.,]?\d*)\s*(?:т|тонн|тонны|тонна)", s)
+
+    product = ""
+    if "пшен" in s:
+        product = "Пшеница"
+    elif "ячм" in s:
+        product = "Ячмень"
+    elif "кукуруз" in s:
+        product = "Кукуруза"
+
+    if not (phone_match or email_match or vol_match or product):
+        return
+
+    lead = session.exec(
+        select(Lead).where(Lead.session_id == chat_session_id).order_by(Lead.created_at.desc())
+    ).first()
+    if not lead:
+        lead = Lead(session_id=chat_session_id, source="chat", status="new")
+
+    if phone_match:
+        lead.phone = phone_match.group(0).strip()
+    if email_match:
+        lead.email = email_match.group(0).strip()
+    if vol_match:
+        lead.volume_tons = vol_match.group(1).replace(",", ".")
+    if product and not lead.product:
+        lead.product = product
+
+    lead.updated_at = datetime.utcnow()
+    session.add(lead)
+    session.commit()
 
 
 def guard_user_text(text: str) -> tuple[bool, str]:
@@ -163,11 +251,22 @@ def health():
 def bootstrap(session: Session = Depends(get_session)):
     company = session.exec(select(CompanyProfile)).first()
     scenarios = session.exec(select(Scenario).where(Scenario.active == True)).all()
+    products = session.exec(
+        select(ProductItem).where(ProductItem.active == True).order_by(ProductItem.stock_tons.desc())
+    ).all()[:8]
     return {
         "company": company,
         "scenarios": scenarios,
+        "products": products,
         "model": MODEL_NAME,
     }
+
+
+@app.get("/api/public/catalog")
+def public_catalog(session: Session = Depends(get_session), limit: int = 100):
+    return session.exec(
+        select(ProductItem).where(ProductItem.active == True).order_by(ProductItem.updated_at.desc())
+    ).all()[:limit]
 
 
 @app.post("/api/chat/stream")
@@ -184,6 +283,7 @@ async def chat_stream(payload: ChatIn, session: Session = Depends(get_session)):
 
     session.add(ChatMessage(session_id=chat_session.id, role="user", text=payload.text, blocked=not ok, reason="blocked" if not ok else ""))
     session.commit()
+    upsert_lead_from_text(session, chat_session.id, payload.text)
 
     fast = quick_reply(payload.text)
     if fast:
@@ -223,7 +323,12 @@ async def chat_stream(payload: ChatIn, session: Session = Depends(get_session)):
                         "prompt": prompt,
                         "stream": True,
                         "keep_alive": "45m",
-                        "options": {"temperature": 0.05, "num_predict": 90, "repeat_penalty": 1.1},
+                        "options": {
+                            "temperature": 0.05,
+                            "num_predict": MODEL_NUM_PREDICT,
+                            "repeat_penalty": 1.1,
+                            "num_ctx": MODEL_NUM_CTX,
+                        },
                     },
                 ) as r:
                     if r.status_code >= 400:
@@ -330,11 +435,15 @@ def admin_stats(_: None = Depends(require_admin), session: Session = Depends(get
     blocked = len([m for m in messages if m.blocked])
     leads = len([m for m in messages if m.role == "assistant" and any(x in m.text.lower() for x in ["контакт", "телефон", "email", "почт"])])
     recent = session.exec(select(ChatSession).order_by(ChatSession.created_at.desc())).all()[:20]
+    leads_total = len(session.exec(select(Lead)).all())
+    leads_new = len(session.exec(select(Lead).where(Lead.status == "new")).all())
     return {
         "sessions": len(sessions),
         "messages": len(messages),
         "blocked": blocked,
         "lead_signals": leads,
+        "leads_total": leads_total,
+        "leads_new": leads_new,
         "recent_sessions": recent,
     }
 
@@ -343,4 +452,63 @@ def admin_stats(_: None = Depends(require_admin), session: Session = Depends(get
 def admin_chats(_: None = Depends(require_admin), session: Session = Depends(get_session), limit: int = 100):
     msgs = session.exec(select(ChatMessage).order_by(ChatMessage.created_at.desc())).all()[:limit]
     return list(reversed(msgs))
+
+
+@app.get("/api/admin/products")
+def get_products(_: None = Depends(require_admin), session: Session = Depends(get_session)):
+    return session.exec(select(ProductItem).order_by(ProductItem.updated_at.desc())).all()
+
+
+@app.put("/api/admin/products")
+def put_products(items: list[ProductIn], _: None = Depends(require_admin), session: Session = Depends(get_session)):
+    old = session.exec(select(ProductItem)).all()
+    for p in old:
+        session.delete(p)
+    session.commit()
+    for i in items:
+        session.add(ProductItem(**i.model_dump(), updated_at=datetime.utcnow()))
+    session.commit()
+    return {"ok": True}
+
+
+@app.get("/api/admin/leads")
+def get_leads(_: None = Depends(require_admin), session: Session = Depends(get_session), limit: int = 200):
+    return session.exec(select(Lead).order_by(Lead.updated_at.desc())).all()[:limit]
+
+
+@app.post("/api/admin/leads")
+def post_lead(payload: LeadIn, _: None = Depends(require_admin), session: Session = Depends(get_session)):
+    lead = Lead(**payload.model_dump(), created_at=datetime.utcnow(), updated_at=datetime.utcnow())
+    session.add(lead)
+    session.commit()
+    session.refresh(lead)
+    return lead
+
+
+@app.put("/api/admin/leads/{lead_id}")
+def put_lead(lead_id: int, payload: LeadIn, _: None = Depends(require_admin), session: Session = Depends(get_session)):
+    lead = session.get(Lead, lead_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    for k, v in payload.model_dump().items():
+        setattr(lead, k, v)
+    lead.updated_at = datetime.utcnow()
+    session.add(lead)
+    session.commit()
+    return {"ok": True}
+
+
+@app.get("/api/admin/scenario-templates")
+def get_scenario_templates(_: None = Depends(require_admin), session: Session = Depends(get_session)):
+    return session.exec(select(ScenarioTemplate).where(ScenarioTemplate.active == True)).all()
+
+
+@app.post("/api/admin/scenario-templates/reset-defaults")
+def reset_scenario_templates(_: None = Depends(require_admin), session: Session = Depends(get_session)):
+    old = session.exec(select(ScenarioTemplate)).all()
+    for t in old:
+        session.delete(t)
+    session.commit()
+    seed_defaults(session)
+    return {"ok": True}
 

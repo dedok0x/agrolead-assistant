@@ -307,6 +307,16 @@
 						}
 						chipsEl.appendChild(b)
 					})
+					;(data.products || []).slice(0, 6).forEach(p => {
+						const b = document.createElement('button')
+						b.className = 'chip'
+						b.textContent = `${p.culture} ${p.grade}`.trim()
+						b.onclick = () => {
+							inputEl.value = `Интересует ${p.name}. Объем 100 тонн, доставка в Краснодар.`
+							inputEl.focus()
+						}
+						chipsEl.appendChild(b)
+					})
 				} catch {
 					document.getElementById('company').textContent =
 						'Данные о компании временно недоступны. Вы можете задать вопрос в чат.'

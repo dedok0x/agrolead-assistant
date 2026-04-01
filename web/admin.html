@@ -12,7 +12,7 @@
 				color: #24301f;
 			}
 			.wrap {
-				max-width: 1200px;
+				max-width: 1240px;
 				margin: 18px auto;
 				padding: 0 14px;
 			}
@@ -35,16 +35,23 @@
 				background: #edf4de;
 				cursor: pointer;
 			}
+			.tab.active {
+				background: #4f6f2b;
+				color: #fff;
+				border-color: #4f6f2b;
+			}
 			.hidden {
 				display: none;
 			}
 			input,
 			textarea,
-			button {
+			button,
+			select {
 				font: inherit;
 			}
 			input,
-			textarea {
+			textarea,
+			select {
 				width: 100%;
 				padding: 8px;
 				border: 1px solid #cedbb7;
@@ -61,9 +68,19 @@
 				border-radius: 8px;
 				cursor: pointer;
 			}
+			button.ghost {
+				background: #fff;
+				color: #2b3a20;
+				border-color: #b8c7a0;
+			}
 			.grid {
 				display: grid;
 				grid-template-columns: 1fr 1fr;
+				gap: 10px;
+			}
+			.grid3 {
+				display: grid;
+				grid-template-columns: repeat(3, 1fr);
 				gap: 10px;
 			}
 			table {
@@ -76,6 +93,10 @@
 				padding: 8px;
 				font-size: 13px;
 				text-align: left;
+				vertical-align: top;
+			}
+			th {
+				background: #f5f8ee;
 			}
 			pre {
 				white-space: pre-wrap;
@@ -83,8 +104,22 @@
 				border: 1px solid #dfe7cf;
 				padding: 10px;
 				border-radius: 8px;
-				max-height: 330px;
+				max-height: 320px;
 				overflow: auto;
+			}
+			.row {
+				display: flex;
+				gap: 8px;
+				flex-wrap: wrap;
+				margin-top: 8px;
+			}
+			.badge {
+				display: inline-block;
+				border-radius: 999px;
+				padding: 4px 8px;
+				background: #edf4de;
+				border: 1px solid #d4e0bf;
+				font-size: 12px;
 			}
 		</style>
 	</head>
@@ -96,29 +131,84 @@
 					<input id="login" placeholder="Логин" value="admin" />
 					<input id="pass" placeholder="Пароль" type="password" />
 				</div>
-				<div style="margin-top: 10px">
-					<button id="login-btn">Войти</button>
-				</div>
+				<div class="row"><button id="login-btn">Войти</button></div>
 			</div>
 
 			<div id="panel" class="hidden">
 				<div class="card">
-					<h2 style="margin-top: 0">Панель администратора</h2>
-					<div class="tabs">
-						<button class="tab" data-tab="prompts">
-							Системный промпт (категории)
-						</button>
-						<button class="tab" data-tab="company">Данные компании</button>
-						<button class="tab" data-tab="scenarios">Сценарии</button>
-						<button class="tab" data-tab="stats">Статистика и чаты</button>
-						<button class="tab" data-tab="guide">Инструкция</button>
-					</div>
+					<h2 style="margin-top: 0">Панель продаж и лидов</h2>
+					<div class="tabs" id="tabs"></div>
 				</div>
 
-				<section id="tab-prompts" class="card tab-pane">
-					<h3>Редактирование системного промпта по категориям</h3>
+				<section id="tab-overview" class="card tab-pane">
+					<h3>Сводка</h3>
+					<div class="grid3">
+						<div>
+							<div class="badge">Сессии</div>
+							<h2 id="s-sessions">0</h2>
+						</div>
+						<div>
+							<div class="badge">Сообщения</div>
+							<h2 id="s-messages">0</h2>
+						</div>
+						<div>
+							<div class="badge">Лиды (новые)</div>
+							<h2 id="s-leads">0 / 0</h2>
+						</div>
+					</div>
+					<h4>Последние чаты</h4>
+					<pre id="chat-log">Загрузка...</pre>
+				</section>
+
+				<section id="tab-leads" class="card tab-pane hidden">
+					<h3>Лиды</h3>
+					<div class="row">
+						<button id="refresh-leads" class="ghost">Обновить</button>
+					</div>
+					<div style="overflow: auto; margin-top: 8px">
+						<table>
+							<thead>
+								<tr>
+									<th>ID</th>
+									<th>Статус</th>
+									<th>Контакты</th>
+									<th>Товар</th>
+									<th>Параметры</th>
+									<th>Комментарий</th>
+								</tr>
+							</thead>
+							<tbody id="leads-body"></tbody>
+						</table>
+					</div>
+				</section>
+
+				<section id="tab-products" class="card tab-pane hidden">
+					<h3>Номенклатура (JSON-массив)</h3>
+					<textarea id="products-json" style="min-height: 260px"></textarea>
+					<div class="row">
+						<button id="save-products">Сохранить номенклатуру</button>
+					</div>
+				</section>
+
+				<section id="tab-scenarios" class="card tab-pane hidden">
+					<h3>Сценарии в клиентском чате</h3>
+					<textarea id="scenarios-json" style="min-height: 220px"></textarea>
+					<div class="row">
+						<button id="save-scenarios">Сохранить сценарии</button>
+					</div>
+					<h4>Готовые шаблоны сценариев</h4>
+					<pre id="templates-log">Загрузка...</pre>
+					<div class="row">
+						<button id="reset-templates" class="ghost">
+							Пересоздать дефолтные шаблоны
+						</button>
+					</div>
+				</section>
+
+				<section id="tab-prompts" class="card tab-pane hidden">
+					<h3>Системные промпты</h3>
 					<div id="prompts-list"></div>
-					<div style="margin-top: 10px">
+					<div class="row">
 						<button id="save-prompts">Сохранить промпты</button>
 					</div>
 				</section>
@@ -126,12 +216,16 @@
 				<section id="tab-company" class="card tab-pane hidden">
 					<h3>Данные компании</h3>
 					<div class="grid">
-						<input id="c-name" placeholder="Название" />
-						<input id="c-email" placeholder="Email" />
+						<input id="c-name" placeholder="Название" /><input
+							id="c-email"
+							placeholder="Email"
+						/>
 					</div>
 					<div class="grid" style="margin-top: 8px">
-						<input id="c-phones" placeholder="Телефоны" />
-						<input id="c-services" placeholder="Услуги" />
+						<input id="c-phones" placeholder="Телефоны" /><input
+							id="c-services"
+							placeholder="Услуги"
+						/>
 					</div>
 					<div style="margin-top: 8px">
 						<textarea id="c-address" placeholder="Адрес"></textarea>
@@ -142,76 +236,56 @@
 							placeholder="Подробные контакты"
 						></textarea>
 					</div>
-					<div style="margin-top: 10px">
+					<div class="row">
 						<button id="save-company">Сохранить компанию</button>
 					</div>
-				</section>
-
-				<section id="tab-scenarios" class="card tab-pane hidden">
-					<h3>Сценарии взаимодействия</h3>
-					<textarea id="scenarios-json" style="min-height: 260px"></textarea>
-					<div style="margin-top: 10px">
-						<button id="save-scenarios">Сохранить сценарии</button>
-					</div>
-				</section>
-
-				<section id="tab-stats" class="card tab-pane hidden">
-					<h3>Статистика</h3>
-					<table>
-						<tr>
-							<th>Метрика</th>
-							<th>Значение</th>
-						</tr>
-						<tr>
-							<td>Сессии</td>
-							<td id="s-sessions">0</td>
-						</tr>
-						<tr>
-							<td>Сообщения</td>
-							<td id="s-messages">0</td>
-						</tr>
-						<tr>
-							<td>Блокировки</td>
-							<td id="s-blocked">0</td>
-						</tr>
-						<tr>
-							<td>Лид-сигналы</td>
-							<td id="s-leads">0</td>
-						</tr>
-					</table>
-					<h3>Последние чаты</h3>
-					<pre id="chat-log">Загрузка...</pre>
-				</section>
-
-				<section id="tab-guide" class="card tab-pane hidden">
-					<h3>Инструкция по заполнению сценариев</h3>
-					<pre>
-1) Сценарий всегда должен вести к квалификации лида.
-2) Обязательные поля в каждом кейсе: товар, класс, объем, регион, срок, контакт.
-3) В категории prompt:
-- identity: роль ассистента
-- scope: предметная область
-- safety: запреты/ограничения
-- style: стиль и длина ответа
-- lead_capture: правила сбора лида
-4) После правок прогоняйте 10-15 тестовых диалогов и смотрите статистику блокировок и лид-сигналов.</pre
-					>
 				</section>
 			</div>
 		</div>
 
 		<script>
 			let token = ''
+			const tabOrder = [
+				'overview',
+				'leads',
+				'products',
+				'scenarios',
+				'prompts',
+				'company',
+			]
+			const tabTitle = {
+				overview: 'Сводка',
+				leads: 'Лиды',
+				products: 'Номенклатура',
+				scenarios: 'Сценарии',
+				prompts: 'Промпты',
+				company: 'Компания',
+			}
 
-			const tabs = () => document.querySelectorAll('.tab-pane')
-			document.querySelectorAll('.tab').forEach(btn => {
-				btn.onclick = () => {
-					tabs().forEach(t => t.classList.add('hidden'))
-					document
-						.getElementById(`tab-${btn.dataset.tab}`)
-						.classList.remove('hidden')
-				}
-			})
+			function activateTab(name) {
+				document
+					.querySelectorAll('.tab-pane')
+					.forEach(x => x.classList.add('hidden'))
+				document
+					.querySelectorAll('.tab')
+					.forEach(x => x.classList.remove('active'))
+				document.getElementById(`tab-${name}`).classList.remove('hidden')
+				document.querySelector(`[data-tab="${name}"]`)?.classList.add('active')
+			}
+
+			function renderTabs() {
+				const t = document.getElementById('tabs')
+				t.innerHTML = ''
+				tabOrder.forEach(name => {
+					const b = document.createElement('button')
+					b.className = 'tab'
+					b.dataset.tab = name
+					b.textContent = tabTitle[name]
+					b.onclick = () => activateTab(name)
+					t.appendChild(b)
+				})
+				activateTab('overview')
+			}
 
 			async function api(url, opts = {}) {
 				const headers = {
@@ -224,13 +298,34 @@
 				return res.json()
 			}
 
+			function statusOptions(selected) {
+				return ['new', 'in_progress', 'qualified', 'closed']
+					.map(
+						s =>
+							`<option value="${s}" ${selected === s ? 'selected' : ''}>${s}</option>`,
+					)
+					.join('')
+			}
+
 			async function loadAll() {
-				const [prompts, company, scenarios, stats, chats] = await Promise.all([
+				const [
+					prompts,
+					company,
+					scenarios,
+					stats,
+					chats,
+					products,
+					leads,
+					templates,
+				] = await Promise.all([
 					api('/api/admin/prompts'),
 					api('/api/admin/company'),
 					api('/api/admin/scenarios'),
 					api('/api/admin/stats'),
 					api('/api/admin/chats?limit=120'),
+					api('/api/admin/products'),
+					api('/api/admin/leads?limit=200'),
+					api('/api/admin/scenario-templates'),
 				])
 
 				const pWrap = document.getElementById('prompts-list')
@@ -256,14 +351,60 @@
 					null,
 					2,
 				)
+				document.getElementById('products-json').value = JSON.stringify(
+					products,
+					null,
+					2,
+				)
 
 				document.getElementById('s-sessions').textContent = stats.sessions
 				document.getElementById('s-messages').textContent = stats.messages
-				document.getElementById('s-blocked').textContent = stats.blocked
-				document.getElementById('s-leads').textContent = stats.lead_signals
+				document.getElementById('s-leads').textContent =
+					`${stats.leads_new || 0} / ${stats.leads_total || 0}`
 				document.getElementById('chat-log').textContent = chats
 					.map(c => `[${c.created_at}] #${c.session_id} ${c.role}: ${c.text}`)
 					.join('\n')
+
+				document.getElementById('templates-log').textContent = templates
+					.map(
+						t => `• ${t.title}\nЦель: ${t.goal}\nСтарт: ${t.starter_message}`,
+					)
+					.join('\n\n')
+
+				const leadsBody = document.getElementById('leads-body')
+				leadsBody.innerHTML = ''
+				leads.forEach(l => {
+					const tr = document.createElement('tr')
+					tr.innerHTML = `
+            <td>${l.id}</td>
+            <td>
+              <select data-id="${l.id}" class="lead-status">${statusOptions(l.status)}</select>
+            </td>
+            <td>${l.client_name || ''}<br>${l.phone || ''}<br>${l.email || ''}</td>
+            <td>${l.product || ''}<br>${l.grade || ''}</td>
+            <td>Объем: ${l.volume_tons || ''}<br>Регион: ${l.region || ''}<br>Срок: ${l.delivery_term || ''}</td>
+            <td><textarea data-comment-id="${l.id}" style="min-height:50px">${l.comment || ''}</textarea><div class="row"><button data-save-id="${l.id}" class="save-lead">Сохранить</button></div></td>
+          `
+					leadsBody.appendChild(tr)
+				})
+
+				document.querySelectorAll('.save-lead').forEach(btn => {
+					btn.onclick = async () => {
+						const id = Number(btn.dataset.saveId)
+						const lead = leads.find(x => x.id === id)
+						const status = document.querySelector(
+							`.lead-status[data-id="${id}"]`,
+						).value
+						const comment = document.querySelector(
+							`textarea[data-comment-id="${id}"]`,
+						).value
+						await api(`/api/admin/leads/${id}`, {
+							method: 'PUT',
+							body: JSON.stringify({ ...lead, status, comment }),
+						})
+						await loadAll()
+					}
+				})
 			}
 
 			document.getElementById('login-btn').onclick = async () => {
@@ -279,6 +420,7 @@
 					localStorage.setItem('agrolead_admin_token', token)
 					document.getElementById('login-card').classList.add('hidden')
 					document.getElementById('panel').classList.remove('hidden')
+					renderTabs()
 					await loadAll()
 				} catch {
 					alert('Ошибка входа')
@@ -336,18 +478,49 @@
 				})
 				alert('Сценарии сохранены')
 			}
+
+			document.getElementById('save-products').onclick = async () => {
+				const items = JSON.parse(document.getElementById('products-json').value)
+				await api('/api/admin/products', {
+					method: 'PUT',
+					body: JSON.stringify(
+						items.map(i => ({
+							name: i.name || '',
+							culture: i.culture || '',
+							grade: i.grade || '',
+							price_from: Number(i.price_from || 0),
+							price_to: Number(i.price_to || 0),
+							stock_tons: Number(i.stock_tons || 0),
+							quality: i.quality || '',
+							location: i.location || '',
+							active: i.active !== false,
+						})),
+					),
+				})
+				alert('Номенклатура сохранена')
+			}
+
+			document.getElementById('reset-templates').onclick = async () => {
+				await api('/api/admin/scenario-templates/reset-defaults', {
+					method: 'POST',
+					body: '{}',
+				})
+				await loadAll()
+			}
+
+			document.getElementById('refresh-leads').onclick = loadAll
 			;(async () => {
 				const cached = localStorage.getItem('agrolead_admin_token')
-				if (cached) {
-					token = cached
-					document.getElementById('login-card').classList.add('hidden')
-					document.getElementById('panel').classList.remove('hidden')
-					try {
-						await loadAll()
-					} catch {
-						token = ''
-						localStorage.removeItem('agrolead_admin_token')
-					}
+				if (!cached) return
+				token = cached
+				document.getElementById('login-card').classList.add('hidden')
+				document.getElementById('panel').classList.remove('hidden')
+				renderTabs()
+				try {
+					await loadAll()
+				} catch {
+					token = ''
+					localStorage.removeItem('agrolead_admin_token')
 				}
 			})()
 		</script>

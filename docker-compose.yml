@@ -9,6 +9,8 @@ services:
       TZ: ${TZ:-Europe/Moscow}
       MODEL_NAME: ${MODEL_NAME:-qwen2.5:0.5b}
       OLLAMA_BASE: ${OLLAMA_BASE:-http://127.0.0.1:11434}
+      MODEL_NUM_CTX: ${MODEL_NUM_CTX:-8192}
+      MODEL_NUM_PREDICT: ${MODEL_NUM_PREDICT:-180}
       ADMIN_USER: ${ADMIN_USER:-admin}
       ADMIN_PASS: ${ADMIN_PASS:-315920}
       ADMIN_TOKEN: ${ADMIN_TOKEN:-agrolead-admin-token}

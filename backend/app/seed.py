@@ -1,6 +1,6 @@
 from sqlmodel import Session, select
 
-from .models import CompanyProfile, PromptCategory, Scenario
+from .models import CompanyProfile, PromptCategory, Scenario, ProductItem, ScenarioTemplate
 
 
 DEFAULT_CONTACTS = """КОММЕРЧЕСКИЙ ОТДЕЛ:
@@ -59,6 +59,43 @@ def seed_defaults(session: Session) -> None:
                 Scenario(title='Какая цена и минимальный объем?', description='Диапазон цены + запрос параметров сделки.'),
                 Scenario(title='Какой срок и способ доставки?', description='Логистика: авто/жд/вода + сроки.'),
                 Scenario(title='Как оформить заявку?', description='Запрос контактов и передача менеджеру.'),
+            ]
+        )
+
+    if not session.exec(select(ProductItem)).first():
+        session.add_all(
+            [
+                ProductItem(name='Пшеница 3 класс, продовольственная', culture='Пшеница', grade='3 класс', price_from=15000, price_to=17200, stock_tons=4200, quality='Клейковина 23-25%, натура от 760', location='Краснодарский край'),
+                ProductItem(name='Пшеница 4 класс, фуражная', culture='Пшеница', grade='4 класс', price_from=13600, price_to=14900, stock_tons=6100, quality='Протеин 10.5-11.5%', location='Краснодарский край'),
+                ProductItem(name='Ячмень кормовой', culture='Ячмень', grade='Кормовой', price_from=12100, price_to=13400, stock_tons=2800, quality='Влажность до 14.5%', location='Ростовская область'),
+                ProductItem(name='Кукуруза 3 класс', culture='Кукуруза', grade='3 класс', price_from=12800, price_to=14100, stock_tons=3500, quality='Влажность до 14%, сорная примесь до 2%', location='Ставропольский край'),
+                ProductItem(name='Кукуруза фуражная', culture='Кукуруза', grade='Фуражная', price_from=11600, price_to=12900, stock_tons=2400, quality='Базис по ГОСТ', location='Краснодарский край'),
+            ]
+        )
+
+    if not session.exec(select(ScenarioTemplate)).first():
+        session.add_all(
+            [
+                ScenarioTemplate(
+                    title='Квалификация по цене и наличию',
+                    goal='Собрать товар, класс, объем, регион поставки и срок отгрузки',
+                    starter_message='Подскажите, пожалуйста, какую культуру и класс вы рассматриваете, а также ориентировочный объем в тоннах?'
+                ),
+                ScenarioTemplate(
+                    title='Логистика и срок поставки',
+                    goal='Уточнить направление, транспорт, дату и контакт для просчета',
+                    starter_message='Уточните регион доставки, желаемый срок и предпочтительный способ перевозки (авто/жд/вода).'
+                ),
+                ScenarioTemplate(
+                    title='Формализация заявки',
+                    goal='Получить контакт и передать лид менеджеру',
+                    starter_message='Чтобы передать заявку менеджеру, оставьте контакт: имя, телефон или email.'
+                ),
+                ScenarioTemplate(
+                    title='Возражение по цене',
+                    goal='Сохранить интерес и перевести в заявку с альтернативными условиями',
+                    starter_message='Можем предложить варианты по объему, базису и сроку оплаты. Уточните, какой диапазон цены вам комфортен?'
+                ),
             ]
         )
 
