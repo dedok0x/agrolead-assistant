@@ -135,6 +135,7 @@ curl http://localhost:8000/api/llm/status
 
 - Проверь `GIGACHAT_CLIENT_ID` и `GIGACHAT_CLIENT_SECRET` в `.env`.
 - Если используешь `GIGACHAT_AUTH_KEY`, убедись что это base64(client_id:client_secret).
+- Если в логах `403 Forbidden` на `/api/v2/oauth`, проверь `GIGACHAT_SCOPE` и доступы ключа.
 - Перезапусти: `./deploy.sh`.
 
 ### 2) Не стартует `nanoclaw-agent`

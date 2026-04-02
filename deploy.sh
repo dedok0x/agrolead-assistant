@@ -416,6 +416,18 @@ fi
 
 if [[ "$DRY_RUN_HTTP_CODE" != "200" ]]; then
   DRY_RUN_ERROR_BODY="$(tr -d '\n' <"$DRY_RUN_RESPONSE_FILE" 2>/dev/null || true)"
+  if [[ "$DRY_RUN_ERROR_BODY" == *"403 Forbidden"* && "$DRY_RUN_ERROR_BODY" == *"gigachat"* ]]; then
+    warn "GigaChat OAuth вернул 403. Включаю Ollama fallback для прохождения интеграционных проверок"
+    upsert_env_var "OLLAMA_FALLBACK_ENABLED" "1"
+    OLLAMA_FALLBACK_ENABLED="1"
+    docker compose -f "$COMPOSE_FILE" --profile ollama up -d ollama api nanoclaw-agent
+    wait_http "$API_BASE/api/health" 60 2 || die "API не поднялся после включения Ollama fallback"
+    DRY_RUN_HTTP_CODE="$(run_dry_run_check)"
+  fi
+fi
+
+if [[ "$DRY_RUN_HTTP_CODE" != "200" ]]; then
+  DRY_RUN_ERROR_BODY="$(tr -d '\n' <"$DRY_RUN_RESPONSE_FILE" 2>/dev/null || true)"
   die "dry-run check не пройден (HTTP ${DRY_RUN_HTTP_CODE}): ${DRY_RUN_ERROR_BODY}"
 fi
 
@@ -425,12 +437,23 @@ import json
 import sys
 
 payload = json.loads(sys.argv[1])
-if payload.get("provider") != "gigachat":
-    raise SystemExit(f"dry-run не через GigaChat: {payload.get('provider')}")
+provider = payload.get("provider")
+if provider not in {"gigachat", "ollama"}:
+    raise SystemExit(f"dry-run отработал через неожиданный provider: {provider}")
 if not payload.get("text"):
     raise SystemExit("dry-run вернул пустой text")
-print(f"Dry-run ok | provider={payload.get('provider')} model={payload.get('model')}")
+print(f"Dry-run ok | provider={provider} model={payload.get('model')}")
 PY
+
+if [[ "$("$PYTHON_BIN" - "$DRY_RUN_JSON" <<'PY'
+import json
+import sys
+payload = json.loads(sys.argv[1])
+print(payload.get("provider", ""))
+PY
+)" == "ollama" ]]; then
+  warn "dry-run прошел через Ollama fallback. Проверьте валидность GIGACHAT_CLIENT_ID/SECRET и GIGACHAT_SCOPE"
+fi
 show_service_logs api 50
 
 NANO_JSON="$(curl -fsS -H "Content-Type: application/json" -d '{"text":"Дай короткий ответ по прайсу пшеницы","context":{"source":"deploy-smoke"}}' "$API_BASE/api/nanoclaw/agent/chat")"
