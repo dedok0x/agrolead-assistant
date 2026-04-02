@@ -60,6 +60,11 @@ ENABLE_PICOCLAW=1 bash deploy/deploy.sh
 
 Скрипт [`deploy.sh`](agrolead-assistant/deploy/deploy.sh) выполняет последовательные smoke-проверки:
 
+- `git fetch/pull --ff-only` перед запуском контейнеров;
+- подробный лог деплоя в `deploy/logs/deploy_YYYYMMDD_HHMMSS.log`;
+- диагностику контейнеров и хвосты логов при любой ошибке;
+- предупреждения по потенциальным рискам (`ADMIN_PASS`, `ADMIN_TOKEN`, `POSTGRES_PASSWORD` по умолчанию).
+
 - [`/api/health`](agrolead-assistant/backend/app/main.py:245)
 - [`/api/public/bootstrap`](agrolead-assistant/backend/app/main.py:250)
 - [`/api/chat/stream`](agrolead-assistant/backend/app/main.py:272)
@@ -127,3 +132,5 @@ docker exec -it ollama ollama pull qwen2.5:0.5b
 - `ssl/privkey.key`
 
 Контейнер `webui` использует их в `web/nginx.conf`.
+
+Если сертификаты отсутствуют, `deploy.sh` автоматически переключает web-smoke проверки на HTTP (`http://127.0.0.1`).

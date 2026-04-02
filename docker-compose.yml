@@ -26,12 +26,13 @@ services:
       context: ./backend
     container_name: agrolead-api
     restart: unless-stopped
-    network_mode: host
+    ports:
+      - "8000:8000"
     environment:
       TZ: ${TZ:-Europe/Moscow}
-      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://agrolead:agrolead123@127.0.0.1:5432/agrolead}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://agrolead:agrolead123@db:5432/agrolead}
       MODEL_NAME: ${MODEL_NAME:-qwen2.5:0.5b}
-      OLLAMA_BASE: ${OLLAMA_BASE:-http://127.0.0.1:11434}
+      OLLAMA_BASE: ${OLLAMA_BASE:-http://ollama:11434}
       MODEL_NUM_CTX: ${MODEL_NUM_CTX:-8192}
       MODEL_NUM_PREDICT: ${MODEL_NUM_PREDICT:-180}
       ADMIN_USER: ${ADMIN_USER:-admin}
@@ -60,7 +61,8 @@ services:
     image: ollama/ollama:latest
     container_name: ollama
     restart: unless-stopped
-    network_mode: host
+    ports:
+      - "11434:11434"
     volumes:
       - ollama_data:/root/.ollama
 
@@ -84,10 +86,12 @@ services:
     container_name: picoclaw
     restart: unless-stopped
     profiles: ["picoclaw"]
-    network_mode: host
     environment:
-      OLLAMA_BASE_URL: ${OLLAMA_BASE:-http://127.0.0.1:11434}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE:-http://ollama:11434}
       PICOCLAW_LOG_LEVEL: ${PICOCLAW_LOG_LEVEL:-info}
+    depends_on:
+      ollama:
+        condition: service_started
     ports:
       - "8787:8787"
     volumes:
