@@ -167,6 +167,10 @@ if [[ "$ACTIVE_LLM" == "gigachat" ]]; then
 else
   echo "[ИНФО] Активная LLM: локальная Ollama"
 fi
+
+if grep -Eq '^GIGACHAT_AUTH_KEY=.+' "$ENV_FILE" && [[ "$ACTIVE_LLM" != "gigachat" ]]; then
+  fail "Ключ GigaChat задан, но активная LLM не GigaChat. Проверьте GIGACHAT_* переменные и доступ к API."
+fi
 ok "api/llm/status"
 
 log "Smoke: API chat stream"

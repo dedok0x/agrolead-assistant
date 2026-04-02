@@ -87,6 +87,17 @@ class ChatStreamCases(unittest.TestCase):
         self.assertIn("active", data)
         self.assertIn("mode", data)
 
+    def test_picoclaw_agent_endpoint_shape(self):
+        resp = self.client.post(
+            "/api/picoclaw/agent/chat",
+            json={"text": "Нужен прайс по пшенице", "context": "smoke"},
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertTrue(data.get("done"))
+        self.assertIn("provider", data)
+        self.assertIn("text", data)
+
 
 if __name__ == "__main__":
     unittest.main()

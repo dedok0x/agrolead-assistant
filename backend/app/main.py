@@ -70,6 +70,11 @@ class ChatDryRunIn(BaseModel):
     text: str
 
 
+class PicoclawAgentIn(BaseModel):
+    text: str
+    context: str = ""
+
+
 class PromptIn(BaseModel):
     key: str
     title: str
@@ -731,6 +736,23 @@ async def chat_dry_run(payload: ChatDryRunIn, session: Session = Depends(get_ses
             "provider": "fallback",
             "text": "Сервис генерации временно недоступен. Уточните, пожалуйста, товар, класс и объем в тоннах — передам заявку менеджеру.",
         }
+
+
+@app.post("/api/picoclaw/agent/chat")
+async def picoclaw_agent_chat(payload: PicoclawAgentIn, session: Session = Depends(get_session)):
+    text = (payload.text or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="text is required")
+
+    prompt = (
+        f"{build_system_prompt(session)}\n\n"
+        f"Контекст Picoclaw: {payload.context.strip()}\n"
+        f"Запрос агента: {text}\n"
+        f"Дай короткий ответ менеджера по продажам без выдумок."
+    )
+    llm_text, llm_provider = await generate_llm_response(prompt)
+    clean = sanitize_assistant_text(llm_text)
+    return {"done": True, "provider": llm_provider, "text": clean}
 
 
 @app.post("/api/admin/login")

@@ -5,6 +5,7 @@
 	"api": {
 		"base_url": "http://api:8000",
 		"health_path": "/api/health",
+		"agent_chat_path": "/api/picoclaw/agent/chat",
 		"timeout_seconds": 30
 	},
 	"features": {
