@@ -1,7 +1,8 @@
 import json
+import logging
 import os
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 from uuid import uuid4
 
 from fastapi import Depends, FastAPI, Header, HTTPException
@@ -11,7 +12,7 @@ from sqlmodel import Session, select
 
 from .db import engine, get_session, init_db
 from .guardrails import evaluate_guardrails
-from .llm_service import LLMService
+from .llm_service import LLMService, LLMUnavailableError
 from .models import (
     ChatMessage,
     ChatSession,
@@ -23,11 +24,14 @@ from .models import (
     Scenario,
     ScenarioTemplate,
 )
-from .nanoclaw_adapter import NanoClawAdapter
-from .sales_logic import next_qualification_question, sync_state_and_lead
-from .seed import seed_defaults
+from .nanoclaw_adapter import NanoClawAdapter, NanoClawAdapterError
+from .sales_logic import mark_handoff, next_qualification_question, sync_state_and_lead
+from .seed import reset_default_scenario_templates, seed_defaults
 
-app = FastAPI(title="AgroLead API (NanoClaw)", version="2.0.0")
+logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
+LOGGER = logging.getLogger("agrolead.api")
+
+app = FastAPI(title="AgroLead API (NanoClaw)", version="3.0.0")
 
 ADMIN_USER = os.getenv("ADMIN_USER", "admin")
 ADMIN_PASS = os.getenv("ADMIN_PASS", "315920")
@@ -54,7 +58,7 @@ class ChatDryRunIn(BaseModel):
 
 class NanoClawAgentIn(BaseModel):
     text: str
-    context: str = ""
+    context: Optional[dict[str, Any] | str] = None
 
 
 class PromptIn(BaseModel):
@@ -110,43 +114,26 @@ def require_admin(x_admin_token: Optional[str] = Header(default=None)) -> None:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 
-def sales_system_prompt(session: Session) -> str:
-    company = session.exec(select(CompanyProfile)).first()
-    products = session.exec(select(ProductItem).where(ProductItem.active == True).order_by(ProductItem.stock_tons.desc())).all()[:10]
-
-    company_block = (
-        f"Компания: {company.name}\n"
-        f"Адрес: {company.address}\n"
-        f"Телефоны: {company.phones}\n"
-        f"Email: {company.email}\n"
-        if company
-        else ""
-    )
-
-    product_lines = [
-        f"- {p.name}: {p.price_from:.0f}-{p.price_to:.0f} ₽/т, остаток {p.stock_tons:.0f} т, {p.location}"
-        for p in products
-    ]
-    catalog = "\n".join(product_lines)
-    return (
-        "Ты sales-ассистент ООО «Петрохлеб-Кубань». Стиль: живой, прямой, по-кубански. "
-        "Не выдумывай остатки и цены. Всегда дожимай квалификацию: товар, класс, объем, регион, срок, контакт. "
-        "Если клиент токсичен — ответ короткий и без продолжения вежливой анкеты.\n\n"
-        f"{company_block}\nКаталог:\n{catalog}"
-    )
+def _now() -> datetime:
+    return datetime.utcnow()
 
 
 def sanitize_text(text: str) -> str:
     cleaned = (text or "").replace("Ассистент:", "").replace("Клиент:", "").strip()
-    if len(cleaned) > 700:
-        cleaned = cleaned[:700].rsplit(" ", 1)[0] + "..."
+    if len(cleaned) > 900:
+        cleaned = cleaned[:900].rsplit(" ", 1)[0] + "..."
     return cleaned
 
 
 def get_or_create_chat_session(session: Session, payload: ChatIn) -> ChatSession:
     chat_session = session.get(ChatSession, payload.session_id) if payload.session_id else None
     if chat_session:
+        chat_session.updated_at = _now()
+        session.add(chat_session)
+        session.commit()
+        session.refresh(chat_session)
         return chat_session
+
     chat_session = ChatSession(client_id=payload.client_id or str(uuid4()))
     session.add(chat_session)
     session.commit()
@@ -154,34 +141,135 @@ def get_or_create_chat_session(session: Session, payload: ChatIn) -> ChatSession
     return chat_session
 
 
-async def process_chat(session: Session, payload: ChatIn) -> dict:
+def recent_history(session: Session, session_id: int, limit: int = 12) -> str:
+    messages = session.exec(select(ChatMessage).where(ChatMessage.session_id == session_id).order_by(ChatMessage.created_at)).all()
+    recent = messages[-limit:]
+    rows = []
+    for message in recent:
+        role = "Клиент" if message.role == "user" else "Ассистент"
+        rows.append(f"{role}: {message.text}")
+    return "\n".join(rows)
+
+
+def load_prompt_categories(session: Session) -> dict[str, str]:
+    prompts = session.exec(select(PromptCategory)).all()
+    return {prompt.key: prompt.content for prompt in prompts}
+
+
+def sales_system_prompt(session: Session) -> str:
+    company = session.exec(select(CompanyProfile)).first()
+    products = session.exec(select(ProductItem).where(ProductItem.active == True).order_by(ProductItem.stock_tons)).all()
+    products = list(reversed(products))[:10]
+    prompts = load_prompt_categories(session)
+
+    identity = prompts.get(
+        "identity",
+        "Ты sales-ассистент ООО «Петрохлеб-Кубань». Твоя цель — быстро квалифицировать лид и передать его менеджеру.",
+    )
+    scope = prompts.get(
+        "scope",
+        "Работаешь только по зерновым сделкам: товар, класс, объем, регион, срок, контакт.",
+    )
+    safety = prompts.get(
+        "safety",
+        "Если пользователь токсичен — коротко отвечай и останавливай диалог. Если запрос про взлом — полный отказ.",
+    )
+    style = prompts.get(
+        "style",
+        "Стиль: живой, по-кубански, без канцелярщины. Не выдумывай факты и цены.",
+    )
+    lead_capture = prompts.get(
+        "lead_capture",
+        "State-machine: greeting -> qualification -> offer -> handoff. Пока поля лида неполные — только один следующий вопрос.",
+    )
+
+    company_block = ""
+    if company:
+        company_block = (
+            f"Компания: {company.name}\n"
+            f"Адрес: {company.address}\n"
+            f"Телефоны: {company.phones}\n"
+            f"Email: {company.email}\n"
+            f"Услуги: {company.services}"
+        )
+
+    product_lines = [
+        f"- {item.name}: {item.price_from:.0f}-{item.price_to:.0f} ₽/т, остаток {item.stock_tons:.0f} т, {item.location}"
+        for item in products
+    ]
+    catalog_block = "\n".join(product_lines)
+
+    return (
+        f"{identity}\n"
+        f"{scope}\n"
+        f"{safety}\n"
+        f"{style}\n"
+        f"{lead_capture}\n\n"
+        f"{company_block}\n\n"
+        f"Каталог:\n{catalog_block}\n\n"
+        "Никогда не обещай то, чего нет в каталоге. Если данных не хватает, честно попроси уточнение."
+    )
+
+
+def save_assistant_message(
+    session: Session,
+    session_id: int,
+    text: str,
+    reason: str,
+    provider: str,
+    model: str,
+    blocked: bool = False,
+) -> None:
+    session.add(
+        ChatMessage(
+            session_id=session_id,
+            role="assistant",
+            text=text,
+            blocked=blocked,
+            reason=reason,
+            provider=provider,
+            model_used=model,
+        )
+    )
+
+
+async def process_chat(session: Session, payload: ChatIn) -> dict[str, Any]:
+    text = (payload.text or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="text is required")
+
     chat_session = get_or_create_chat_session(session, payload)
-    session.add(ChatMessage(session_id=chat_session.id, role="user", text=payload.text))
+    session_id = chat_session.id
+    if session_id is None:
+        raise HTTPException(status_code=500, detail="session_id is not initialized")
+
+    session.add(ChatMessage(session_id=session_id, role="user", text=text))
     session.commit()
 
-    guard = evaluate_guardrails(payload.text)
-    state = sync_state_and_lead(session, chat_session.id, payload.text)
+    guard = evaluate_guardrails(text)
+    state = sync_state_and_lead(session, session_id, text)
 
     if not guard.allowed:
-        if guard.toxicity_level > 0:
-            state.toxicity_level = guard.toxicity_level
+        state.toxicity_level = max(state.toxicity_level, guard.toxicity_level)
+        if guard.stop_dialogue:
             state.state = "stopped_toxic"
-            session.add(state)
-            session.commit()
-        session.add(
-            ChatMessage(
-                session_id=chat_session.id,
-                role="assistant",
-                text=guard.answer,
-                blocked=True,
-                reason=guard.reason,
-                provider="guardrails",
-                model_used="rule-based",
-            )
+            chat_session.last_state = "stopped_toxic"
+        chat_session.updated_at = _now()
+        state.updated_at = _now()
+        session.add(state)
+        session.add(chat_session)
+        save_assistant_message(
+            session=session,
+            session_id=session_id,
+            text=guard.answer,
+            reason=guard.reason,
+            provider="guardrails",
+            model="rule-based",
+            blocked=True,
         )
         session.commit()
         return {
-            "session_id": chat_session.id,
+            "session_id": session_id,
             "done": True,
             "text": guard.answer,
             "provider": "guardrails",
@@ -189,37 +277,37 @@ async def process_chat(session: Session, payload: ChatIn) -> dict:
             "state": state.state,
         }
 
-    if state.state != "qualified":
-        q = next_qualification_question(state)
-        state.last_question = q
+    if state.state in {"greeting", "qualification"}:
+        question = next_qualification_question(state)
+        state.last_question = question
+        state.updated_at = _now()
+        chat_session.last_state = state.state
+        chat_session.updated_at = _now()
+        session.add(chat_session)
         session.add(state)
-        session.add(
-            ChatMessage(
-                session_id=chat_session.id,
-                role="assistant",
-                text=q,
-                reason="qualification_state_machine",
-                provider="state-machine",
-                model_used="rule-based",
-            )
+        save_assistant_message(
+            session=session,
+            session_id=session_id,
+            text=question,
+            reason="qualification_state_machine",
+            provider="state-machine",
+            model="rule-based",
         )
         session.commit()
         return {
-            "session_id": chat_session.id,
+            "session_id": session_id,
             "done": True,
-            "text": q,
+            "text": question,
             "provider": "state-machine",
             "model": "rule-based",
             "state": state.state,
         }
 
-    recent = session.exec(select(ChatMessage).where(ChatMessage.session_id == chat_session.id).order_by(ChatMessage.created_at.desc())).all()[:8]
-    history = "\n".join([f"{'Клиент' if m.role == 'user' else 'Ассистент'}: {m.text}" for m in reversed(recent)])
-
-    nano_context = {
-        "session_id": chat_session.id,
+    history = recent_history(session, session_id)
+    context = {
+        "session_id": session_id,
         "history": history,
-        "state": {
+        "lead": {
             "product": state.product,
             "grade": state.grade,
             "volume_tons": state.volume_tons,
@@ -227,34 +315,58 @@ async def process_chat(session: Session, payload: ChatIn) -> dict:
             "delivery_term": state.delivery_term,
             "contact": state.contact,
         },
+        "state": state.state,
         "system_prompt": sales_system_prompt(session),
     }
 
-    try:
-        nano_response = await nanoclaw.chat(message=payload.text, context=nano_context)
-        text = sanitize_text(nano_response["text"]) or "Принял. Передаю менеджеру, он закрепит условия."
-        provider = nano_response.get("provider", "nanoclaw")
-        model = nano_response.get("model", "nanoclaw-runtime")
-    except Exception:
-        llm_prompt = f"{history}\nСобранный лид: товар={state.product}, класс={state.grade}, объем={state.volume_tons}, регион={state.region}, срок={state.delivery_term}, контакт={state.contact}"
-        text, provider, model = await llm_service.complete(system_prompt=sales_system_prompt(session), user_prompt=llm_prompt, reason="nanoclaw_fallback")
-        text = sanitize_text(text)
+    provider = "nanoclaw"
+    model = "nanoclaw-runtime"
+    answer = ""
 
-    session.add(
-        ChatMessage(
-            session_id=chat_session.id,
-            role="assistant",
-            text=text,
-            reason="qualified_offer",
-            provider=provider,
-            model_used=model,
+    try:
+        nano_response = await nanoclaw.chat(message=text, context=context)
+        answer = sanitize_text(nano_response.get("text", ""))
+        provider = nano_response.get("provider", provider)
+        model = nano_response.get("model", model)
+    except NanoClawAdapterError as exc:
+        LOGGER.warning("NanoClaw unavailable, fallback to backend LLM: %s", exc)
+        llm_prompt = (
+            f"История:\n{history}\n\n"
+            f"Собранный лид: товар={state.product}, класс={state.grade}, объем={state.volume_tons}, "
+            f"регион={state.region}, срок={state.delivery_term}, контакт={state.contact}.\n"
+            "Дай короткий ответ менеджера в живом стиле и с понятным следующим шагом."
         )
+        try:
+            answer, provider, model = await llm_service.complete(
+                system_prompt=sales_system_prompt(session),
+                user_prompt=llm_prompt,
+                reason="nanoclaw_unavailable_fallback",
+            )
+            answer = sanitize_text(answer)
+        except LLMUnavailableError as llm_exc:
+            LOGGER.error("LLM unavailable: %s", llm_exc)
+            provider = "service-unavailable"
+            model = "none"
+            answer = "Сейчас сервис перегружен. Оставьте контакт, менеджер перезвонит и закрепит условия."
+
+    if not answer:
+        answer = "Принял. Передаю менеджеру, он закрепит цену и логистику."
+
+    state = mark_handoff(session, state, provider=provider, model=model)
+    save_assistant_message(
+        session=session,
+        session_id=session_id,
+        text=answer,
+        reason="offer_or_handoff",
+        provider=provider,
+        model=model,
     )
     session.commit()
+
     return {
-        "session_id": chat_session.id,
+        "session_id": session_id,
         "done": True,
-        "text": text,
+        "text": answer,
         "provider": provider,
         "model": model,
         "state": state.state,
@@ -266,133 +378,188 @@ def startup() -> None:
     init_db()
     with Session(engine) as session:
         seed_defaults(session)
+    LOGGER.info("Startup completed")
 
 
 @app.on_event("shutdown")
 async def shutdown() -> None:
     await llm_service.close()
     await nanoclaw.close()
+    LOGGER.info("Shutdown completed")
 
 
 @app.get("/api/health")
-def health() -> dict:
-    return {"status": "ok", "time": datetime.utcnow().isoformat(), "agent_engine": "nanoclaw"}
+def health(session: Session = Depends(get_session)) -> dict[str, Any]:
+    try:
+        session.exec(select(CompanyProfile)).first()
+        db_ok = True
+    except Exception:
+        db_ok = False
+    return {
+        "status": "ok" if db_ok else "error",
+        "time": datetime.utcnow().isoformat(),
+        "agent_engine": "nanoclaw",
+        "db_ok": db_ok,
+    }
 
 
 @app.get("/api/llm/status")
-def llm_status() -> dict:
+def llm_status() -> dict[str, Any]:
     return llm_service.status()
 
 
 @app.post("/api/chat")
-async def chat(payload: ChatIn, session: Session = Depends(get_session)):
-    if not (payload.text or "").strip():
-        raise HTTPException(status_code=400, detail="text is required")
+async def chat(payload: ChatIn, session: Session = Depends(get_session)) -> dict[str, Any]:
     return await process_chat(session=session, payload=payload)
 
 
 @app.post("/api/chat/stream")
-async def chat_stream(payload: ChatIn, session: Session = Depends(get_session)):
+async def chat_stream(payload: ChatIn, session: Session = Depends(get_session)) -> StreamingResponse:
     result = await process_chat(session=session, payload=payload)
 
-    def gen():
+    def generator():
         yield json.dumps({"session_id": result["session_id"], "token": result["text"], "done": True}) + "\n"
 
-    return StreamingResponse(gen(), media_type="application/x-ndjson")
+    return StreamingResponse(generator(), media_type="application/x-ndjson")
 
 
 @app.post("/api/chat/dry-run")
-async def chat_dry_run(payload: ChatDryRunIn, session: Session = Depends(get_session)):
+async def chat_dry_run(payload: ChatDryRunIn, session: Session = Depends(get_session)) -> dict[str, Any]:
     text = (payload.text or "").strip()
     if not text:
         raise HTTPException(status_code=400, detail="text is required")
+
     guard = evaluate_guardrails(text)
     if not guard.allowed:
-        return {"done": True, "provider": "guardrails", "model": "rule-based", "text": guard.answer}
+        return {
+            "done": True,
+            "provider": "guardrails",
+            "model": "rule-based",
+            "text": guard.answer,
+            "reason": guard.reason,
+        }
 
-    system_prompt = sales_system_prompt(session)
-    response, provider, model = await llm_service.complete(system_prompt=system_prompt, user_prompt=f"Клиент: {text}", reason="dry-run")
-    return {"done": True, "provider": provider, "model": model, "text": sanitize_text(response)}
+    try:
+        answer, provider, model = await llm_service.complete(
+            system_prompt=sales_system_prompt(session),
+            user_prompt=f"Клиент: {text}",
+            reason="dry-run",
+        )
+    except LLMUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    return {"done": True, "provider": provider, "model": model, "text": sanitize_text(answer)}
 
 
 @app.post("/api/nanoclaw/agent/chat")
-async def nanoclaw_agent_chat(payload: NanoClawAgentIn, session: Session = Depends(get_session)):
+async def nanoclaw_agent_chat(payload: NanoClawAgentIn, session: Session = Depends(get_session)) -> dict[str, Any]:
     text = (payload.text or "").strip()
     if not text:
         raise HTTPException(status_code=400, detail="text is required")
 
     guard = evaluate_guardrails(text)
     if not guard.allowed:
-        return {"done": True, "provider": "guardrails", "model": "rule-based", "text": guard.answer}
+        return {
+            "done": True,
+            "provider": "guardrails",
+            "model": "rule-based",
+            "text": guard.answer,
+            "reason": guard.reason,
+        }
 
-    llm_input = f"Контекст от NanoClaw: {payload.context}\nЗапрос: {text}\nДай короткий ответ продажника по зерну."
-    text_out, provider, model = await llm_service.complete(
-        system_prompt=sales_system_prompt(session),
-        user_prompt=llm_input,
-        reason="nanoclaw-adapter",
+    if isinstance(payload.context, dict):
+        context_text = json.dumps(payload.context, ensure_ascii=False)
+    else:
+        context_text = payload.context or ""
+
+    llm_input = (
+        "Контекст от NanoClaw:\n"
+        f"{context_text}\n\n"
+        f"Запрос клиента: {text}\n"
+        "Сформируй короткий человеческий ответ для B2B клиента, без фантазий и с четким следующим шагом."
     )
-    return {"done": True, "provider": provider, "model": model, "text": sanitize_text(text_out)}
+
+    try:
+        answer, provider, model = await llm_service.complete(
+            system_prompt=sales_system_prompt(session),
+            user_prompt=llm_input,
+            reason="nanoclaw-adapter",
+        )
+    except LLMUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    return {
+        "done": True,
+        "provider": provider,
+        "model": model,
+        "text": sanitize_text(answer),
+    }
 
 
 @app.post("/api/picoclaw/agent/chat")
-async def picoclaw_compat(payload: NanoClawAgentIn, session: Session = Depends(get_session)):
-    result = await nanoclaw_agent_chat(payload=payload, session=session)
-    result["deprecated"] = True
-    return result
+async def picoclaw_compat(payload: NanoClawAgentIn, session: Session = Depends(get_session)) -> dict[str, Any]:
+    response = await nanoclaw_agent_chat(payload=payload, session=session)
+    response["deprecated"] = True
+    response["migration"] = "use /api/nanoclaw/agent/chat"
+    return response
 
 
 @app.post("/api/admin/login")
-def admin_login(payload: LoginIn):
+def admin_login(payload: LoginIn) -> dict[str, str]:
     if payload.username != ADMIN_USER or payload.password != ADMIN_PASS:
         raise HTTPException(status_code=401, detail="Bad credentials")
     return {"token": ADMIN_TOKEN}
 
 
 @app.get("/api/public/bootstrap")
-def bootstrap(session: Session = Depends(get_session)):
+def bootstrap(session: Session = Depends(get_session)) -> dict[str, Any]:
+    products = session.exec(select(ProductItem).where(ProductItem.active == True).order_by(ProductItem.stock_tons)).all()
     return {
         "company": session.exec(select(CompanyProfile)).first(),
         "scenarios": session.exec(select(Scenario).where(Scenario.active == True)).all(),
-        "products": session.exec(select(ProductItem).where(ProductItem.active == True).order_by(ProductItem.stock_tons.desc())).all()[:8],
+        "products": list(reversed(products))[:8],
         "llm": llm_service.status(),
     }
 
 
 @app.get("/api/admin/stats")
-def admin_stats(_: None = Depends(require_admin), session: Session = Depends(get_session)):
+def admin_stats(_: None = Depends(require_admin), session: Session = Depends(get_session)) -> dict[str, Any]:
     sessions = session.exec(select(ChatSession)).all()
     messages = session.exec(select(ChatMessage)).all()
-    leads_total = len(session.exec(select(Lead)).all())
-    leads_new = len(session.exec(select(Lead).where(Lead.status == "new")).all())
+    leads = session.exec(select(Lead)).all()
     states = session.exec(select(ConversationState)).all()
+
     return {
         "sessions": len(sessions),
         "messages": len(messages),
-        "leads_total": leads_total,
-        "leads_new": leads_new,
+        "leads_total": len(leads),
+        "leads_new": len([lead for lead in leads if lead.status == "new"]),
         "state_machine": {
             "total": len(states),
-            "qualified": len([s for s in states if s.state == "qualified"]),
-            "stopped_toxic": len([s for s in states if s.state == "stopped_toxic"]),
+            "greeting": len([state for state in states if state.state == "greeting"]),
+            "qualification": len([state for state in states if state.state == "qualification"]),
+            "handoff": len([state for state in states if state.state == "handoff"]),
+            "stopped_toxic": len([state for state in states if state.state == "stopped_toxic"]),
         },
         "llm_usage": llm_service.status(),
     }
 
 
 @app.get("/api/admin/chats")
-def admin_chats(_: None = Depends(require_admin), session: Session = Depends(get_session), limit: int = 120):
-    msgs = session.exec(select(ChatMessage).order_by(ChatMessage.created_at.desc())).all()[:limit]
-    return list(reversed(msgs))
+def admin_chats(_: None = Depends(require_admin), session: Session = Depends(get_session), limit: int = 120) -> list[ChatMessage]:
+    messages = session.exec(select(ChatMessage).order_by(ChatMessage.created_at)).all()
+    return messages[-limit:]
 
 
 @app.get("/api/admin/leads")
-def get_leads(_: None = Depends(require_admin), session: Session = Depends(get_session), limit: int = 200):
-    return session.exec(select(Lead).order_by(Lead.updated_at.desc())).all()[:limit]
+def get_leads(_: None = Depends(require_admin), session: Session = Depends(get_session), limit: int = 200) -> list[Lead]:
+    leads = session.exec(select(Lead).order_by(Lead.updated_at)).all()
+    return list(reversed(leads))[:limit]
 
 
 @app.post("/api/admin/leads")
-def post_lead(payload: LeadIn, _: None = Depends(require_admin), session: Session = Depends(get_session)):
-    lead = Lead(**payload.model_dump(), created_at=datetime.utcnow(), updated_at=datetime.utcnow())
+def post_lead(payload: LeadIn, _: None = Depends(require_admin), session: Session = Depends(get_session)) -> Lead:
+    lead = Lead(**payload.model_dump(), created_at=_now(), updated_at=_now())
     session.add(lead)
     session.commit()
     session.refresh(lead)
@@ -400,50 +567,51 @@ def post_lead(payload: LeadIn, _: None = Depends(require_admin), session: Sessio
 
 
 @app.put("/api/admin/leads/{lead_id}")
-def put_lead(lead_id: int, payload: LeadIn, _: None = Depends(require_admin), session: Session = Depends(get_session)):
+def put_lead(lead_id: int, payload: LeadIn, _: None = Depends(require_admin), session: Session = Depends(get_session)) -> dict[str, bool]:
     lead = session.get(Lead, lead_id)
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
-    for k, v in payload.model_dump().items():
-        setattr(lead, k, v)
-    lead.updated_at = datetime.utcnow()
+
+    for field_name, value in payload.model_dump().items():
+        setattr(lead, field_name, value)
+    lead.updated_at = _now()
     session.add(lead)
     session.commit()
     return {"ok": True}
 
 
 @app.get("/api/admin/products")
-def get_products(_: None = Depends(require_admin), session: Session = Depends(get_session)):
-    return session.exec(select(ProductItem).order_by(ProductItem.updated_at.desc())).all()
+def get_products(_: None = Depends(require_admin), session: Session = Depends(get_session)) -> list[ProductItem]:
+    return session.exec(select(ProductItem).order_by(ProductItem.updated_at)).all()
 
 
 @app.put("/api/admin/products")
-def put_products(items: list[ProductIn], _: None = Depends(require_admin), session: Session = Depends(get_session)):
-    old = session.exec(select(ProductItem)).all()
-    for p in old:
-        session.delete(p)
+def put_products(items: list[ProductIn], _: None = Depends(require_admin), session: Session = Depends(get_session)) -> dict[str, bool]:
+    for product in session.exec(select(ProductItem)).all():
+        session.delete(product)
     session.commit()
-    for i in items:
-        session.add(ProductItem(**i.model_dump(), updated_at=datetime.utcnow()))
+
+    for item in items:
+        session.add(ProductItem(**item.model_dump(), updated_at=_now()))
     session.commit()
     return {"ok": True}
 
 
 @app.get("/api/admin/prompts")
-def get_prompts(_: None = Depends(require_admin), session: Session = Depends(get_session)):
+def get_prompts(_: None = Depends(require_admin), session: Session = Depends(get_session)) -> list[PromptCategory]:
     return session.exec(select(PromptCategory)).all()
 
 
 @app.put("/api/admin/prompts")
-def put_prompts(items: list[PromptIn], _: None = Depends(require_admin), session: Session = Depends(get_session)):
-    existing = {p.key: p for p in session.exec(select(PromptCategory)).all()}
+def put_prompts(items: list[PromptIn], _: None = Depends(require_admin), session: Session = Depends(get_session)) -> dict[str, bool]:
+    existing = {prompt.key: prompt for prompt in session.exec(select(PromptCategory)).all()}
     for item in items:
         if item.key in existing:
-            p = existing[item.key]
-            p.title = item.title
-            p.content = item.content
-            p.updated_at = datetime.utcnow()
-            session.add(p)
+            prompt = existing[item.key]
+            prompt.title = item.title
+            prompt.content = item.content
+            prompt.updated_at = _now()
+            session.add(prompt)
         else:
             session.add(PromptCategory(key=item.key, title=item.title, content=item.content))
     session.commit()
@@ -451,41 +619,46 @@ def put_prompts(items: list[PromptIn], _: None = Depends(require_admin), session
 
 
 @app.get("/api/admin/company")
-def get_company(_: None = Depends(require_admin), session: Session = Depends(get_session)):
+def get_company(_: None = Depends(require_admin), session: Session = Depends(get_session)) -> Optional[CompanyProfile]:
     return session.exec(select(CompanyProfile)).first()
 
 
 @app.put("/api/admin/company")
-def put_company(payload: CompanyIn, _: None = Depends(require_admin), session: Session = Depends(get_session)):
+def put_company(payload: CompanyIn, _: None = Depends(require_admin), session: Session = Depends(get_session)) -> dict[str, bool]:
     company = session.exec(select(CompanyProfile)).first()
     if not company:
         company = CompanyProfile(**payload.model_dump())
     else:
-        for k, v in payload.model_dump().items():
-            setattr(company, k, v)
+        for field_name, value in payload.model_dump().items():
+            setattr(company, field_name, value)
     session.add(company)
     session.commit()
     return {"ok": True}
 
 
 @app.get("/api/admin/scenarios")
-def get_scenarios(_: None = Depends(require_admin), session: Session = Depends(get_session)):
+def get_scenarios(_: None = Depends(require_admin), session: Session = Depends(get_session)) -> list[Scenario]:
     return session.exec(select(Scenario)).all()
 
 
 @app.put("/api/admin/scenarios")
-def put_scenarios(items: list[ScenarioIn], _: None = Depends(require_admin), session: Session = Depends(get_session)):
-    old = session.exec(select(Scenario)).all()
-    for s in old:
-        session.delete(s)
+def put_scenarios(items: list[ScenarioIn], _: None = Depends(require_admin), session: Session = Depends(get_session)) -> dict[str, bool]:
+    for scenario in session.exec(select(Scenario)).all():
+        session.delete(scenario)
     session.commit()
-    for i in items:
-        session.add(Scenario(**i.model_dump()))
+
+    for item in items:
+        session.add(Scenario(**item.model_dump()))
     session.commit()
     return {"ok": True}
 
 
 @app.get("/api/admin/scenario-templates")
-def get_scenario_templates(_: None = Depends(require_admin), session: Session = Depends(get_session)):
+def get_scenario_templates(_: None = Depends(require_admin), session: Session = Depends(get_session)) -> list[ScenarioTemplate]:
     return session.exec(select(ScenarioTemplate).where(ScenarioTemplate.active == True)).all()
 
+
+@app.post("/api/admin/scenario-templates/reset-defaults")
+def reset_templates(_: None = Depends(require_admin), session: Session = Depends(get_session)) -> dict[str, bool]:
+    reset_default_scenario_templates(session)
+    return {"ok": True}

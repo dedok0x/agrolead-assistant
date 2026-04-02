@@ -19,17 +19,9 @@ services:
         ]
       interval: 10s
       timeout: 5s
-      retries: 10
-
-  ollama:
-    image: ollama/ollama:latest
-    container_name: agrolead-ollama
-    restart: unless-stopped
-    profiles: ["ollama"]
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama_data:/root/.ollama
+      retries: 15
+    networks:
+      - agrolead
 
   api:
     build:
@@ -44,10 +36,21 @@ services:
       ADMIN_USER: ${ADMIN_USER:-admin}
       ADMIN_PASS: ${ADMIN_PASS:-315920}
       ADMIN_TOKEN: ${ADMIN_TOKEN:-agrolead-admin-token}
-      NANOCLAW_BASE_URL: ${NANOCLAW_BASE_URL:-http://nanoclaw:8788}
+      SALES_STYLE: ${SALES_STYLE:-kuban-direct}
+      TOXIC_STRICT_MODE: ${TOXIC_STRICT_MODE:-1}
+
+      # NanoClaw transport
+      NANOCLAW_BASE_URL: ${NANOCLAW_BASE_URL:-http://nanoclaw-agent:8788}
+      NANOCLAW_AGENT_CHAT_PATH: ${NANOCLAW_AGENT_CHAT_PATH:-/agent/chat}
       NANOCLAW_TIMEOUT_SECONDS: ${NANOCLAW_TIMEOUT_SECONDS:-45}
+
+      # LLM strategy
       LLM_PROVIDER: ${LLM_PROVIDER:-auto}
       LLM_REQUEST_TIMEOUT_SECONDS: ${LLM_REQUEST_TIMEOUT_SECONDS:-45}
+
+      # GigaChat credentials
+      GIGACHAT_CLIENT_ID: ${GIGACHAT_CLIENT_ID:-}
+      GIGACHAT_CLIENT_SECRET: ${GIGACHAT_CLIENT_SECRET:-}
       GIGACHAT_AUTH_KEY: ${GIGACHAT_AUTH_KEY:-}
       GIGACHAT_SCOPE: ${GIGACHAT_SCOPE:-GIGACHAT_API_PERS}
       GIGACHAT_OAUTH_URL: ${GIGACHAT_OAUTH_URL:-https://gigachat.devices.sberbank.ru/api/v2/oauth}
@@ -55,17 +58,17 @@ services:
       GIGACHAT_MODEL: ${GIGACHAT_MODEL:-GigaChat-Max}
       GIGACHAT_VERIFY_SSL: ${GIGACHAT_VERIFY_SSL:-1}
       GIGACHAT_TOKEN_REFRESH_SECONDS: ${GIGACHAT_TOKEN_REFRESH_SECONDS:-1500}
+
+      # Ollama fallback
+      OLLAMA_FALLBACK_ENABLED: ${OLLAMA_FALLBACK_ENABLED:-0}
       OLLAMA_BASE: ${OLLAMA_BASE:-http://ollama:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:72b-instruct}
       OLLAMA_NUM_CTX: ${OLLAMA_NUM_CTX:-16384}
       OLLAMA_NUM_PREDICT: ${OLLAMA_NUM_PREDICT:-220}
       OLLAMA_TEMPERATURE: ${OLLAMA_TEMPERATURE:-0.15}
-      SALES_STYLE: ${SALES_STYLE:-kuban-direct}
     depends_on:
       db:
         condition: service_healthy
-      nanoclaw:
-        condition: service_started
     volumes:
       - app_data:/data
     healthcheck:
@@ -78,11 +81,13 @@ services:
         ]
       interval: 20s
       timeout: 5s
-      retries: 8
+      retries: 10
+    networks:
+      - agrolead
 
-  nanoclaw:
+  nanoclaw-agent:
     image: ${NANOCLAW_IMAGE:-ghcr.io/qwibitai/nanoclaw:latest}
-    container_name: agrolead-nanoclaw
+    container_name: agrolead-nanoclaw-agent
     restart: unless-stopped
     ports:
       - "8788:8788"
@@ -91,25 +96,45 @@ services:
       NANOCLAW_LOG_LEVEL: ${NANOCLAW_LOG_LEVEL:-info}
       NANOCLAW_SANDBOX_MODE: container
       NANOCLAW_HTTP_ADAPTER_URL: ${NANOCLAW_HTTP_ADAPTER_URL:-http://api:8000/api/nanoclaw/agent/chat}
+      NANOCLAW_DEFAULT_PROVIDER: ${NANOCLAW_DEFAULT_PROVIDER:-gigachat}
+    depends_on:
+      api:
+        condition: service_started
     security_opt:
       - no-new-privileges:true
     cap_drop:
       - ALL
     read_only: true
     tmpfs:
-      - /tmp
+      - /tmp:size=64m,noexec,nosuid
+      - /var/run:size=16m,noexec,nosuid
+    pids_limit: 256
+    mem_limit: 512m
+    cpus: 1.0
     volumes:
       - nanoclaw_data:/var/lib/nanoclaw
+    networks:
+      - agrolead
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: agrolead-ollama
+    restart: unless-stopped
+    profiles:
+      - ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - agrolead
 
   webui:
-    image: nginx:alpine
+    image: nginx:1.27-alpine
     container_name: agrolead-webui
     restart: unless-stopped
     ports:
       - "80:80"
-      - "443:443"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     depends_on:
       api:
         condition: service_healthy
@@ -117,10 +142,15 @@ services:
       - ./web/index.html:/usr/share/nginx/html/index.html:ro
       - ./web/admin.html:/usr/share/nginx/html/admin.html:ro
       - ./web/nginx.conf:/etc/nginx/conf.d/default.conf:ro
-      - ./ssl:/etc/nginx/ssl:ro
+    networks:
+      - agrolead
 
 volumes:
   app_data:
   pg_data:
   ollama_data:
   nanoclaw_data:
+
+networks:
+  agrolead:
+    driver: bridge

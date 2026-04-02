@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlmodel import SQLModel, Field
+from sqlmodel import Field, SQLModel
 
 
 class CompanyProfile(SQLModel, table=True):
@@ -29,37 +29,55 @@ class Scenario(SQLModel, table=True):
     active: bool = True
 
 
+class ScenarioTemplate(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    title: str
+    goal: str
+    starter_message: str
+    active: bool = True
+
+
 class ChatSession(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     client_id: str = Field(index=True)
+    last_state: str = Field(default="greeting", index=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 class ChatMessage(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     session_id: int = Field(index=True)
-    role: str
+    role: str = Field(index=True)
     text: str
     blocked: bool = False
     reason: str = ""
     provider: str = ""
     model_used: str = ""
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
 
 
 class ConversationState(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     session_id: int = Field(index=True, unique=True)
+
+    # greeting -> qualification -> offer -> handoff | stopped_toxic
     state: str = Field(default="greeting", index=True)
-    last_intent: str = ""
-    toxicity_level: int = 0
     last_question: str = ""
+    missing_fields: str = ""
+    toxicity_level: int = 0
+
+    # Captured lead data
     product: str = ""
     grade: str = ""
     volume_tons: str = ""
     region: str = ""
     delivery_term: str = ""
     contact: str = ""
+
+    # Diagnostics
+    last_provider: str = ""
+    last_model: str = ""
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
@@ -93,12 +111,3 @@ class Lead(SQLModel, table=True):
     comment: str = ""
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
-
-
-class ScenarioTemplate(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
-    title: str
-    goal: str
-    starter_message: str
-    active: bool = True
-

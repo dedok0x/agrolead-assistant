@@ -1,64 +1,89 @@
 import json
 import os
+import pathlib
+import sys
 import unittest
+from unittest.mock import AsyncMock
 
 os.environ.setdefault("DATABASE_URL", "sqlite:///./test_chat_stream.db")
-os.environ.setdefault("OLLAMA_BASE", "http://127.0.0.1:11434")
-os.environ.setdefault("NANOCLAW_BASE_URL", "http://127.0.0.1:8788")
+os.environ.setdefault("TOXIC_STRICT_MODE", "1")
+os.environ.setdefault("LLM_PROVIDER", "auto")
+os.environ.setdefault("OLLAMA_FALLBACK_ENABLED", "0")
+
+BACKEND_ROOT = pathlib.Path(__file__).resolve().parents[1]
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
 
 from fastapi.testclient import TestClient
 
-from app.main import app
+from app.main import app, llm_service, nanoclaw
 
 
 class ChatStreamCases(unittest.TestCase):
     def setUp(self) -> None:
         self.client = TestClient(app)
 
+        self._orig_llm_complete = llm_service.complete
+        self._orig_nanoclaw_chat = nanoclaw.chat
+
+        llm_service.complete = AsyncMock(return_value=("Прайс актуальный, передаю менеджеру.", "gigachat", "GigaChat-Max"))
+        nanoclaw.chat = AsyncMock(
+            return_value={
+                "text": "Собрал параметры, передаю менеджеру на закрепление условий.",
+                "provider": "gigachat",
+                "model": "GigaChat-Max",
+            }
+        )
+
+    def tearDown(self) -> None:
+        llm_service.complete = self._orig_llm_complete
+        nanoclaw.chat = self._orig_nanoclaw_chat
+
     def test_chat_stream_returns_done(self):
-        resp = self.client.post(
+        response = self.client.post(
             "/api/chat/stream",
             json={"text": "Привет", "client_id": "test-stream"},
             headers={"accept": "application/x-ndjson"},
         )
-        self.assertEqual(resp.status_code, 200)
-        lines = [x for x in resp.text.splitlines() if x.strip()]
+        self.assertEqual(response.status_code, 200)
+        lines = [line for line in response.text.splitlines() if line.strip()]
         self.assertTrue(lines)
         payload = json.loads(lines[-1])
         self.assertTrue(payload.get("done"))
+        self.assertIn("session_id", payload)
 
     def test_toxic_message_hard_stop(self):
-        resp = self.client.post("/api/chat", json={"text": "иди нахуй", "client_id": "test-toxic"})
-        self.assertEqual(resp.status_code, 200)
-        data = resp.json()
-        self.assertEqual(data.get("provider"), "guardrails")
-        self.assertTrue(data.get("done"))
+        response = self.client.post("/api/chat", json={"text": "иди на хуй", "client_id": "test-toxic"})
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload.get("provider"), "guardrails")
+        self.assertEqual(payload.get("state"), "stopped_toxic")
 
-    def test_dry_run_shape(self):
-        resp = self.client.post("/api/chat/dry-run", json={"text": "Нужна пшеница 3 класс"})
-        self.assertEqual(resp.status_code, 200)
-        data = resp.json()
-        self.assertIn("provider", data)
-        self.assertIn("text", data)
+    def test_dry_run_uses_llm(self):
+        response = self.client.post("/api/chat/dry-run", json={"text": "Нужна пшеница 3 класс"})
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload.get("provider"), "gigachat")
+        self.assertIn("text", payload)
 
-    def test_llm_status_has_real_provider_fields(self):
-        resp = self.client.get("/api/llm/status")
-        self.assertEqual(resp.status_code, 200)
-        data = resp.json()
-        self.assertIn("last_provider", data)
-        self.assertIn("last_model", data)
+    def test_llm_status_has_provider_fields(self):
+        response = self.client.get("/api/llm/status")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertIn("preferred_provider", payload)
+        self.assertIn("last_provider", payload)
+        self.assertIn("last_model", payload)
 
     def test_nanoclaw_adapter_shape(self):
-        resp = self.client.post(
+        response = self.client.post(
             "/api/nanoclaw/agent/chat",
-            json={"text": "Нужен прайс по пшенице", "context": "smoke"},
+            json={"text": "Нужен прайс по пшенице", "context": {"source": "smoke"}},
         )
-        self.assertEqual(resp.status_code, 200)
-        data = resp.json()
-        self.assertTrue(data.get("done"))
-        self.assertIn("provider", data)
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload.get("done"))
+        self.assertEqual(payload.get("provider"), "gigachat")
 
 
 if __name__ == "__main__":
     unittest.main()
-

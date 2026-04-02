@@ -36,6 +36,7 @@ deploy/logs/
 *.db
 tmp/
 temp/
+.tmp/
 
 # Build / artifacts
 dist/

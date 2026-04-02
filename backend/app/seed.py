@@ -1,7 +1,6 @@
 from sqlmodel import Session, select
 
-from .models import CompanyProfile, PromptCategory, Scenario, ProductItem, ScenarioTemplate
-
+from .models import CompanyProfile, ProductItem, PromptCategory, Scenario, ScenarioTemplate
 
 DEFAULT_CONTACTS = """КОММЕРЧЕСКИЙ ОТДЕЛ:
 Бондаренко Николай Николаевич — +7 (861) 992 13 61 (доб. 105), bondarenko@petrokhlebkuban.ru
@@ -25,26 +24,61 @@ DEFAULT_CONTACTS = """КОММЕРЧЕСКИЙ ОТДЕЛ:
 """
 
 
+def default_scenario_templates() -> list[ScenarioTemplate]:
+    return [
+        ScenarioTemplate(
+            title="Квалификация по цене и наличию",
+            goal="Собрать товар, класс, объем, регион поставки и срок отгрузки",
+            starter_message="Подскажите, какую культуру и класс вы рассматриваете, и какой объем нужен в тоннах?",
+        ),
+        ScenarioTemplate(
+            title="Логистика и срок поставки",
+            goal="Уточнить направление, транспорт, дату и контакт для расчета",
+            starter_message="Уточните регион доставки, срок и желаемый транспорт: авто, ж/д или вода.",
+        ),
+        ScenarioTemplate(
+            title="Фиксация контакта",
+            goal="Получить контакт и передать менеджеру",
+            starter_message="Оставьте телефон или email, чтобы менеджер закрепил цену и условия.",
+        ),
+        ScenarioTemplate(
+            title="Возражение по цене",
+            goal="Сохранить интерес и перевести клиента в заявку",
+            starter_message="Подберем вариант по объему и базису. Какой диапазон цены вам сейчас нужен?",
+        ),
+    ]
+
+
+def reset_default_scenario_templates(session: Session) -> None:
+    for template in session.exec(select(ScenarioTemplate)).all():
+        session.delete(template)
+    session.commit()
+
+    for template in default_scenario_templates():
+        session.add(template)
+    session.commit()
+
+
 def seed_defaults(session: Session) -> None:
     profile = session.exec(select(CompanyProfile)).first()
     if not profile:
         session.add(
             CompanyProfile(
                 name='ООО "Петрохлеб-Кубань"',
-                address='350063 Краснодарский край, г. Краснодар, ул. Октябрьская, д. 8, 2 этаж',
-                phones='+7 861 992 13 61, +7 861 992 13 63',
-                email='mail@petrokhlebkuban.ru',
-                services='Закупка, Логистика, Хранение, Продажа, Внешнеэкономическая деятельность',
+                address="350063 Краснодарский край, г. Краснодар, ул. Октябрьская, д. 8, 2 этаж",
+                phones="+7 861 992 13 61, +7 861 992 13 63",
+                email="mail@petrokhlebkuban.ru",
+                services="Закупка, логистика, хранение, продажа, ВЭД",
                 contacts_markdown=DEFAULT_CONTACTS,
             )
         )
 
     prompt_defaults = {
-        "identity": "Ты — клиентский ассистент ООО «Петрохлеб-Кубань». Твоя роль: быстро и по-человечески доводить клиента до квалифицированной заявки.",
-        "scope": "Только зерновая тематика: пшеница, ячмень, кукуруза, классы качества, объем, регион, срок, логистика, оформление заявки.",
-        "safety": "Если мат/токсичность: короткий ответ без вежливой квалификации. Если кибер/вред — жёсткий отказ и возврат к теме зерна.",
-        "style": "Стиль: живой, прямой, кубанский. Без канцелярщины. Ответы короткие и по делу, без выдуманных фактов.",
-        "lead_capture": "Собирай строго по state-machine: товар → класс → объем → регион → срок → контакт.",
+        "identity": "Ты клиентский ассистент ООО «Петрохлеб-Кубань». Задача: довести клиента до квалифицированного лида.",
+        "scope": "Работаешь только в теме зернового трейдинга: культура, класс, объем, регион, срок, контакт.",
+        "safety": "При токсичности отвечай коротко и останавливай диалог. При кибер-запросах жесткий отказ.",
+        "style": "Стиль живой, по-кубански, без канцелярщины. Не выдумывай цены и остатки.",
+        "lead_capture": "State-machine: greeting -> qualification -> offer -> handoff. В каждом ходе только один следующий вопрос.",
     }
     for key, content in prompt_defaults.items():
         exists = session.exec(select(PromptCategory).where(PromptCategory.key == key)).first()
@@ -54,50 +88,71 @@ def seed_defaults(session: Session) -> None:
     if not session.exec(select(Scenario)).first():
         session.add_all(
             [
-                Scenario(title='Кто вы и чем занимаетесь?', description='Короткое представление компании и ролей ассистента.'),
-                Scenario(title='Какие товары в наличии?', description='Перечень номенклатуры + уточнение класса/объема.'),
-                Scenario(title='Какая цена и минимальный объем?', description='Диапазон цены + запрос параметров сделки.'),
-                Scenario(title='Какой срок и способ доставки?', description='Логистика: авто/жд/вода + сроки.'),
-                Scenario(title='Как оформить заявку?', description='Запрос контактов и передача менеджеру.'),
+                Scenario(title="Кто вы и чем занимаетесь?", description="Коротко про компанию и формат работы."),
+                Scenario(title="Какие товары в наличии?", description="Прайс + уточнение класса и объема."),
+                Scenario(title="Какая цена и минимальный объем?", description="Диапазон цены + сбор параметров сделки."),
+                Scenario(title="Какой срок и способ доставки?", description="Логистика: авто/жд/вода + сроки."),
+                Scenario(title="Как оформить заявку?", description="Сбор контакта и передача менеджеру."),
             ]
         )
 
     if not session.exec(select(ProductItem)).first():
         session.add_all(
             [
-                ProductItem(name='Пшеница 3 класс, продовольственная', culture='Пшеница', grade='3 класс', price_from=15000, price_to=17200, stock_tons=4200, quality='Клейковина 23-25%, натура от 760', location='Краснодарский край'),
-                ProductItem(name='Пшеница 4 класс, фуражная', culture='Пшеница', grade='4 класс', price_from=13600, price_to=14900, stock_tons=6100, quality='Протеин 10.5-11.5%', location='Краснодарский край'),
-                ProductItem(name='Ячмень кормовой', culture='Ячмень', grade='Кормовой', price_from=12100, price_to=13400, stock_tons=2800, quality='Влажность до 14.5%', location='Ростовская область'),
-                ProductItem(name='Кукуруза 3 класс', culture='Кукуруза', grade='3 класс', price_from=12800, price_to=14100, stock_tons=3500, quality='Влажность до 14%, сорная примесь до 2%', location='Ставропольский край'),
-                ProductItem(name='Кукуруза фуражная', culture='Кукуруза', grade='Фуражная', price_from=11600, price_to=12900, stock_tons=2400, quality='Базис по ГОСТ', location='Краснодарский край'),
+                ProductItem(
+                    name="Пшеница 3 класс, продовольственная",
+                    culture="Пшеница",
+                    grade="3 класс",
+                    price_from=15000,
+                    price_to=17200,
+                    stock_tons=4200,
+                    quality="Клейковина 23-25%, натура от 760",
+                    location="Краснодарский край",
+                ),
+                ProductItem(
+                    name="Пшеница 4 класс, фуражная",
+                    culture="Пшеница",
+                    grade="4 класс",
+                    price_from=13600,
+                    price_to=14900,
+                    stock_tons=6100,
+                    quality="Протеин 10.5-11.5%",
+                    location="Краснодарский край",
+                ),
+                ProductItem(
+                    name="Ячмень кормовой",
+                    culture="Ячмень",
+                    grade="Кормовой",
+                    price_from=12100,
+                    price_to=13400,
+                    stock_tons=2800,
+                    quality="Влажность до 14.5%",
+                    location="Ростовская область",
+                ),
+                ProductItem(
+                    name="Кукуруза 3 класс",
+                    culture="Кукуруза",
+                    grade="3 класс",
+                    price_from=12800,
+                    price_to=14100,
+                    stock_tons=3500,
+                    quality="Влажность до 14%, сорная примесь до 2%",
+                    location="Ставропольский край",
+                ),
+                ProductItem(
+                    name="Кукуруза фуражная",
+                    culture="Кукуруза",
+                    grade="Фуражная",
+                    price_from=11600,
+                    price_to=12900,
+                    stock_tons=2400,
+                    quality="Базис по ГОСТ",
+                    location="Краснодарский край",
+                ),
             ]
         )
 
     if not session.exec(select(ScenarioTemplate)).first():
-        session.add_all(
-            [
-                ScenarioTemplate(
-                    title='Квалификация по цене и наличию',
-                    goal='Собрать товар, класс, объем, регион поставки и срок отгрузки',
-                    starter_message='Подскажите, пожалуйста, какую культуру и класс вы рассматриваете, а также ориентировочный объем в тоннах?'
-                ),
-                ScenarioTemplate(
-                    title='Логистика и срок поставки',
-                    goal='Уточнить направление, транспорт, дату и контакт для просчета',
-                    starter_message='Уточните регион доставки, желаемый срок и предпочтительный способ перевозки (авто/жд/вода).'
-                ),
-                ScenarioTemplate(
-                    title='Формализация заявки',
-                    goal='Получить контакт и передать лид менеджеру',
-                    starter_message='Чтобы передать заявку менеджеру, оставьте контакт: имя, телефон или email.'
-                ),
-                ScenarioTemplate(
-                    title='Возражение по цене',
-                    goal='Сохранить интерес и перевести в заявку с альтернативными условиями',
-                    starter_message='Можем предложить варианты по объему, базису и сроку оплаты. Уточните, какой диапазон цены вам комфортен?'
-                ),
-            ]
-        )
+        session.add_all(default_scenario_templates())
 
     session.commit()
-
