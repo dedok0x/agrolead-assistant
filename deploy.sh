@@ -9,6 +9,7 @@ ENV_EXAMPLE_PLAIN="$ROOT_DIR/env.example"
 LOG_DIR="${TMPDIR:-/tmp}/agrolead-deploy-logs"
 mkdir -p "$LOG_DIR"
 LOG_FILE="$LOG_DIR/deploy_$(date +%Y%m%d_%H%M%S).log"
+ENV_BACKUP_FILE="${TMPDIR:-/tmp}/agrolead-env-backup-$$.env"
 
 exec > >(tee -a "$LOG_FILE") 2>&1
 
@@ -189,7 +190,6 @@ step "Проверка окружения"
 require_cmd git
 require_cmd docker
 require_cmd curl
-require_cmd npm
 docker compose version >/dev/null 2>&1 || die "Docker Compose plugin не найден"
 
 if command -v python3 >/dev/null 2>&1; then
@@ -204,6 +204,11 @@ ok "Окружение готово"
 cd "$ROOT_DIR"
 
 step "Жесткий wipe старого окружения"
+if [[ -f "$ENV_FILE" ]]; then
+  cp "$ENV_FILE" "$ENV_BACKUP_FILE"
+  ok "Сделан временный backup .env"
+fi
+
 docker compose -f "$COMPOSE_FILE" down -v --rmi all --remove-orphans || true
 
 for old_container in agrolead-picoclaw picoclaw agrolead-nanoclaw agrolead-nanoclaw-agent agrolead-ollama; do
@@ -243,6 +248,12 @@ git clean -fdx
 ok "Репозиторий очищен и синхронизирован"
 
 step "Подготовка .env"
+if [[ -f "$ENV_BACKUP_FILE" ]]; then
+  cp "$ENV_BACKUP_FILE" "$ENV_FILE"
+  rm -f "$ENV_BACKUP_FILE"
+  ok "Восстановлен .env из backup"
+fi
+
 if [[ ! -f "$ENV_FILE" ]]; then
   if [[ -f "$ENV_EXAMPLE_DOT" ]]; then
     cp "$ENV_EXAMPLE_DOT" "$ENV_FILE"
@@ -260,7 +271,7 @@ ADMIN_PASS=315920
 ADMIN_TOKEN=agrolead-admin-token
 SALES_STYLE=kuban-direct
 TOXIC_STRICT_MODE=1
-NANOCLAW_IMAGE=ghcr.io/qwibitai/nanoclaw:latest
+NANOCLAW_IMAGE=agrolead/nanoclaw-agent:local
 NANOCLAW_BASE_URL=http://nanoclaw-agent:8788
 NANOCLAW_AGENT_CHAT_PATH=/agent/chat
 NANOCLAW_HTTP_ADAPTER_URL=http://api:8000/api/nanoclaw/agent/chat
@@ -302,19 +313,21 @@ OLLAMA_FALLBACK_ENABLED="$(sanitize_bool "$(env_or_default "OLLAMA_FALLBACK_ENAB
 ok ".env готов"
 
 step "Установка Python зависимостей"
+if ! "$PYTHON_BIN" -m pip --version >/dev/null 2>&1; then
+  warn "pip не найден. Пытаюсь установить python3-pip"
+  if command -v apt-get >/dev/null 2>&1; then
+    apt-get update -y && apt-get install -y python3-pip || die "Не удалось установить python3-pip"
+  else
+    die "pip отсутствует и apt-get недоступен. Установите python3-pip вручную"
+  fi
+fi
+
 "$PYTHON_BIN" -m pip install --upgrade pip
 "$PYTHON_BIN" -m pip install -r "$ROOT_DIR/backend/requirements.txt"
 ok "Python зависимости установлены"
 
 step "Подготовка NanoClaw runtime"
-NANO_TMP="$ROOT_DIR/.tmp/nanoclaw-agent"
-mkdir -p "$NANO_TMP"
-if [[ ! -f "$NANO_TMP/package.json" ]]; then
-  npm init -y --prefix "$NANO_TMP" >/dev/null 2>&1
-fi
-npm install --prefix "$NANO_TMP" @qwibitai/nanoclaw@latest
-npx --yes --prefix "$NANO_TMP" @qwibitai/nanoclaw@latest setup --non-interactive
-ok "NanoClaw runtime готов"
+ok "Используется локальный контейнер nanoclaw-agent (без npm setup)"
 
 step "Полная пересборка контейнеров"
 COMPOSE_ARGS=(-f "$COMPOSE_FILE")

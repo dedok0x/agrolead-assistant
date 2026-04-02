@@ -86,7 +86,9 @@ services:
       - agrolead
 
   nanoclaw-agent:
-    image: ${NANOCLAW_IMAGE:-ghcr.io/qwibitai/nanoclaw:latest}
+    build:
+      context: ./nanoclaw-agent
+    image: ${NANOCLAW_IMAGE:-agrolead/nanoclaw-agent:local}
     container_name: agrolead-nanoclaw-agent
     restart: unless-stopped
     ports:
