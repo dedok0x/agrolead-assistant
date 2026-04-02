@@ -164,6 +164,15 @@ curl http://localhost:8000/api/llm/status
 - Убедись, что `OLLAMA_FALLBACK_ENABLED=1` только когда нужен fallback.
 - Если fallback не нужен — поставь `OLLAMA_FALLBACK_ENABLED=0`.
 
+### 5) GigaChat SSL certificate verify failed
+
+Симптом: в логах API есть `CERTIFICATE_VERIFY_FAILED`, dry-run падает 503.
+
+Решение:
+
+- `deploy.sh` теперь автоматически переключает `GIGACHAT_VERIFY_SSL=0` и перезапускает API при такой ошибке.
+- Если запускаешь вручную, выстави в `.env`: `GIGACHAT_VERIFY_SSL=0`.
+
 ## Полезные ссылки после деплоя
 
 - Чат: `http://localhost:80`

@@ -390,7 +390,36 @@ if not payload.get("gigachat_ready"):
 print("LLM status ok | preferred=gigachat")
 PY
 
-DRY_RUN_JSON="$(curl -fsS -H "Content-Type: application/json" -d '{"text":"Нужна пшеница 3 класс 120 тонн в Краснодар"}' "$API_BASE/api/chat/dry-run")"
+DRY_RUN_REQUEST='{"text":"Нужна пшеница 3 класс 120 тонн в Краснодар"}'
+DRY_RUN_RESPONSE_FILE="$LOG_DIR/dry_run_response.json"
+
+run_dry_run_check() {
+  curl -sS -o "$DRY_RUN_RESPONSE_FILE" -w "%{http_code}" \
+    -H "Content-Type: application/json" \
+    -d "$DRY_RUN_REQUEST" \
+    "$API_BASE/api/chat/dry-run" || true
+}
+
+DRY_RUN_HTTP_CODE="$(run_dry_run_check)"
+if [[ "$DRY_RUN_HTTP_CODE" != "200" ]]; then
+  DRY_RUN_ERROR_BODY="$(tr -d '\n' <"$DRY_RUN_RESPONSE_FILE" 2>/dev/null || true)"
+  CURRENT_VERIFY_SSL="$(env_or_default "GIGACHAT_VERIFY_SSL" "1")"
+
+  if [[ "$DRY_RUN_ERROR_BODY" == *"CERTIFICATE_VERIFY_FAILED"* && "$CURRENT_VERIFY_SSL" != "0" ]]; then
+    warn "Обнаружена SSL-ошибка GigaChat. Включаю fallback GIGACHAT_VERIFY_SSL=0 и перезапускаю API"
+    upsert_env_var "GIGACHAT_VERIFY_SSL" "0"
+    docker compose "${COMPOSE_ARGS[@]}" up -d --force-recreate api nanoclaw-agent
+    wait_http "$API_BASE/api/health" 60 2 || die "API не поднялся после переключения GIGACHAT_VERIFY_SSL=0"
+    DRY_RUN_HTTP_CODE="$(run_dry_run_check)"
+  fi
+fi
+
+if [[ "$DRY_RUN_HTTP_CODE" != "200" ]]; then
+  DRY_RUN_ERROR_BODY="$(tr -d '\n' <"$DRY_RUN_RESPONSE_FILE" 2>/dev/null || true)"
+  die "dry-run check не пройден (HTTP ${DRY_RUN_HTTP_CODE}): ${DRY_RUN_ERROR_BODY}"
+fi
+
+DRY_RUN_JSON="$(cat "$DRY_RUN_RESPONSE_FILE")"
 "$PYTHON_BIN" - "$DRY_RUN_JSON" <<'PY'
 import json
 import sys
