@@ -24,7 +24,7 @@ if command -v docker >/dev/null 2>&1; then
   fi
 
   echo "[2/7] Удаление контейнеров проекта"
-  for c in agrolead-db agrolead-api agrolead-webui agrolead-ollama agrolead-ollama-init agrolead-nanoclaw-agent; do
+  for c in agrolead-db agrolead-api agrolead-webui; do
     docker rm -f "$c" >/dev/null 2>&1 || true
   done
 
@@ -35,8 +35,6 @@ if command -v docker >/dev/null 2>&1; then
     (
       docker volume ls -q --filter "name=agrolead-assistant" || true
       docker volume ls -q --filter "name=agrolead" || true
-      docker volume ls -q --filter "name=nanoclaw" || true
-      docker volume ls -q --filter "name=ollama" || true
     ) | sort -u
   )
 
@@ -46,7 +44,7 @@ if command -v docker >/dev/null 2>&1; then
   done < <(
     docker image ls --format "{{.Repository}}:{{.Tag}}" | while IFS= read -r row; do
       case "$row" in
-        agrolead/*|agrolead-assistant*|*agrolead*api*|*agrolead*webui*|*nanoclaw-agent*)
+        agrolead/*|agrolead-assistant*|*agrolead*api*|*agrolead*webui*)
           echo "$row"
           ;;
       esac

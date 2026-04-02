@@ -20,6 +20,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 15
+    mem_limit: 768m
+    cpus: 0.35
     networks:
       - agrolead
 
@@ -39,29 +41,21 @@ services:
       SALES_STYLE: ${SALES_STYLE:-kuban-direct}
       TOXIC_STRICT_MODE: ${TOXIC_STRICT_MODE:-1}
 
-      # NanoClaw transport
-      NANOCLAW_BASE_URL: ${NANOCLAW_BASE_URL:-http://nanoclaw-agent:8788}
-      NANOCLAW_AGENT_CHAT_PATH: ${NANOCLAW_AGENT_CHAT_PATH:-/agent/chat}
-      NANOCLAW_TIMEOUT_SECONDS: ${NANOCLAW_TIMEOUT_SECONDS:-45}
+      LLM_PROVIDER: ${LLM_PROVIDER:-gigachat}
+      LLM_REQUEST_TIMEOUT_SECONDS: ${LLM_REQUEST_TIMEOUT_SECONDS:-5}
+      LLM_MAX_RETRIES: ${LLM_MAX_RETRIES:-1}
+      LLM_TEMPLATE_FALLBACK_ENABLED: ${LLM_TEMPLATE_FALLBACK_ENABLED:-1}
+      LLM_REWRITE_ENABLED: ${LLM_REWRITE_ENABLED:-1}
 
-      # LLM strategy
-      LLM_PROVIDER: ${LLM_PROVIDER:-ollama}
-      LLM_REQUEST_TIMEOUT_SECONDS: ${LLM_REQUEST_TIMEOUT_SECONDS:-45}
-
-      # Ollama fallback
-      OLLAMA_FALLBACK_ENABLED: ${OLLAMA_FALLBACK_ENABLED:-1}
-      OLLAMA_BASE: ${OLLAMA_BASE:-http://ollama:11434}
-      OLLAMA_MODEL: ${OLLAMA_MODEL:-tinyllama}
-      OLLAMA_NUM_CTX: ${OLLAMA_NUM_CTX:-512}
-      OLLAMA_NUM_PREDICT: ${OLLAMA_NUM_PREDICT:-96}
-      OLLAMA_TEMPERATURE: ${OLLAMA_TEMPERATURE:-0.15}
+      GIGACHAT_AUTH_KEY: ${GIGACHAT_AUTH_KEY:-}
+      GIGACHAT_SCOPE: ${GIGACHAT_SCOPE:-GIGACHAT_API_PERS}
+      GIGACHAT_AUTH_URL: ${GIGACHAT_AUTH_URL:-https://gigachat.devices.sberbank.ru/api/v2/oauth}
+      GIGACHAT_API_BASE_URL: ${GIGACHAT_API_BASE_URL:-https://gigachat.devices.sberbank.ru/api/v1}
+      GIGACHAT_MODEL: ${GIGACHAT_MODEL:-GigaChat-2}
+      GIGACHAT_VERIFY_SSL: ${GIGACHAT_VERIFY_SSL:-1}
     depends_on:
       db:
         condition: service_healthy
-      ollama:
-        condition: service_started
-      ollama-init:
-        condition: service_completed_successfully
     volumes:
       - app_data:/data
     healthcheck:
@@ -75,75 +69,8 @@ services:
       interval: 20s
       timeout: 5s
       retries: 10
-    networks:
-      - agrolead
-
-  nanoclaw-agent:
-    build:
-      context: ./nanoclaw-agent
-    image: ${NANOCLAW_IMAGE:-agrolead/nanoclaw-agent:local}
-    container_name: agrolead-nanoclaw-agent
-    restart: unless-stopped
-    ports:
-      - "8788:8788"
-    environment:
-      NANOCLAW_PORT: 8788
-      NANOCLAW_LOG_LEVEL: ${NANOCLAW_LOG_LEVEL:-info}
-      NANOCLAW_SANDBOX_MODE: container
-      NANOCLAW_HTTP_ADAPTER_URL: ${NANOCLAW_HTTP_ADAPTER_URL:-http://api:8000/api/nanoclaw/agent/chat}
-      NANOCLAW_DEFAULT_PROVIDER: ${NANOCLAW_DEFAULT_PROVIDER:-ollama}
-    depends_on:
-      api:
-        condition: service_started
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    read_only: true
-    tmpfs:
-      - /tmp:size=64m,noexec,nosuid
-      - /var/run:size=16m,noexec,nosuid
-    pids_limit: 256
-    mem_limit: 512m
-    cpus: 1.0
-    volumes:
-      - nanoclaw_data:/var/lib/nanoclaw
-    networks:
-      - agrolead
-
-  ollama:
-    image: ollama/ollama:latest
-    container_name: agrolead-ollama
-    restart: unless-stopped
-    environment:
-      OLLAMA_NUM_PARALLEL: 1
-      OLLAMA_MAX_LOADED_MODELS: 1
-      OLLAMA_KEEP_ALIVE: 10m
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama_data:/root/.ollama
-    healthcheck:
-      test: ["CMD", "ollama", "list"]
-      interval: 15s
-      timeout: 10s
-      retries: 20
-    networks:
-      - agrolead
-
-  ollama-init:
-    image: ollama/ollama:latest
-    container_name: agrolead-ollama-init
-    restart: "no"
-    depends_on:
-      ollama:
-        condition: service_healthy
-    environment:
-      OLLAMA_HOST: http://ollama:11434
-      OLLAMA_MODEL: ${OLLAMA_MODEL:-tinyllama}
-    command: ["pull", "${OLLAMA_MODEL:-tinyllama}"]
-    volumes:
-      - ollama_data:/root/.ollama
+    mem_limit: 768m
+    cpus: 0.55
     networks:
       - agrolead
 
@@ -158,14 +85,14 @@ services:
     depends_on:
       api:
         condition: service_healthy
+    mem_limit: 128m
+    cpus: 0.10
     networks:
       - agrolead
 
 volumes:
   app_data:
   pg_data:
-  ollama_data:
-  nanoclaw_data:
 
 networks:
   agrolead:

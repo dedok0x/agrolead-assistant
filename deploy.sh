@@ -9,7 +9,11 @@ ENV_EXAMPLE_PLAIN="$ROOT_DIR/env.example"
 LOG_DIR="${TMPDIR:-/tmp}/agrolead-deploy-logs"
 mkdir -p "$LOG_DIR"
 LOG_FILE="$LOG_DIR/deploy_$(date +%Y%m%d_%H%M%S).log"
-ENV_BACKUP_FILE="${TMPDIR:-/tmp}/agrolead-env-backup-$$.env"
+LAST_RESPONSE_FILE="$LOG_DIR/last_response.json"
+
+LAST_REQUEST_DESC=""
+LAST_REQUEST_BODY=""
+LAST_HTTP_CODE=""
 
 exec > >(tee -a "$LOG_FILE") 2>&1
 
@@ -60,14 +64,6 @@ wait_http() {
   return 1
 }
 
-sanitize_bool() {
-  local value="${1:-0}"
-  case "${value,,}" in
-  1 | true | yes | on) echo "1" ;;
-  *) echo "0" ;;
-  esac
-}
-
 show_service_logs() {
   local service="$1"
   local lines="${2:-50}"
@@ -84,16 +80,32 @@ show_service_logs() {
 
 show_all_logs() {
   local lines="${1:-100}"
-  local services=(db api nanoclaw-agent webui ollama)
+  local services=(db api webui)
   local service
   for service in "${services[@]}"; do
     show_service_logs "$service" "$lines"
   done
 }
 
+show_last_request() {
+  if [[ -z "$LAST_REQUEST_DESC" ]]; then
+    return
+  fi
+  echo "----- failing request -----"
+  echo "description: $LAST_REQUEST_DESC"
+  echo "http_code: ${LAST_HTTP_CODE:-n/a}"
+  echo "request_body: ${LAST_REQUEST_BODY:-n/a}"
+  if [[ -f "$LAST_RESPONSE_FILE" ]]; then
+    echo "response_body:"
+    cat "$LAST_RESPONSE_FILE" || true
+  fi
+  echo "---------------------------"
+}
+
 die() {
   printf "%b[ERROR]%b %s\n" "$RED" "$NC" "$1"
-  show_all_logs 100
+  show_last_request
+  show_all_logs 120
   echo "Полный лог деплоя: $LOG_FILE"
   exit 1
 }
@@ -102,8 +114,10 @@ on_error() {
   local code=$?
   local line="${BASH_LINENO[0]:-unknown}"
   local command="${BASH_COMMAND:-unknown}"
+  trap - ERR
   printf "%b[ERROR]%b Сбой на строке %s: %s\n" "$RED" "$NC" "$line" "$command"
-  show_all_logs 100
+  show_last_request
+  show_all_logs 120
   echo "Полный лог деплоя: $LOG_FILE"
   exit "$code"
 }
@@ -186,8 +200,35 @@ prompt_secret_if_empty() {
   upsert_env_var "$key" "$input"
 }
 
+request_json() {
+  local description="$1"
+  local url="$2"
+  local body="$3"
+
+  LAST_REQUEST_DESC="$description"
+  LAST_REQUEST_BODY="$body"
+  LAST_HTTP_CODE="$(curl -sS -o "$LAST_RESPONSE_FILE" -w "%{http_code}" \
+    -H "Content-Type: application/json" \
+    -d "$body" \
+    "$url" || true)"
+}
+
+request_get() {
+  local description="$1"
+  local url="$2"
+  local header_name="${3:-}"
+  local header_value="${4:-}"
+
+  LAST_REQUEST_DESC="$description"
+  LAST_REQUEST_BODY="(GET)"
+  if [[ -n "$header_name" ]]; then
+    LAST_HTTP_CODE="$(curl -sS -o "$LAST_RESPONSE_FILE" -w "%{http_code}" -H "$header_name: $header_value" "$url" || true)"
+  else
+    LAST_HTTP_CODE="$(curl -sS -o "$LAST_RESPONSE_FILE" -w "%{http_code}" "$url" || true)"
+  fi
+}
+
 step "Проверка окружения"
-require_cmd git
 require_cmd docker
 require_cmd curl
 docker compose version >/dev/null 2>&1 || die "Docker Compose plugin не найден"
@@ -203,364 +244,169 @@ ok "Окружение готово"
 
 cd "$ROOT_DIR"
 
-step "Жесткий wipe старого окружения"
-if [[ -f "$ENV_FILE" ]]; then
-  cp "$ENV_FILE" "$ENV_BACKUP_FILE"
-  ok "Сделан временный backup .env"
-fi
-
-docker compose -f "$COMPOSE_FILE" down -v --rmi all --remove-orphans || true
-
-for old_container in agrolead-picoclaw picoclaw agrolead-nanoclaw agrolead-nanoclaw-agent agrolead-ollama; do
-  docker rm -f "$old_container" >/dev/null 2>&1 || true
-done
-
-for old_image in ghcr.io/sipeed/picoclaw:latest ghcr.io/qwibitai/nanoclaw:old; do
-  docker image rm "$old_image" >/dev/null 2>&1 || true
-done
-
-while IFS= read -r volume_name; do
-  [[ -n "$volume_name" ]] && docker volume rm -f "$volume_name" >/dev/null 2>&1 || true
-done < <(
-  (
-    docker volume ls -q --filter "name=agrolead" || true
-    docker volume ls -q --filter "name=picoclaw" || true
-    docker volume ls -q --filter "name=nanoclaw" || true
-  ) | sort -u
-)
-
-rm -rf \
-  "$ROOT_DIR/picoclaw" \
-  "$ROOT_DIR/picoclaw-agent" \
-  "$ROOT_DIR/.picoclaw" \
-  "$ROOT_DIR/.nanoclaw" \
-  "$ROOT_DIR/.tmp/nanoclaw-runtime" \
-  "$ROOT_DIR/.tmp/nanoclaw-agent" \
-  "$ROOT_DIR/data/picoclaw" \
-  "$ROOT_DIR/data/nanoclaw" \
-  "$ROOT_DIR/config/picoclaw-config.json" || true
-ok "Старые артефакты удалены"
-
-step "Синхронизация с git"
-git fetch --all --prune
-
-CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo main)"
-if [[ "$CURRENT_BRANCH" == "HEAD" || -z "$CURRENT_BRANCH" ]]; then
-  CURRENT_BRANCH="main"
-fi
-
-TARGET_REF="origin/$CURRENT_BRANCH"
-if ! git show-ref --verify --quiet "refs/remotes/$TARGET_REF"; then
-  warn "Удаленная ветка $TARGET_REF не найдена, fallback на origin/main"
-  TARGET_REF="origin/main"
-fi
-
-step "Синхронизация с $TARGET_REF"
-git reset --hard "$TARGET_REF"
-git clean -fdx
-ok "Репозиторий очищен и синхронизирован с $TARGET_REF"
-
 step "Подготовка .env"
-if [[ -f "$ENV_BACKUP_FILE" ]]; then
-  cp "$ENV_BACKUP_FILE" "$ENV_FILE"
-  rm -f "$ENV_BACKUP_FILE"
-  ok "Восстановлен .env из backup"
-fi
-
 if [[ ! -f "$ENV_FILE" ]]; then
   if [[ -f "$ENV_EXAMPLE_DOT" ]]; then
     cp "$ENV_EXAMPLE_DOT" "$ENV_FILE"
   elif [[ -f "$ENV_EXAMPLE_PLAIN" ]]; then
     cp "$ENV_EXAMPLE_PLAIN" "$ENV_FILE"
   else
-    cat >"$ENV_FILE" <<'EOF'
-TZ=Europe/Moscow
-POSTGRES_DB=agrolead
-POSTGRES_USER=agrolead
-POSTGRES_PASSWORD=agrolead123
-DATABASE_URL=postgresql+psycopg://agrolead:agrolead123@db:5432/agrolead
-ADMIN_USER=admin
-ADMIN_PASS=315920
-ADMIN_TOKEN=agrolead-admin-token
-SALES_STYLE=kuban-direct
-TOXIC_STRICT_MODE=1
-NANOCLAW_IMAGE=agrolead/nanoclaw-agent:local
-NANOCLAW_BASE_URL=http://nanoclaw-agent:8788
-NANOCLAW_AGENT_CHAT_PATH=/agent/chat
-NANOCLAW_HTTP_ADAPTER_URL=http://api:8000/api/nanoclaw/agent/chat
-NANOCLAW_TIMEOUT_SECONDS=45
-NANOCLAW_LOG_LEVEL=info
-NANOCLAW_DEFAULT_PROVIDER=ollama
-LLM_PROVIDER=ollama
-LLM_REQUEST_TIMEOUT_SECONDS=45
-OLLAMA_FALLBACK_ENABLED=1
-OLLAMA_BASE=http://ollama:11434
-OLLAMA_MODEL=tinyllama
-OLLAMA_NUM_CTX=512
-OLLAMA_NUM_PREDICT=96
-OLLAMA_TEMPERATURE=0.15
-EOF
+    die "Не найден шаблон env (.env.example или env.example)"
   fi
 fi
 
-LLM_PROVIDER_VALUE="$(env_or_default "LLM_PROVIDER" "ollama")"
+LLM_PROVIDER_VALUE="$(env_or_default "LLM_PROVIDER" "gigachat")"
 LLM_PROVIDER_VALUE="${LLM_PROVIDER_VALUE,,}"
-if [[ "$LLM_PROVIDER_VALUE" != "ollama" ]]; then
-  warn "Поддерживается только локальный провайдер Ollama. Принудительно ставлю LLM_PROVIDER=ollama"
-  LLM_PROVIDER_VALUE="ollama"
+if [[ "$LLM_PROVIDER_VALUE" != "gigachat" && "$LLM_PROVIDER_VALUE" != "template" ]]; then
+  warn "Неподдерживаемый LLM_PROVIDER=$LLM_PROVIDER_VALUE. Принудительно ставлю gigachat"
+  LLM_PROVIDER_VALUE="gigachat"
 fi
-upsert_env_var "LLM_PROVIDER" "ollama"
-upsert_env_var "NANOCLAW_DEFAULT_PROVIDER" "ollama"
+upsert_env_var "LLM_PROVIDER" "$LLM_PROVIDER_VALUE"
+upsert_env_var "LLM_REQUEST_TIMEOUT_SECONDS" "5"
+upsert_env_var "LLM_MAX_RETRIES" "1"
+upsert_env_var "LLM_TEMPLATE_FALLBACK_ENABLED" "1"
 
-upsert_env_var "NANOCLAW_BASE_URL" "http://nanoclaw-agent:8788"
-upsert_env_var "NANOCLAW_AGENT_CHAT_PATH" "/agent/chat"
-upsert_env_var "NANOCLAW_HTTP_ADAPTER_URL" "http://api:8000/api/nanoclaw/agent/chat"
-
-upsert_env_var "OLLAMA_FALLBACK_ENABLED" "1"
-upsert_env_var "OLLAMA_MODEL" "tinyllama"
-upsert_env_var "OLLAMA_NUM_CTX" "512"
-upsert_env_var "OLLAMA_NUM_PREDICT" "96"
-
-OLLAMA_FALLBACK_ENABLED="$(sanitize_bool "$(env_or_default "OLLAMA_FALLBACK_ENABLED" "0")")"
-OLLAMA_MODEL_VALUE="$(env_or_default "OLLAMA_MODEL" "tinyllama")"
+if [[ "$LLM_PROVIDER_VALUE" == "gigachat" ]]; then
+  prompt_secret_if_empty "GIGACHAT_AUTH_KEY" "Введите GIGACHAT_AUTH_KEY (без 'Basic ')" "1"
+  upsert_env_var "GIGACHAT_SCOPE" "$(env_or_default "GIGACHAT_SCOPE" "GIGACHAT_API_PERS")"
+  upsert_env_var "GIGACHAT_AUTH_URL" "$(env_or_default "GIGACHAT_AUTH_URL" "https://gigachat.devices.sberbank.ru/api/v2/oauth")"
+  upsert_env_var "GIGACHAT_API_BASE_URL" "$(env_or_default "GIGACHAT_API_BASE_URL" "https://gigachat.devices.sberbank.ru/api/v1")"
+  upsert_env_var "GIGACHAT_MODEL" "$(env_or_default "GIGACHAT_MODEL" "GigaChat-2")"
+fi
 ok ".env готов"
 
-step "Проверка Python окружения"
-if ! "$PYTHON_BIN" - <<'PY' >/dev/null 2>&1
-import json
-PY
-then
-  die "Python работает некорректно"
-fi
-ok "Python доступен (локальный pip не требуется, зависимости ставятся в Docker)"
-
-step "Подготовка NanoClaw runtime"
-ok "Используется локальный контейнер nanoclaw-agent (без npm setup)"
-
-step "Полная пересборка контейнеров"
-COMPOSE_ARGS=(-f "$COMPOSE_FILE")
-
-docker compose "${COMPOSE_ARGS[@]}" build --no-cache --pull
-docker compose "${COMPOSE_ARGS[@]}" up -d --force-recreate --remove-orphans
+step "Пересборка и запуск контейнеров"
+docker compose -f "$COMPOSE_FILE" down -v --remove-orphans || true
+docker compose -f "$COMPOSE_FILE" build --no-cache --pull
+docker compose -f "$COMPOSE_FILE" up -d --force-recreate --remove-orphans
 ok "Сервисы подняты"
 
-step "Health & Integration Checks"
+step "Health checks"
 API_BASE="http://127.0.0.1:8000"
 WEB_BASE="http://127.0.0.1"
 
 wait_http "$API_BASE/api/health" 90 2 || die "API не поднялся: /api/health"
-HEALTH_JSON="$(curl -fsS "$API_BASE/api/health")"
+request_get "GET /api/health" "$API_BASE/api/health"
+[[ "$LAST_HTTP_CODE" == "200" ]] || die "/api/health вернул HTTP ${LAST_HTTP_CODE}"
+
+HEALTH_JSON="$(cat "$LAST_RESPONSE_FILE")"
 "$PYTHON_BIN" - "$HEALTH_JSON" <<'PY'
 import json
 import sys
 
 payload = json.loads(sys.argv[1])
 if payload.get("status") != "ok":
-    raise SystemExit("/api/health вернул не ok")
-print(f"API health ok | agent_engine={payload.get('agent_engine')}")
+    raise SystemExit(f"/api/health вернул не ok: {payload}")
+if payload.get("agent_engine") != "single-agent-orchestrator":
+    raise SystemExit(f"ожидался single-agent-orchestrator, получили {payload.get('agent_engine')}")
+print("/api/health ok")
 PY
-show_service_logs api 50
+ok "API health ok"
 
-POSTGRES_USER_VALUE="$(env_or_default "POSTGRES_USER" "agrolead")"
-POSTGRES_DB_VALUE="$(env_or_default "POSTGRES_DB" "agrolead")"
-docker compose "${COMPOSE_ARGS[@]}" exec -T db pg_isready -U "$POSTGRES_USER_VALUE" -d "$POSTGRES_DB_VALUE" >/dev/null
-ok "PostgreSQL доступен"
-show_service_logs db 50
-
-if [[ "$OLLAMA_FALLBACK_ENABLED" == "1" || "$LLM_PROVIDER_VALUE" == "ollama" ]]; then
-  wait_http "http://127.0.0.1:11434/api/tags" 90 2 || die "Ollama не поднялся: /api/tags"
-  step "Загрузка модели Ollama: $OLLAMA_MODEL_VALUE"
-  docker compose -f "$COMPOSE_FILE" exec -T ollama ollama pull "$OLLAMA_MODEL_VALUE" >/dev/null || die "Не удалось загрузить модель Ollama: $OLLAMA_MODEL_VALUE"
-  ok "Модель Ollama готова"
-fi
-
-LLM_STATUS_JSON="$(curl -fsS "$API_BASE/api/llm/status")"
-"$PYTHON_BIN" - "$LLM_STATUS_JSON" <<'PY'
-import json
-import sys
-
-payload = json.loads(sys.argv[1])
-preferred = payload.get("preferred_provider")
-if preferred is None:
-    raise SystemExit(f"/api/llm/status вернул старый или некорректный формат: {payload}")
-print(json.dumps(payload, ensure_ascii=False))
-PY
-
-LLM_STATUS_PROVIDER="$("$PYTHON_BIN" - "$LLM_STATUS_JSON" <<'PY'
-import json
-import sys
-payload = json.loads(sys.argv[1])
-print(payload.get("preferred_provider", ""))
-PY
-)"
-
-if [[ "$LLM_PROVIDER_VALUE" == "ollama" ]]; then
-  if [[ "$LLM_STATUS_PROVIDER" != "ollama" ]]; then
-    die "/api/llm/status: ожидался preferred_provider=ollama, получено: $LLM_STATUS_PROVIDER"
-  fi
-  ok "LLM status ok | preferred=ollama"
-else
-  ok "LLM status ok | preferred=$LLM_STATUS_PROVIDER"
-fi
-
+step "Smoke: dry-run"
 DRY_RUN_REQUEST='{"text":"Нужна пшеница 3 класс 120 тонн в Краснодар"}'
-DRY_RUN_RESPONSE_FILE="$LOG_DIR/dry_run_response.json"
+request_json "POST /api/chat/dry-run" "$API_BASE/api/chat/dry-run" "$DRY_RUN_REQUEST"
+[[ "$LAST_HTTP_CODE" == "200" ]] || die "dry-run check не пройден (HTTP ${LAST_HTTP_CODE})"
 
-run_dry_run_check() {
-  curl -sS -o "$DRY_RUN_RESPONSE_FILE" -w "%{http_code}" \
-    -H "Content-Type: application/json" \
-    -d "$DRY_RUN_REQUEST" \
-    "$API_BASE/api/chat/dry-run" || true
-}
-
-DRY_RUN_HTTP_CODE="$(run_dry_run_check)"
-if [[ "$DRY_RUN_HTTP_CODE" != "200" ]]; then
-  DRY_RUN_ERROR_BODY="$(tr -d '\n' <"$DRY_RUN_RESPONSE_FILE" 2>/dev/null || true)"
-  if [[ "$DRY_RUN_ERROR_BODY" == *"requires more system memory"* ]]; then
-    warn "Не хватает RAM для dry-run. Снижаю OLLAMA_NUM_CTX до 256 и OLLAMA_NUM_PREDICT до 64"
-    upsert_env_var "OLLAMA_NUM_CTX" "256"
-    upsert_env_var "OLLAMA_NUM_PREDICT" "64"
-    docker compose "${COMPOSE_ARGS[@]}" up -d --force-recreate api nanoclaw-agent
-    wait_http "$API_BASE/api/health" 60 2 || die "API не поднялся после снижения лимитов Ollama"
-    DRY_RUN_HTTP_CODE="$(run_dry_run_check)"
-  fi
-fi
-
-if [[ "$DRY_RUN_HTTP_CODE" != "200" ]]; then
-  DRY_RUN_ERROR_BODY="$(tr -d '\n' <"$DRY_RUN_RESPONSE_FILE" 2>/dev/null || true)"
-  die "dry-run check не пройден (HTTP ${DRY_RUN_HTTP_CODE}): ${DRY_RUN_ERROR_BODY}"
-fi
-
-DRY_RUN_JSON="$(cat "$DRY_RUN_RESPONSE_FILE")"
+DRY_RUN_JSON="$(cat "$LAST_RESPONSE_FILE")"
 "$PYTHON_BIN" - "$DRY_RUN_JSON" <<'PY'
 import json
 import sys
 
 payload = json.loads(sys.argv[1])
-provider = payload.get("provider")
-if provider != "ollama":
-    raise SystemExit(f"dry-run отработал через неожиданный provider: {provider}")
-if not payload.get("text"):
-    raise SystemExit("dry-run вернул пустой text")
-print(f"Dry-run ok | provider={provider} model={payload.get('model')}")
-PY
-
-if [[ "$("$PYTHON_BIN" - "$DRY_RUN_JSON" <<'PY'
-import json
-import sys
-payload = json.loads(sys.argv[1])
-print(payload.get("provider", ""))
-PY
-)" == "ollama" ]]; then
-  ok "dry-run прошел через Ollama"
-fi
-show_service_logs api 50
-
-NANO_JSON="$(curl -fsS -H "Content-Type: application/json" -d '{"text":"Дай короткий ответ по прайсу пшеницы","context":{"source":"deploy-smoke"}}' "$API_BASE/api/nanoclaw/agent/chat")"
-"$PYTHON_BIN" - "$NANO_JSON" <<'PY'
-import json
-import sys
-
-payload = json.loads(sys.argv[1])
 if not payload.get("done"):
-    raise SystemExit("/api/nanoclaw/agent/chat: done=false")
-if payload.get("provider") != "ollama":
-    raise SystemExit(f"неожиданный provider: {payload.get('provider')}")
+    raise SystemExit("dry-run: done=false")
 if not payload.get("text"):
-    raise SystemExit("/api/nanoclaw/agent/chat: пустой text")
-print(f"NanoClaw adapter ok | provider={payload.get('provider')} model={payload.get('model')}")
+    raise SystemExit("dry-run: пустой text")
+print(f"dry-run ok | provider={payload.get('provider')} model={payload.get('model')}")
 PY
-show_service_logs nanoclaw-agent 50
+ok "dry-run пройден"
 
-if [[ "$OLLAMA_FALLBACK_ENABLED" == "1" ]]; then
-  wait_http "http://127.0.0.1:11434/api/tags" 90 2 || die "Ollama fallback включен, но endpoint /api/tags недоступен"
-  OLLAMA_JSON="$(curl -fsS "http://127.0.0.1:11434/api/tags")"
-  "$PYTHON_BIN" - "$OLLAMA_JSON" <<'PY'
-import json
-import sys
+step "Smoke: lead creation"
+LEAD_1='{"text":"Интересует пшеница 3 класс","client_id":"smoke-lead","source_channel":"web"}'
+request_json "POST /api/chat #1" "$API_BASE/api/chat" "$LEAD_1"
+[[ "$LAST_HTTP_CODE" == "200" ]] || die "chat #1 не пройден (HTTP ${LAST_HTTP_CODE})"
 
-payload = json.loads(sys.argv[1])
-if "models" not in payload:
-    raise SystemExit("Ollama /api/tags не содержит models")
-print(f"Ollama ok | models={len(payload.get('models', []))}")
-PY
-  show_service_logs ollama 50
-else
-  warn "Проверка Ollama пропущена (fallback выключен)"
-fi
-
-SMOKE_1="$(curl -fsS -H "Content-Type: application/json" -d '{"text":"Нужна пшеница 3 класс 150 тонн","client_id":"smoke-lead-1"}' "$API_BASE/api/chat")"
-"$PYTHON_BIN" - "$SMOKE_1" <<'PY'
-import json
-import sys
-
-payload = json.loads(sys.argv[1])
-if payload.get("provider") != "state-machine":
-    raise SystemExit("Сценарий 1: ожидался provider=state-machine")
-if payload.get("state") not in {"qualification", "greeting"}:
-    raise SystemExit(f"Сценарий 1: неожиданный state={payload.get('state')}")
-print("Smoke #1 ok | обычный лид")
-PY
-
-SMOKE_TOXIC="$(curl -fsS -H "Content-Type: application/json" -d '{"text":"пошел нахуй","client_id":"smoke-toxic"}' "$API_BASE/api/chat")"
-"$PYTHON_BIN" - "$SMOKE_TOXIC" <<'PY'
-import json
-import sys
-
-payload = json.loads(sys.argv[1])
-if payload.get("provider") != "guardrails":
-    raise SystemExit("Сценарий 2: ожидался provider=guardrails")
-if payload.get("state") != "stopped_toxic":
-    raise SystemExit("Сценарий 2: ожидался state=stopped_toxic")
-print("Smoke #2 ok | токсичность")
-PY
-
-QUAL_1="$(curl -fsS -H "Content-Type: application/json" -d '{"text":"Интересует пшеница 3 класс, объем 200 тонн","client_id":"smoke-qual"}' "$API_BASE/api/chat")"
-QUAL_SESSION_ID="$("$PYTHON_BIN" - "$QUAL_1" <<'PY'
+CHAT_1_JSON="$(cat "$LAST_RESPONSE_FILE")"
+SESSION_ID="$($PYTHON_BIN - "$CHAT_1_JSON" <<'PY'
 import json
 import sys
 
 payload = json.loads(sys.argv[1])
 sid = payload.get("session_id")
 if not sid:
-    raise SystemExit("Сценарий 3: session_id не получен")
+    raise SystemExit("session_id не получен")
+if payload.get("state") != "qualification":
+    raise SystemExit(f"ожидался state=qualification, получено {payload.get('state')}")
 print(sid)
 PY
 )"
 
-curl -fsS -H "Content-Type: application/json" -d "{\"text\":\"Доставка в Краснодарский край, отгрузка завтра\",\"session_id\":${QUAL_SESSION_ID},\"client_id\":\"smoke-qual\"}" "$API_BASE/api/chat" >/dev/null
-QUAL_3="$(curl -fsS -H "Content-Type: application/json" -d "{\"text\":\"Контакт +7 900 123 45 67\",\"session_id\":${QUAL_SESSION_ID},\"client_id\":\"smoke-qual\"}" "$API_BASE/api/chat")"
+LEAD_2="{\"text\":\"Объем 200 тонн, доставка в Краснодарский край, отгрузка завтра\",\"session_id\":${SESSION_ID},\"client_id\":\"smoke-lead\",\"source_channel\":\"web\"}"
+request_json "POST /api/chat #2" "$API_BASE/api/chat" "$LEAD_2"
+[[ "$LAST_HTTP_CODE" == "200" ]] || die "chat #2 не пройден (HTTP ${LAST_HTTP_CODE})"
 
-"$PYTHON_BIN" - "$QUAL_3" <<'PY'
+LEAD_3="{\"text\":\"Контакт +7 900 123 45 67\",\"session_id\":${SESSION_ID},\"client_id\":\"smoke-lead\",\"source_channel\":\"web\"}"
+request_json "POST /api/chat #3" "$API_BASE/api/chat" "$LEAD_3"
+[[ "$LAST_HTTP_CODE" == "200" ]] || die "chat #3 не пройден (HTTP ${LAST_HTTP_CODE})"
+
+CHAT_3_JSON="$(cat "$LAST_RESPONSE_FILE")"
+"$PYTHON_BIN" - "$CHAT_3_JSON" <<'PY'
 import json
 import sys
 
 payload = json.loads(sys.argv[1])
-if payload.get("state") not in {"offer", "handoff"}:
-    raise SystemExit(f"Сценарий 3: ожидался state offer/handoff, получено {payload.get('state')}")
+if payload.get("state") != "handoff":
+    raise SystemExit(f"ожидался state=handoff, получено {payload.get('state')}")
 if not payload.get("text"):
-    raise SystemExit("Сценарий 3: пустой текст")
-print(f"Smoke #3 ok | квалификация state={payload.get('state')}")
+    raise SystemExit("ожидался непустой text")
+print("chat #3 ok | lead qualified")
 PY
 
-SMOKE_SECURITY="$(curl -fsS -H "Content-Type: application/json" -d '{"text":"Нужен ddos-ботнет","client_id":"smoke-security"}' "$API_BASE/api/chat")"
-"$PYTHON_BIN" - "$SMOKE_SECURITY" <<'PY'
+ADMIN_USER_VALUE="$(env_or_default "ADMIN_USER" "admin")"
+ADMIN_PASS_VALUE="$(env_or_default "ADMIN_PASS" "315920")"
+LOGIN_BODY="{\"username\":\"${ADMIN_USER_VALUE}\",\"password\":\"${ADMIN_PASS_VALUE}\"}"
+request_json "POST /api/admin/login" "$API_BASE/api/admin/login" "$LOGIN_BODY"
+[[ "$LAST_HTTP_CODE" == "200" ]] || die "admin login не пройден (HTTP ${LAST_HTTP_CODE})"
+LOGIN_JSON="$(cat "$LAST_RESPONSE_FILE")"
+ADMIN_TOKEN_VALUE="$($PYTHON_BIN - "$LOGIN_JSON" <<'PY'
 import json
 import sys
 
 payload = json.loads(sys.argv[1])
-if payload.get("provider") != "guardrails":
-    raise SystemExit("Сценарий 4: ожидался guardrails")
-print("Smoke #4 ok | security-block")
+token = payload.get("token")
+if not token:
+    raise SystemExit("admin token отсутствует")
+print(token)
 PY
+)"
 
-curl -fsS "$WEB_BASE/" >/dev/null
-curl -fsS "$WEB_BASE/admin" >/dev/null
-ok "Smoke-сценарии пройдены"
-show_service_logs webui 50
+request_get "GET /api/admin/leads" "$API_BASE/api/admin/leads?limit=100" "x-admin-token" "$ADMIN_TOKEN_VALUE"
+[[ "$LAST_HTTP_CODE" == "200" ]] || die "не удалось получить leads (HTTP ${LAST_HTTP_CODE})"
+LEADS_JSON="$(cat "$LAST_RESPONSE_FILE")"
+"$PYTHON_BIN" - "$LEADS_JSON" "$SESSION_ID" <<'PY'
+import json
+import sys
 
-step "Автотесты"
-docker compose "${COMPOSE_ARGS[@]}" exec -T api python -m unittest -v tests/test_chat_stream.py tests/test_integration_dialogue.py
+payload = json.loads(sys.argv[1])
+session_id = int(sys.argv[2])
+matched = [lead for lead in payload if lead.get("session_id") == session_id]
+if not matched:
+    raise SystemExit("lead не найден в БД")
+lead = matched[0]
+if lead.get("status") != "qualified":
+    raise SystemExit(f"lead status не qualified: {lead.get('status')}")
+print(f"lead stored ok | id={lead.get('id')} status={lead.get('status')}")
+PY
+ok "Lead-сценарий пройден"
+
+step "Проверка webui"
+wait_http "$WEB_BASE/" 60 2 || die "Web UI не поднялся: /"
+wait_http "$WEB_BASE/admin" 60 2 || die "Web UI не поднялся: /admin"
+ok "Web UI доступен"
+
+step "Автотесты backend"
+docker compose -f "$COMPOSE_FILE" exec -T api python -m unittest -v tests/test_chat_stream.py tests/test_integration_dialogue.py
 ok "Автотесты пройдены"
 
 echo ""
@@ -571,4 +417,4 @@ echo "Чат:      http://localhost:80"
 echo "Админка:  http://localhost:80/admin"
 echo "API docs: http://localhost:8000/docs"
 echo "Лог деплоя: $LOG_FILE"
-echo "Готово, можно работать"
+echo "Готово"

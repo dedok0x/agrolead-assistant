@@ -1,45 +1,42 @@
-# Архитектура v4: локальная LLM-платформа
+# Архитектура v5: single-agent orchestration
 
 ```mermaid
 flowchart TD
     U[Клиент] --> WEB[Nginx + Web UI]
     WEB --> API[FastAPI API]
     API --> DB[(PostgreSQL)]
-    API --> NANO[NanoClaw Agent]
-    NANO --> API
-    API --> OLLAMA[Ollama Runtime]
-    OLLAMA --> MODEL[Model: tinyllama]
+    API --> GC[GigaChat API]
 
     API --> GR[Guardrails]
-    API --> SM[State-machine]
-    API --> ADMIN[Admin API]
+    API --> ORCH[Single Agent Orchestrator]
+    ORCH --> LT[Lead Tool]
+    ORCH --> PT[Product Tool]
+    ORCH --> RT[Response Tool]
 ```
 
-## Текущие принципы
+## Принципы
 
-1. Только локальная модель, без внешних облачных LLM.
-2. NanoClaw работает отдельно и общается с backend по HTTP-адаптеру.
-3. Диалог управляется state-machine, чтобы исключить хаотичную квалификацию.
-4. Токсичность и security-запросы блокируются до вызова LLM.
+1. NanoClaw и Ollama полностью удалены из runtime-цепочки.
+2. Все бизнес-решения по лиду выполняются детерминированно в backend.
+3. LLM участвует только в двух задачах:
+   - свободные вопросы клиента;
+   - переписывание финального handoff-ответа.
+4. При ошибках LLM ответ формируется шаблонами (template fallback).
 
-## Поток запроса
+## Поток запроса `/api/chat`
 
-1. Сообщение приходит в `webui`.
-2. API проверяет guardrails и обновляет `ConversationState`.
-3. Если данные лида неполные — state-machine задает следующий вопрос.
-4. Если лид квалифицирован — API идет в `nanoclaw-agent`.
-5. `nanoclaw-agent` дергает backend-адаптер `/api/nanoclaw/agent/chat`.
-6. `LLMService` вызывает Ollama и возвращает ответ.
+1. Guardrails: блок токсичных и security запросов.
+2. `LeadTool` извлекает поля (regex + rules) и обновляет `ConversationState`.
+3. Если обязательные поля отсутствуют - задается детерминированный следующий вопрос.
+4. Если лид заполнен:
+   - сохраняется запись `Lead` (status=`qualified`);
+   - фиксируется `source_channel` и `raw_dialogue`;
+   - возвращается финальный ответ (с optional LLM rewrite).
+5. Для свободных вопросов вызывается LLM, при недоступности - template fallback.
 
-## Слабые места
+## Ограничения производительности
 
-- Синхронный inference-path без очередей.
-- Нет отдельного inference-gateway и версионирования промптов по tenant.
-- Нет выделенного event-stream для enterprise интеграций.
-
-## Рекомендация для следующего этапа
-
-- Добавить `inference-gateway` и `event-bus` (NATS/RabbitMQ).
-- Ввести outbox pattern для лидов и чат-событий.
-- Подключить централизованную телеметрию (metrics/logs/traces).
-- Перейти на policy-driven guardrails с OPA/Rego.
+- max timeout LLM = 5 секунд;
+- `LLM_MAX_RETRIES=1`;
+- inference выполняется через lock (без параллельной генерации);
+- стек состоит из 3 сервисов: `api`, `db`, `webui`.

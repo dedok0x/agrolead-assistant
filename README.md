@@ -1,8 +1,13 @@
-# AgroLead Assistant v4 (Local LLM)
+# AgroLead Assistant v5 (Single-Agent + GigaChat)
 
-Локальный B2B sales-assistant для ООО «Петрохлеб-Кубань» на микросервисной архитектуре.
+Легковесный B2B sales-assistant для низкоресурсного сервера (1 CPU / ~2 GB RAM).
 
-Ключевой принцип текущей версии: **никаких внешних LLM API**, только локальная модель через Ollama.
+Ключевой принцип текущей версии:
+
+- один оркестратор-агент в API;
+- детерминированный lead pipeline;
+- LLM (GigaChat) используется только для свободных ответов и переписывания финального сообщения;
+- при сбоях LLM включается шаблонный fallback.
 
 ## Быстрый запуск
 
@@ -10,7 +15,7 @@
 git clone <repo-url>
 cd agrolead-assistant
 cp env.example .env
-bash deploy/deploy.sh
+bash ./deploy.sh
 ```
 
 После деплоя:
@@ -26,97 +31,61 @@ flowchart LR
     U[Клиент] --> W[Web UI / Nginx]
     W --> A[FastAPI API]
     A --> DB[(PostgreSQL)]
-    A --> N[NanoClaw Agent]
-    N --> A
-    A --> O[Ollama]
-    O --> M[Local model tinyllama]
+    A --> LLM[GigaChat API]
+
+    A --> ORCH[Single Agent Orchestrator]
+    ORCH --> LT[Lead Tool]
+    ORCH --> PT[Product Tool]
+    ORCH --> RT[Response Tool]
 ```
 
-## Сервисы
+## Сервисы Docker Compose
 
-- `db` — PostgreSQL 16.
-- `api` — FastAPI, state-machine, guardrails, лиды, админ API.
-- `nanoclaw-agent` — изолированный адаптер агента (HTTP transport).
-- `ollama` — локальный LLM runtime.
-- `ollama-init` — one-shot сервис, который подтягивает модель перед стартом API.
-- `webui` — Nginx + статический фронт.
+- `db` — PostgreSQL 16
+- `api` — FastAPI + агент-оркестратор + state-machine + guardrails
+- `webui` — Nginx + статический фронт
 
-## Почему раньше падало
+## Что убрано в v5
 
-1. Внешний провайдер LLM давал 403/SSL и валил dry-run.
-2. Модель была слишком тяжелая для RAM сервера.
-3. Большой `num_ctx` создавал лишнее потребление памяти.
-4. Неподготовленная модель в Ollama приводила к 404/500 на генерации.
+- NanoClaw transport и backend-адаптеры;
+- Ollama runtime и pull-init сервис;
+- недетерминированный путь lead extraction через LLM.
 
-## Что исправлено
+## LLM режим
 
-- Удалена интеграция с внешними LLM API, оставлен только Ollama.
-- Дефолтная модель: `tinyllama` (влезает в ограниченные ресурсы).
-- Безопасные дефолты для low-memory:
-  - `OLLAMA_NUM_CTX=512`
-  - `OLLAMA_NUM_PREDICT=96`
-- `ollama-init` гарантирует `ollama pull` до старта API.
-- `deploy.sh` автоматически снижает лимиты контекста при ошибке `requires more system memory`.
-- `webui` теперь собирается отдельным образом, без bind-mounted `nginx.conf` и ошибок entrypoint.
+Провайдеры:
 
-## Параметры под сервер 4 GB RAM / 25 GB disk
+- `gigachat` (основной)
+- `template` (fallback)
 
-Рекомендуемые значения уже в `env.example`:
+Дефолтные ограничения:
+
+- `LLM_REQUEST_TIMEOUT_SECONDS=5`
+- `LLM_MAX_RETRIES=1`
+- одиночный inference-lock (без параллельной генерации)
+
+## Обязательные env для GigaChat
 
 ```env
-LLM_PROVIDER=ollama
-OLLAMA_MODEL=tinyllama
-OLLAMA_NUM_CTX=512
-OLLAMA_NUM_PREDICT=96
-OLLAMA_TEMPERATURE=0.15
+LLM_PROVIDER=gigachat
+GIGACHAT_AUTH_KEY=<base64-key-without-Basic-prefix>
+GIGACHAT_SCOPE=GIGACHAT_API_PERS
+GIGACHAT_AUTH_URL=https://gigachat.devices.sberbank.ru/api/v2/oauth
+GIGACHAT_API_BASE_URL=https://gigachat.devices.sberbank.ru/api/v1
+GIGACHAT_MODEL=GigaChat-2
 ```
 
-Если RAM очень ограничена, можно дополнительно снизить:
+## Smoke-проверки в deploy.sh
 
-```env
-OLLAMA_NUM_CTX=256
-OLLAMA_NUM_PREDICT=64
-```
+Скрипт выполняет:
 
-## Проверка после запуска
+1. `/api/health`
+2. `/api/chat/dry-run`
+3. lead-сценарий из 3 сообщений с проверкой записи в БД (`status=qualified`)
+4. запуск backend тестов (`unittest`)
 
-```bash
-docker compose ps
-curl -s http://localhost:11434/api/tags
-curl -s http://localhost:8000/api/llm/status
-curl -s -X POST http://localhost:8000/api/chat/dry-run \
-  -H "Content-Type: application/json" \
-  -d '{"text":"Нужна пшеница 3 класс 120 тонн в Краснодар"}'
-```
+При любой ошибке печатаются:
 
-Ожидаемо:
-
-- `preferred_provider` = `ollama`
-- dry-run возвращает `200` и непустой `text`
-
-## Слабые места текущей архитектуры
-
-- Нет очереди задач: все вызовы LLM идут напрямую через API.
-- Нет отдельного сервиса для аналитики и событий диалогов.
-- Нет централизованной конфигурации и секретов (Vault/KMS).
-- Ограниченная отказоустойчивость при росте нагрузки.
-
-## План улучшения для enterprise-интеграции
-
-1. Ввести шину событий (NATS/RabbitMQ) для async-пайплайна.
-2. Разделить API на bounded contexts:
-   - `chat-service`
-   - `lead-service`
-   - `admin-service`
-   - `inference-gateway`
-3. Добавить `event-store` (Kafka/Postgres outbox) для аудита диалогов.
-4. Вынести observability стек:
-   - Prometheus + Grafana
-   - Loki + structured logs
-   - OpenTelemetry traces
-5. Подключить SSO/RBAC и аудит-лог на уровне enterprise policy.
-6. Добавить policy-engine (OPA) для guardrails и контуров доступа.
-
-## Примечание
-
-Текущая версия ориентирована на стабильный локальный запуск и демонстрацию в условиях ограниченных ресурсов. Для production в экосистеме предприятия следующий шаг — переход к событийному взаимодействию и централизованной observability/безопасности.
+- logs контейнеров;
+- тело падающего запроса/ответа;
+- путь к полному deploy-логу.

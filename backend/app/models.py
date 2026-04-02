@@ -106,8 +106,10 @@ class Lead(SQLModel, table=True):
     volume_tons: str = ""
     region: str = ""
     delivery_term: str = ""
-    status: str = Field(default="new", index=True)
+    status: str = Field(default="in_progress", index=True)
     source: str = "chat"
+    source_channel: str = Field(default="web", index=True)
+    raw_dialogue: str = ""
     comment: str = ""
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
