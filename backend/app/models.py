@@ -42,7 +42,25 @@ class ChatMessage(SQLModel, table=True):
     text: str
     blocked: bool = False
     reason: str = ""
+    provider: str = ""
+    model_used: str = ""
     created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class ConversationState(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    session_id: int = Field(index=True, unique=True)
+    state: str = Field(default="greeting", index=True)
+    last_intent: str = ""
+    toxicity_level: int = 0
+    last_question: str = ""
+    product: str = ""
+    grade: str = ""
+    volume_tons: str = ""
+    region: str = ""
+    delivery_term: str = ""
+    contact: str = ""
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 class ProductItem(SQLModel, table=True):

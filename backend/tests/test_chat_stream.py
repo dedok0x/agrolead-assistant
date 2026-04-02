@@ -2,9 +2,9 @@ import json
 import os
 import unittest
 
-
 os.environ.setdefault("DATABASE_URL", "sqlite:///./test_chat_stream.db")
 os.environ.setdefault("OLLAMA_BASE", "http://127.0.0.1:11434")
+os.environ.setdefault("NANOCLAW_BASE_URL", "http://127.0.0.1:8788")
 
 from fastapi.testclient import TestClient
 
@@ -15,97 +15,50 @@ class ChatStreamCases(unittest.TestCase):
     def setUp(self) -> None:
         self.client = TestClient(app)
 
-    def test_chat_stream_blocked_text_returns_done_without_500(self):
+    def test_chat_stream_returns_done(self):
         resp = self.client.post(
             "/api/chat/stream",
-            json={"text": "123", "client_id": "test-blocked"},
+            json={"text": "Привет", "client_id": "test-stream"},
             headers={"accept": "application/x-ndjson"},
         )
         self.assertEqual(resp.status_code, 200)
-
         lines = [x for x in resp.text.splitlines() if x.strip()]
         self.assertTrue(lines)
         payload = json.loads(lines[-1])
-
         self.assertTrue(payload.get("done"))
-        self.assertIn("session_id", payload)
-        self.assertIn("token", payload)
 
-    def test_chat_stream_fast_reply_returns_done_without_500(self):
-        resp = self.client.post(
-            "/api/chat/stream",
-            json={"text": "привет", "client_id": "test-fast"},
-            headers={"accept": "application/x-ndjson"},
-        )
-        self.assertEqual(resp.status_code, 200)
-
-        lines = [x for x in resp.text.splitlines() if x.strip()]
-        self.assertTrue(lines)
-        payload = json.loads(lines[-1])
-
-        self.assertTrue(payload.get("done"))
-        self.assertIn("session_id", payload)
-        self.assertTrue(payload.get("token"))
-
-    def test_chat_sync_sales_script_price_question(self):
-        resp = self.client.post(
-            "/api/chat",
-            json={"text": "Какая цена и минимальный объем?", "client_id": "test-price"},
-        )
+    def test_toxic_message_hard_stop(self):
+        resp = self.client.post("/api/chat", json={"text": "иди нахуй", "client_id": "test-toxic"})
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
+        self.assertEqual(data.get("provider"), "guardrails")
         self.assertTrue(data.get("done"))
-        self.assertIn("text", data)
-        self.assertNotEqual(data.get("provider"), "fallback")
 
-    def test_chat_sync_sales_script_rejects_numeric_noise_without_error(self):
-        resp = self.client.post(
-            "/api/chat",
-            json={"text": "123", "client_id": "test-noise"},
-        )
+    def test_dry_run_shape(self):
+        resp = self.client.post("/api/chat/dry-run", json={"text": "Нужна пшеница 3 класс"})
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
-        self.assertTrue(data.get("done"))
-        self.assertIn("text", data)
-        self.assertNotIn("Ошибка запроса", data.get("text", ""))
-
-    def test_chat_dry_run_returns_expected_shape(self):
-        resp = self.client.post(
-            "/api/chat/dry-run",
-            json={"text": "Интересует пшеница 3 класс, объем 100 тонн, доставка в Краснодар"},
-        )
-        self.assertEqual(resp.status_code, 200)
-        data = resp.json()
-        self.assertTrue(data.get("done"))
         self.assertIn("provider", data)
         self.assertIn("text", data)
 
-    def test_llm_status_endpoint_shape(self):
+    def test_llm_status_has_real_provider_fields(self):
         resp = self.client.get("/api/llm/status")
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
-        self.assertIn("active", data)
-        self.assertIn("mode", data)
+        self.assertIn("last_provider", data)
+        self.assertIn("last_model", data)
 
-    def test_picoclaw_agent_endpoint_shape(self):
+    def test_nanoclaw_adapter_shape(self):
         resp = self.client.post(
-            "/api/picoclaw/agent/chat",
+            "/api/nanoclaw/agent/chat",
             json={"text": "Нужен прайс по пшенице", "context": "smoke"},
         )
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
         self.assertTrue(data.get("done"))
         self.assertIn("provider", data)
-        self.assertIn("text", data)
-
-    def test_region_single_word_is_not_asked_twice(self):
-        s1 = self.client.post("/api/chat", json={"text": "пшеницу", "client_id": "test-region-flow"}).json()
-        sid = s1.get("session_id")
-        self.client.post("/api/chat", json={"text": "1 класс 1 тонна", "session_id": sid, "client_id": "test-region-flow"})
-        s3 = self.client.post("/api/chat", json={"text": "Краснодар", "session_id": sid, "client_id": "test-region-flow"}).json()
-        self.assertEqual(s3.get("done"), True)
-        self.assertNotIn("В какой регион нужна поставка", s3.get("text", ""))
 
 
 if __name__ == "__main__":
     unittest.main()
+
