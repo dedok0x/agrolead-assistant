@@ -331,10 +331,10 @@
 				inputEl.value = ''
 				setStatus('Генерирую ответ...')
 
-				let bot = null
+				let bot = addMsg('', 'b')
 
 				try {
-					const res = await fetch('/api/chat/stream', {
+					const res = await fetch('/api/chat', {
 						method: 'POST',
 						headers: { 'Content-Type': 'application/json' },
 						body: JSON.stringify({
@@ -344,67 +344,17 @@
 						}),
 					})
 
-					if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`)
-
-					const reader = res.body.getReader()
-					const decoder = new TextDecoder()
-					let buffer = ''
-					let full = ''
-
-					while (true) {
-						const { value, done } = await reader.read()
-						if (done) break
-
-						buffer += decoder.decode(value, { stream: true })
-						const lines = buffer.split('\n')
-						buffer = lines.pop() || ''
-
-						for (const line of lines) {
-							if (!line.trim()) continue
-							let j = null
-							try {
-								j = JSON.parse(line)
-							} catch {
-								continue
-							}
-							if (j.session_id) sessionId = j.session_id
-							if (j.token) {
-								if (!bot) bot = addMsg('', 'b')
-								full += j.token
-								bot.textContent = full
-								chatEl.scrollTop = chatEl.scrollHeight
-							}
-							if (j.done && bot)
-								bot.textContent = (bot.textContent || '').trim()
-						}
-					}
-
+					if (!res.ok) throw new Error(`HTTP ${res.status}`)
+					const data = await res.json()
+					if (data.session_id) sessionId = data.session_id
+					bot.textContent =
+						(data.text || '').trim() ||
+						'Ответ пуст. Уточните, пожалуйста, товар, класс и объём в тоннах.'
 					setStatus('Готово')
 				} catch (e) {
-					try {
-						const fallbackRes = await fetch('/api/chat', {
-							method: 'POST',
-							headers: { 'Content-Type': 'application/json' },
-							body: JSON.stringify({
-								text,
-								session_id: sessionId,
-								client_id: 'web-client',
-							}),
-						})
-						if (!fallbackRes.ok) throw new Error(`HTTP ${fallbackRes.status}`)
-						const fallbackData = await fallbackRes.json()
-						if (fallbackData.session_id) sessionId = fallbackData.session_id
-						if (!bot) bot = addMsg('', 'b')
-						bot.textContent =
-							fallbackData.text ||
-							'Временная ошибка стрима. Ответ получен в резервном режиме.'
-						setStatus('Готово (резервный режим)')
-					} catch {
-						if (!bot) bot = addMsg('', 'b')
-						bot.textContent =
-							'Ошибка запроса. Проверьте соединение с сервером и попробуйте ещё раз.'
-						setStatus('Сетевой сбой или недоступен API', true)
-					}
+					bot.textContent =
+						'Ошибка запроса. Проверьте соединение с сервером и попробуйте ещё раз.'
+					setStatus('Сетевой сбой или недоступен API', true)
 				}
 			}
 
