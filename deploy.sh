@@ -312,19 +312,14 @@ upsert_env_var "NANOCLAW_HTTP_ADAPTER_URL" "http://api:8000/api/nanoclaw/agent/c
 OLLAMA_FALLBACK_ENABLED="$(sanitize_bool "$(env_or_default "OLLAMA_FALLBACK_ENABLED" "0")")"
 ok ".env готов"
 
-step "Установка Python зависимостей"
-if ! "$PYTHON_BIN" -m pip --version >/dev/null 2>&1; then
-  warn "pip не найден. Пытаюсь установить python3-pip"
-  if command -v apt-get >/dev/null 2>&1; then
-    apt-get update -y && apt-get install -y python3-pip || die "Не удалось установить python3-pip"
-  else
-    die "pip отсутствует и apt-get недоступен. Установите python3-pip вручную"
-  fi
+step "Проверка Python окружения"
+if ! "$PYTHON_BIN" - <<'PY' >/dev/null 2>&1
+import json
+PY
+then
+  die "Python работает некорректно"
 fi
-
-"$PYTHON_BIN" -m pip install --upgrade pip
-"$PYTHON_BIN" -m pip install -r "$ROOT_DIR/backend/requirements.txt"
-ok "Python зависимости установлены"
+ok "Python доступен (локальный pip не требуется, зависимости ставятся в Docker)"
 
 step "Подготовка NanoClaw runtime"
 ok "Используется локальный контейнер nanoclaw-agent (без npm setup)"
