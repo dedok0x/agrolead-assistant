@@ -21,9 +21,9 @@
 Связность сервисов:
 
 - `webui -> /api/* -> api` через proxy в [web/nginx.conf](agrolead-assistant/web/nginx.conf).
-- `api -> db` через `DATABASE_URL` в [agrolead-assistant/.env.example](agrolead-assistant/.env.example).
-- `api -> ollama` через `OLLAMA_BASE` в [agrolead-assistant/.env.example](agrolead-assistant/.env.example).
-- `api -> GigaChat` (опционально) через `GIGACHAT_*` в [agrolead-assistant/.env.example](agrolead-assistant/.env.example).
+- `api -> db` через `DATABASE_URL` в [agrolead-assistant/env.example](agrolead-assistant/env.example).
+- `api -> ollama` через `OLLAMA_BASE` в [agrolead-assistant/env.example](agrolead-assistant/env.example).
+- `api -> GigaChat` (опционально) через `GIGACHAT_*` в [agrolead-assistant/env.example](agrolead-assistant/env.example).
 - `picoclaw -> ollama` через `OLLAMA_BASE_URL` в [agrolead-assistant/docker-compose.yml](agrolead-assistant/docker-compose.yml).
 
 ## Структура
@@ -41,7 +41,7 @@
 1. Скопируй env:
 
 ```bash
-cp .env.example .env
+cp env.example .env
 ```
 
 2. Запусти деплой:
@@ -57,7 +57,7 @@ bash deploy/deploy.sh
 ENABLE_PICOCLAW=1 bash deploy/deploy.sh
 ```
 
-Если у вас другой реестр/тег Picoclaw, переопределите [`PICOCLAW_IMAGE`](agrolead-assistant/.env.example:12).
+Если у вас другой реестр/тег Picoclaw, переопределите [`PICOCLAW_IMAGE`](agrolead-assistant/env.example:22).
 
 Скрипт [`deploy.sh`](agrolead-assistant/deploy/deploy.sh) выполняет последовательные smoke-проверки:
 

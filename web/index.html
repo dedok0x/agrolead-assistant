@@ -337,6 +337,7 @@
 					const res = await fetch('/api/chat', {
 						method: 'POST',
 						headers: { 'Content-Type': 'application/json' },
+						cache: 'no-store',
 						body: JSON.stringify({
 							text,
 							session_id: sessionId,
@@ -344,16 +345,27 @@
 						}),
 					})
 
-					if (!res.ok) throw new Error(`HTTP ${res.status}`)
-					const data = await res.json()
+					const raw = await res.text()
+					let data = null
+					try {
+						data = raw ? JSON.parse(raw) : {}
+					} catch {
+						throw new Error(`Некорректный ответ API: HTTP ${res.status}`)
+					}
+
+					if (!res.ok) {
+						const details = data?.detail || `HTTP ${res.status}`
+						throw new Error(`Ошибка API: ${details}`)
+					}
+
 					if (data.session_id) sessionId = data.session_id
 					bot.textContent =
 						(data.text || '').trim() ||
 						'Ответ пуст. Уточните, пожалуйста, товар, класс и объём в тоннах.'
-					setStatus('Готово')
+					const provider = data.provider ? ` · ${String(data.provider)}` : ''
+					setStatus(`Готово${provider}`)
 				} catch (e) {
-					bot.textContent =
-						'Ошибка запроса. Проверьте соединение с сервером и попробуйте ещё раз.'
+					bot.textContent = `Ошибка запроса: ${e?.message || 'неизвестная ошибка'}`
 					setStatus('Сетевой сбой или недоступен API', true)
 				}
 			}

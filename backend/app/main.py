@@ -482,12 +482,12 @@ async def chat(payload: ChatIn, session: Session = Depends(get_session)):
     if fast:
         session.add(ChatMessage(session_id=chat_session.id, role="assistant", text=fast))
         session.commit()
-        return {"session_id": chat_session.id, "text": fast, "done": True}
+        return {"session_id": chat_session.id, "text": fast, "done": True, "provider": "quick_reply"}
 
     if not ok:
         session.add(ChatMessage(session_id=chat_session.id, role="assistant", text=reject, blocked=True, reason="policy"))
         session.commit()
-        return {"session_id": chat_session.id, "text": reject, "done": True}
+        return {"session_id": chat_session.id, "text": reject, "done": True, "provider": "policy"}
 
     recent = session.exec(
         select(ChatMessage).where(ChatMessage.session_id == chat_session.id).order_by(ChatMessage.created_at.desc())
@@ -506,7 +506,7 @@ async def chat(payload: ChatIn, session: Session = Depends(get_session)):
                     text = "Уточните, пожалуйста, товар, класс и объем в тоннах — передам заявку менеджеру."
                 session.add(ChatMessage(session_id=chat_session.id, role="assistant", text=text))
                 session.commit()
-                return {"session_id": chat_session.id, "text": text, "done": True}
+                return {"session_id": chat_session.id, "text": text, "done": True, "provider": "gigachat"}
             except Exception:
                 if LLM_PROVIDER == "gigachat":
                     raise
@@ -534,7 +534,7 @@ async def chat(payload: ChatIn, session: Session = Depends(get_session)):
                 text = "Уточните, пожалуйста, товар, класс и объем в тоннах — передам заявку менеджеру."
             session.add(ChatMessage(session_id=chat_session.id, role="assistant", text=text))
             session.commit()
-            return {"session_id": chat_session.id, "text": text, "done": True}
+            return {"session_id": chat_session.id, "text": text, "done": True, "provider": "ollama"}
     except Exception:
         fallback = (
             "Сервис генерации временно недоступен. "
@@ -542,7 +542,7 @@ async def chat(payload: ChatIn, session: Session = Depends(get_session)):
         )
         session.add(ChatMessage(session_id=chat_session.id, role="assistant", text=fallback, blocked=True, reason="llm_unavailable"))
         session.commit()
-        return {"session_id": chat_session.id, "text": fallback, "done": True}
+        return {"session_id": chat_session.id, "text": fallback, "done": True, "provider": "fallback"}
 
 
 @app.post("/api/admin/login")

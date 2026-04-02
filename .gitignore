@@ -1,0 +1,53 @@
+# OS / Editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Local environment files (keep templates tracked)
+.env
+.env.local
+.env.*.local
+
+# Runtime / logs
+*.log
+logs/
+deploy/logs/
+
+# Local databases / temp
+*.sqlite
+*.sqlite3
+*.db
+tmp/
+temp/
+
+# Build / artifacts
+dist/
+build/
+*.egg-info/
+
+# SSL private material (templates/docs may remain)
+ssl/*.key
+ssl/*.pem
+ssl/*.crt
+ssl/*.p12
+
+# Docker overrides / local compose files
+docker-compose.override.yml
+docker-compose.local.yml

@@ -4,6 +4,8 @@ set -Eeuo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENV_FILE="$ROOT_DIR/.env"
 COMPOSE_FILE="$ROOT_DIR/docker-compose.yml"
+ENV_TEMPLATE_DOT="$ROOT_DIR/.env.example"
+ENV_TEMPLATE_PLAIN="$ROOT_DIR/env.example"
 LOG_DIR="$ROOT_DIR/deploy/logs"
 mkdir -p "$LOG_DIR"
 REPORT_FILE="$LOG_DIR/deploy_$(date +%Y%m%d_%H%M%S).log"
@@ -73,9 +75,15 @@ ok "git, docker, docker compose и curl доступны"
 log "Проверка файлов проекта"
 [[ -f "$COMPOSE_FILE" ]] || fail "Не найден $COMPOSE_FILE"
 if [[ ! -f "$ENV_FILE" ]]; then
-  [[ -f "$ROOT_DIR/.env.example" ]] || fail "Не найдено ни $ENV_FILE, ни .env.example"
-  cp "$ROOT_DIR/.env.example" "$ENV_FILE"
-  ok "Создан .env из .env.example"
+  if [[ -f "$ENV_TEMPLATE_DOT" ]]; then
+    cp "$ENV_TEMPLATE_DOT" "$ENV_FILE"
+    ok "Создан .env из .env.example"
+  elif [[ -f "$ENV_TEMPLATE_PLAIN" ]]; then
+    cp "$ENV_TEMPLATE_PLAIN" "$ENV_FILE"
+    ok "Создан .env из env.example"
+  else
+    fail "Не найдено ни $ENV_FILE, ни шаблонов .env.example/env.example"
+  fi
 fi
 
 log "Автомиграция legacy .env (сетевые адреса сервисов)"
@@ -203,7 +211,20 @@ if [[ "${ENABLE_PICOCLAW:-0}" == "1" ]]; then
   docker compose -f "$COMPOSE_FILE" ps picoclaw | grep -q "picoclaw" || fail "Picoclaw контейнер не найден"
   docker compose -f "$COMPOSE_FILE" ps picoclaw | grep -Eq "Up|healthy" || fail "Picoclaw не в состоянии Up/healthy"
   ok "Picoclaw контейнер активен"
+
+  PICOCLAW_MODEL=$(grep '^PICOCLAW_MODEL=' "$ENV_FILE" | cut -d '=' -f2- || true)
+  if [[ -z "${PICOCLAW_MODEL:-}" ]]; then
+    PICOCLAW_MODEL="${MODEL_NAME:-unknown}"
+  fi
+  echo "[ИНФО] Picoclaw использует модель: ${PICOCLAW_MODEL}"
 fi
+
+LLM_PROVIDER_VALUE=$(grep '^LLM_PROVIDER=' "$ENV_FILE" | cut -d '=' -f2- || true)
+GIGACHAT_KEY_SET=0
+if grep -Eq '^GIGACHAT_AUTH_KEY=.+' "$ENV_FILE"; then
+  GIGACHAT_KEY_SET=1
+fi
+echo "[ИНФО] LLM provider mode: ${LLM_PROVIDER_VALUE:-auto}; GigaChat key configured: ${GIGACHAT_KEY_SET}"
 
 ok "Деплой и проверки завершены успешно"
 echo "[ОТЧЕТ] $REPORT_FILE"
