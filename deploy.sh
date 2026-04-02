@@ -313,6 +313,15 @@ EOF
 fi
 
 if [[ -z "$(get_env_var "GIGACHAT_AUTH_KEY")" ]]; then
+  if [[ -t 0 ]]; then
+    read -r -p "Введите GIGACHAT_AUTH_KEY (если есть, иначе Enter): " GIGACHAT_AUTH_KEY_INPUT || true
+    if [[ -n "${GIGACHAT_AUTH_KEY_INPUT:-}" ]]; then
+      upsert_env_var "GIGACHAT_AUTH_KEY" "$GIGACHAT_AUTH_KEY_INPUT"
+    fi
+  fi
+fi
+
+if [[ -z "$(get_env_var "GIGACHAT_AUTH_KEY")" ]]; then
   prompt_secret_if_empty "GIGACHAT_CLIENT_ID" "Введите GIGACHAT_CLIENT_ID"
   prompt_secret_if_empty "GIGACHAT_CLIENT_SECRET" "Введите GIGACHAT_CLIENT_SECRET" 1
 fi

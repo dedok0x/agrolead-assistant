@@ -26,19 +26,19 @@ class LLMService:
         self.provider_mode = os.getenv("LLM_PROVIDER", "auto").strip().lower()
         self.timeout_seconds = float(os.getenv("LLM_REQUEST_TIMEOUT_SECONDS", "45"))
 
-        self.gigachat_client_id = os.getenv("GIGACHAT_CLIENT_ID", "")
-        self.gigachat_client_secret = os.getenv("GIGACHAT_CLIENT_SECRET", "")
-        self.gigachat_auth_key = os.getenv("GIGACHAT_AUTH_KEY", "")
-        self.gigachat_scope = os.getenv("GIGACHAT_SCOPE", "GIGACHAT_API_PERS")
-        self.gigachat_oauth_url = os.getenv("GIGACHAT_OAUTH_URL", "https://gigachat.devices.sberbank.ru/api/v2/oauth")
-        self.gigachat_api_url = os.getenv("GIGACHAT_API_URL", "https://gigachat.devices.sberbank.ru/api/v1")
-        self.gigachat_model = os.getenv("GIGACHAT_MODEL", "GigaChat-Max")
+        self.gigachat_client_id = os.getenv("GIGACHAT_CLIENT_ID", "").strip().strip("\"").strip("'")
+        self.gigachat_client_secret = os.getenv("GIGACHAT_CLIENT_SECRET", "").strip().strip("\"").strip("'")
+        self.gigachat_auth_key = os.getenv("GIGACHAT_AUTH_KEY", "").strip()
+        self.gigachat_scope = os.getenv("GIGACHAT_SCOPE", "GIGACHAT_API_PERS").strip()
+        self.gigachat_oauth_url = os.getenv("GIGACHAT_OAUTH_URL", "https://gigachat.devices.sberbank.ru/api/v2/oauth").strip()
+        self.gigachat_api_url = os.getenv("GIGACHAT_API_URL", "https://gigachat.devices.sberbank.ru/api/v1").strip()
+        self.gigachat_model = os.getenv("GIGACHAT_MODEL", "GigaChat-Max").strip()
         self.gigachat_verify_ssl = _to_bool(os.getenv("GIGACHAT_VERIFY_SSL", "1"), default=True)
         self.gigachat_token_refresh_seconds = int(os.getenv("GIGACHAT_TOKEN_REFRESH_SECONDS", "1500"))
 
         self.ollama_fallback_enabled = _to_bool(os.getenv("OLLAMA_FALLBACK_ENABLED", "0"), default=False)
-        self.ollama_base = os.getenv("OLLAMA_BASE", "http://ollama:11434")
-        self.ollama_model = os.getenv("OLLAMA_MODEL", "qwen2.5:72b-instruct")
+        self.ollama_base = os.getenv("OLLAMA_BASE", "http://ollama:11434").strip().rstrip("/")
+        self.ollama_model = os.getenv("OLLAMA_MODEL", "qwen2.5:72b-instruct").strip()
         self.ollama_num_ctx = int(os.getenv("OLLAMA_NUM_CTX", "16384"))
         self.ollama_num_predict = int(os.getenv("OLLAMA_NUM_PREDICT", "220"))
         self.ollama_temperature = float(os.getenv("OLLAMA_TEMPERATURE", "0.15"))
@@ -75,7 +75,14 @@ class LLMService:
 
     def _resolve_basic_auth_key(self) -> str:
         if self.gigachat_auth_key:
-            return self.gigachat_auth_key
+            key = self.gigachat_auth_key.strip().strip("\"").strip("'")
+            key_lower = key.lower()
+            if key_lower.startswith("authorization key:"):
+                key = key.split(":", 1)[1].strip()
+                key_lower = key.lower()
+            if key_lower.startswith("basic "):
+                key = key[6:].strip()
+            return key
         if not self.gigachat_client_id or not self.gigachat_client_secret:
             return ""
         raw = f"{self.gigachat_client_id}:{self.gigachat_client_secret}".encode("utf-8")
@@ -158,7 +165,7 @@ class LLMService:
             raise LLMUnavailableError("GigaChat returned empty content")
         return content, self.gigachat_model
 
-    async def _chat_ollama(self, system_prompt: str, user_prompt: str) -> tuple[str, str]:
+    async def _chat_ollama_generate(self, system_prompt: str, user_prompt: str) -> tuple[str, str]:
         full_prompt = f"{system_prompt}\n\n{user_prompt}\nАссистент:"
         response = await self._ollama_client.post(
             f"{self.ollama_base}/api/generate",
@@ -178,8 +185,67 @@ class LLMService:
         response.raise_for_status()
         content = (response.json().get("response") or "").strip()
         if not content:
-            raise LLMUnavailableError("Ollama returned empty content")
+            raise LLMUnavailableError("Ollama returned empty content from /api/generate")
         return content, self.ollama_model
+
+    async def _chat_ollama_chat(self, system_prompt: str, user_prompt: str) -> tuple[str, str]:
+        response = await self._ollama_client.post(
+            f"{self.ollama_base}/api/chat",
+            json={
+                "model": self.ollama_model,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                "stream": False,
+                "keep_alive": "30m",
+                "options": {
+                    "temperature": self.ollama_temperature,
+                    "num_predict": self.ollama_num_predict,
+                    "num_ctx": self.ollama_num_ctx,
+                    "repeat_penalty": 1.1,
+                },
+            },
+        )
+        response.raise_for_status()
+        payload = response.json()
+        content = ((payload.get("message") or {}).get("content") or "").strip()
+        if not content:
+            raise LLMUnavailableError("Ollama returned empty content from /api/chat")
+        return content, self.ollama_model
+
+    async def _chat_ollama_openai(self, system_prompt: str, user_prompt: str) -> tuple[str, str]:
+        response = await self._ollama_client.post(
+            f"{self.ollama_base}/v1/chat/completions",
+            json={
+                "model": self.ollama_model,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                "temperature": self.ollama_temperature,
+                "max_tokens": self.ollama_num_predict,
+                "stream": False,
+            },
+        )
+        response.raise_for_status()
+        payload = response.json()
+        choices = payload.get("choices") or []
+        content = ((choices[0].get("message") or {}).get("content") or "").strip() if choices else ""
+        if not content:
+            raise LLMUnavailableError("Ollama returned empty content from /v1/chat/completions")
+        return content, self.ollama_model
+
+    async def _chat_ollama(self, system_prompt: str, user_prompt: str) -> tuple[str, str]:
+        errors: list[str] = []
+
+        for strategy in (self._chat_ollama_generate, self._chat_ollama_chat, self._chat_ollama_openai):
+            try:
+                return await strategy(system_prompt=system_prompt, user_prompt=user_prompt)
+            except Exception as exc:
+                errors.append(f"{strategy.__name__}: {exc}")
+
+        raise LLMUnavailableError("Ollama unavailable: " + " | ".join(errors))
 
     async def complete(self, system_prompt: str, user_prompt: str, reason: str = "chat") -> tuple[str, str, str]:
         attempts: list[str] = []
