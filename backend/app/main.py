@@ -54,6 +54,23 @@ _http_timeout = httpx.Timeout(LLM_REQUEST_TIMEOUT_SECONDS, connect=5.0)
 _ollama_client = httpx.AsyncClient(timeout=_http_timeout, limits=_http_limits)
 _gigachat_client = httpx.AsyncClient(timeout=_http_timeout, limits=_http_limits, verify=GIGACHAT_VERIFY_SSL)
 
+_llm_usage_stats = {
+    "gigachat": 0,
+    "ollama": 0,
+    "fallback": 0,
+    "scripted_sales": 0,
+    "quick_reply": 0,
+}
+_last_provider = "unknown"
+
+
+def mark_provider(provider: str) -> None:
+    global _last_provider
+    if provider not in _llm_usage_stats:
+        _llm_usage_stats[provider] = 0
+    _llm_usage_stats[provider] += 1
+    _last_provider = provider
+
 
 class LoginIn(BaseModel):
     username: str
@@ -184,7 +201,12 @@ def upsert_lead_from_text(session: Session, chat_session_id: int, text: str) -> 
     if m_name:
         client_name = m_name.group(1).strip()
     elif re.fullmatch(r"[А-Яа-яA-Za-z\-]{3,40}", text.strip()):
-        client_name = text.strip()
+        one_word = text.strip()
+        known_regions = {"краснодар", "самара", "самарская", "москва", "ростов", "казань", "воронеж"}
+        if one_word.lower() in known_regions:
+            region = one_word
+        else:
+            client_name = one_word
 
     if not (phone_match or email_match or vol_match or product or grade_match or region or delivery_term or client_name):
         return
@@ -233,6 +255,18 @@ def guard_user_text(text: str) -> tuple[bool, str]:
 
 def quick_reply(text: str) -> Optional[str]:
     s = text.lower().strip()
+
+    if any(x in s for x in ["чё как", "че как", "как дела", "как ты"]):
+        return (
+            "На связи, всё отлично. Помогу быстро с подбором зерновой продукции и условий поставки. "
+            "Что хотите рассчитать в первую очередь: цену, наличие или логистику?"
+        )
+
+    if "просто пообщаться" in s:
+        return (
+            "С удовольствием на связи. Я всё же заточен под продажи зерновых, поэтому могу быть максимально полезен по цене, наличию и доставке. "
+            "С какой культуры начнем?"
+        )
 
     if any(x in s for x in ["привет", "здравствуйте", "добрый"]):
         return (
@@ -514,8 +548,8 @@ def health():
 @app.get("/api/llm/status")
 def llm_status():
     if should_try_gigachat():
-        return {"mode": LLM_PROVIDER, "active": "gigachat", "fallback": "ollama", "model": GIGACHAT_MODEL}
-    return {"mode": LLM_PROVIDER, "active": "ollama", "fallback": None, "model": MODEL_NAME}
+        return {"mode": LLM_PROVIDER, "active": "gigachat", "fallback": "ollama", "model": GIGACHAT_MODEL, "usage": _llm_usage_stats, "last_provider": _last_provider}
+    return {"mode": LLM_PROVIDER, "active": "ollama", "fallback": None, "model": MODEL_NAME, "usage": _llm_usage_stats, "last_provider": _last_provider}
 
 
 @app.get("/api/public/bootstrap")
@@ -563,7 +597,8 @@ async def chat_stream(payload: ChatIn, session: Session = Depends(get_session)):
         def fast_gen():
             yield json.dumps({"session_id": chat_session_id, "token": fast, "done": True}) + "\n"
 
-        session.add(ChatMessage(session_id=chat_session_id, role="assistant", text=fast))
+        mark_provider("quick_reply")
+        session.add(ChatMessage(session_id=chat_session_id, role="assistant", text=fast, reason="quick_reply"))
         session.commit()
         return StreamingResponse(fast_gen(), media_type="application/x-ndjson")
 
@@ -572,7 +607,8 @@ async def chat_stream(payload: ChatIn, session: Session = Depends(get_session)):
         def scripted_gen():
             yield json.dumps({"session_id": chat_session_id, "token": scripted, "done": True}) + "\n"
 
-        session.add(ChatMessage(session_id=chat_session_id, role="assistant", text=scripted))
+        mark_provider("scripted_sales")
+        session.add(ChatMessage(session_id=chat_session_id, role="assistant", text=scripted, reason="scripted_sales"))
         session.commit()
         return StreamingResponse(scripted_gen(), media_type="application/x-ndjson")
 
@@ -637,8 +673,9 @@ async def chat_stream(payload: ChatIn, session: Session = Depends(get_session)):
             try:
                 llm_text, llm_provider = await generate_llm_response(prompt)
                 clean_fallback_llm = sanitize_assistant_text(llm_text)
+                mark_provider(llm_provider)
                 with Session(engine) as write_session:
-                    write_session.add(ChatMessage(session_id=chat_session_id, role="assistant", text=clean_fallback_llm))
+                    write_session.add(ChatMessage(session_id=chat_session_id, role="assistant", text=clean_fallback_llm, reason=llm_provider))
                     write_session.commit()
                 yield json.dumps({"session_id": chat_session_id, "token": clean_fallback_llm, "done": True, "provider": llm_provider}) + "\n"
             except Exception:
@@ -646,6 +683,7 @@ async def chat_stream(payload: ChatIn, session: Session = Depends(get_session)):
                     "Сервис генерации временно недоступен. "
                     "Уточните, пожалуйста, товар, класс и объем в тоннах — передам заявку менеджеру."
                 )
+                mark_provider("fallback")
                 with Session(engine) as write_session:
                     write_session.add(ChatMessage(session_id=chat_session_id, role="assistant", text=fallback, blocked=True, reason="llm_unavailable"))
                     write_session.commit()
@@ -672,13 +710,15 @@ async def chat(payload: ChatIn, session: Session = Depends(get_session)):
 
     fast = quick_reply(payload.text)
     if fast:
-        session.add(ChatMessage(session_id=chat_session.id, role="assistant", text=fast))
+        mark_provider("quick_reply")
+        session.add(ChatMessage(session_id=chat_session.id, role="assistant", text=fast, reason="quick_reply"))
         session.commit()
         return {"session_id": chat_session.id, "text": fast, "done": True, "provider": "quick_reply"}
 
     scripted = scripted_sales_reply(session, chat_session.id, payload.text)
     if scripted:
-        session.add(ChatMessage(session_id=chat_session.id, role="assistant", text=scripted))
+        mark_provider("scripted_sales")
+        session.add(ChatMessage(session_id=chat_session.id, role="assistant", text=scripted, reason="scripted_sales"))
         session.commit()
         return {"session_id": chat_session.id, "text": scripted, "done": True, "provider": "scripted_sales"}
 
@@ -700,7 +740,8 @@ async def chat(payload: ChatIn, session: Session = Depends(get_session)):
         text = sanitize_assistant_text(llm_text)
         if not text:
             text = "Уточните, пожалуйста, товар, класс и объем в тоннах — передам заявку менеджеру."
-        session.add(ChatMessage(session_id=chat_session.id, role="assistant", text=text))
+        mark_provider(llm_provider)
+        session.add(ChatMessage(session_id=chat_session.id, role="assistant", text=text, reason=llm_provider))
         session.commit()
         return {"session_id": chat_session.id, "text": text, "done": True, "provider": llm_provider}
     except Exception:
@@ -708,6 +749,7 @@ async def chat(payload: ChatIn, session: Session = Depends(get_session)):
             "Сервис генерации временно недоступен. "
             "Уточните, пожалуйста, товар, класс и объем в тоннах — передам заявку менеджеру."
         )
+        mark_provider("fallback")
         session.add(ChatMessage(session_id=chat_session.id, role="assistant", text=fallback, blocked=True, reason="llm_unavailable"))
         session.commit()
         return {"session_id": chat_session.id, "text": fallback, "done": True, "provider": "fallback"}
@@ -721,6 +763,7 @@ async def chat_dry_run(payload: ChatDryRunIn, session: Session = Depends(get_ses
 
     scripted = scripted_sales_reply(session, chat_session_id=0, text=text)
     if scripted:
+        mark_provider("scripted_sales")
         return {"done": True, "provider": "scripted_sales", "text": scripted}
 
     prompt = f"{build_system_prompt(session)}\n\nКлиент: {text}\nАссистент:"
@@ -729,8 +772,10 @@ async def chat_dry_run(payload: ChatDryRunIn, session: Session = Depends(get_ses
         clean = sanitize_assistant_text(llm_text)
         if not clean:
             clean = "Уточните, пожалуйста, товар, класс и объем в тоннах — передам заявку менеджеру."
+        mark_provider(llm_provider)
         return {"done": True, "provider": llm_provider, "text": clean}
     except Exception:
+        mark_provider("fallback")
         return {
             "done": True,
             "provider": "fallback",
@@ -752,6 +797,7 @@ async def picoclaw_agent_chat(payload: PicoclawAgentIn, session: Session = Depen
     )
     llm_text, llm_provider = await generate_llm_response(prompt)
     clean = sanitize_assistant_text(llm_text)
+    mark_provider(llm_provider)
     return {"done": True, "provider": llm_provider, "text": clean}
 
 
@@ -835,6 +881,8 @@ def admin_stats(_: None = Depends(require_admin), session: Session = Depends(get
         "leads_total": leads_total,
         "leads_new": leads_new,
         "recent_sessions": recent,
+        "llm_usage": _llm_usage_stats,
+        "last_provider": _last_provider,
     }
 
 

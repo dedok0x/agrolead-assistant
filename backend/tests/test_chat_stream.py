@@ -98,6 +98,14 @@ class ChatStreamCases(unittest.TestCase):
         self.assertIn("provider", data)
         self.assertIn("text", data)
 
+    def test_region_single_word_is_not_asked_twice(self):
+        s1 = self.client.post("/api/chat", json={"text": "пшеницу", "client_id": "test-region-flow"}).json()
+        sid = s1.get("session_id")
+        self.client.post("/api/chat", json={"text": "1 класс 1 тонна", "session_id": sid, "client_id": "test-region-flow"})
+        s3 = self.client.post("/api/chat", json={"text": "Краснодар", "session_id": sid, "client_id": "test-region-flow"}).json()
+        self.assertEqual(s3.get("done"), True)
+        self.assertNotIn("В какой регион нужна поставка", s3.get("text", ""))
+
 
 if __name__ == "__main__":
     unittest.main()

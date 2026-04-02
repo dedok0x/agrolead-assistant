@@ -204,6 +204,18 @@ grep -Eq '"text"[[:space:]]*:[[:space:]]*".{30,}"' /tmp/agro_chat_dry_run.json |
 echo "[ИНФО] dry-run provider: ${DRY_PROVIDER}"
 ok "api/chat/dry-run"
 
+log "Smoke: Picoclaw adapter -> LLM"
+curl -fsS -H "Content-Type: application/json" \
+  -d '{"text":"Нужен прайс по пшенице","context":"deploy-smoke"}' \
+  "$API_BASE/api/picoclaw/agent/chat" >/tmp/agro_picoclaw_agent_chat.json || fail "api/picoclaw/agent/chat недоступен"
+PICO_PROVIDER=$(sed -n 's/.*"provider"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' /tmp/agro_picoclaw_agent_chat.json | head -n 1)
+[[ -n "${PICO_PROVIDER:-}" ]] || fail "api/picoclaw/agent/chat не вернул provider"
+if [[ "$PICO_PROVIDER" == "fallback" ]]; then
+  fail "api/picoclaw/agent/chat вернул fallback"
+fi
+echo "[ИНФО] picoclaw-adapter provider: ${PICO_PROVIDER}"
+ok "api/picoclaw/agent/chat"
+
 log "Smoke: Web index и admin"
 curl -fsS $WEB_CURL_OPTS "$WEB_BASE/" >/tmp/agro_web_index.html || fail "web index недоступен"
 curl -fsS $WEB_CURL_OPTS "$WEB_BASE/admin" >/tmp/agro_web_admin.html || fail "web admin недоступен"
