@@ -245,7 +245,7 @@ async def process_chat(session: Session, payload: ChatIn) -> dict[str, Any]:
     state = get_or_create_state(session=session, session_id=session_id)
 
     if not guard.allowed:
-        if guard.stop_dialogue:
+        if guard.reason in {"security_block", "toxic_hard_stop"}:
             state = mark_toxic_stop(session=session, state=state, toxicity_level=guard.toxicity_level)
         else:
             state.toxicity_level = max(state.toxicity_level, guard.toxicity_level)
@@ -271,6 +271,13 @@ async def process_chat(session: Session, payload: ChatIn) -> dict[str, Any]:
             "model": "rule-based",
             "state": state.state,
         }
+
+    if state.state == "stopped_toxic":
+        state.state = "greeting"
+        state.updated_at = _now()
+        session.add(state)
+        session.commit()
+        session.refresh(state)
 
     history = recent_history(session=session, session_id=session_id)
     result = await agent_orchestrator.handle(

@@ -257,22 +257,18 @@ fi
 
 LLM_PROVIDER_VALUE="$(env_or_default "LLM_PROVIDER" "gigachat")"
 LLM_PROVIDER_VALUE="${LLM_PROVIDER_VALUE,,}"
-if [[ "$LLM_PROVIDER_VALUE" != "gigachat" && "$LLM_PROVIDER_VALUE" != "template" ]]; then
+if [[ "$LLM_PROVIDER_VALUE" != "gigachat" ]]; then
   warn "Неподдерживаемый LLM_PROVIDER=$LLM_PROVIDER_VALUE. Принудительно ставлю gigachat"
   LLM_PROVIDER_VALUE="gigachat"
 fi
 upsert_env_var "LLM_PROVIDER" "$LLM_PROVIDER_VALUE"
 upsert_env_var "LLM_REQUEST_TIMEOUT_SECONDS" "5"
 upsert_env_var "LLM_MAX_RETRIES" "1"
-upsert_env_var "LLM_TEMPLATE_FALLBACK_ENABLED" "1"
-
-if [[ "$LLM_PROVIDER_VALUE" == "gigachat" ]]; then
-  prompt_secret_if_empty "GIGACHAT_AUTH_KEY" "Введите GIGACHAT_AUTH_KEY (без 'Basic ')" "1"
-  upsert_env_var "GIGACHAT_SCOPE" "$(env_or_default "GIGACHAT_SCOPE" "GIGACHAT_API_PERS")"
-  upsert_env_var "GIGACHAT_AUTH_URL" "$(env_or_default "GIGACHAT_AUTH_URL" "https://gigachat.devices.sberbank.ru/api/v2/oauth")"
-  upsert_env_var "GIGACHAT_API_BASE_URL" "$(env_or_default "GIGACHAT_API_BASE_URL" "https://gigachat.devices.sberbank.ru/api/v1")"
-  upsert_env_var "GIGACHAT_MODEL" "$(env_or_default "GIGACHAT_MODEL" "GigaChat-2")"
-fi
+prompt_secret_if_empty "GIGACHAT_AUTH_KEY" "Введите GIGACHAT_AUTH_KEY (без 'Basic ')" "1"
+upsert_env_var "GIGACHAT_SCOPE" "$(env_or_default "GIGACHAT_SCOPE" "GIGACHAT_API_PERS")"
+upsert_env_var "GIGACHAT_AUTH_URL" "$(env_or_default "GIGACHAT_AUTH_URL" "https://gigachat.devices.sberbank.ru/api/v2/oauth")"
+upsert_env_var "GIGACHAT_API_BASE_URL" "$(env_or_default "GIGACHAT_API_BASE_URL" "https://gigachat.devices.sberbank.ru/api/v1")"
+upsert_env_var "GIGACHAT_MODEL" "$(env_or_default "GIGACHAT_MODEL" "GigaChat-2")"
 ok ".env готов"
 
 step "Пересборка и запуск контейнеров"

@@ -297,16 +297,6 @@
 					document.getElementById('company').textContent = `${
 						data.company?.name || ''
 					}. ${data.company?.services || ''}`
-					;(data.scenarios || []).forEach(s => {
-						const b = document.createElement('button')
-						b.className = 'chip'
-						b.textContent = s.title
-						b.onclick = () => {
-							inputEl.value = s.title
-							inputEl.focus()
-						}
-						chipsEl.appendChild(b)
-					})
 					;(data.products || []).slice(0, 6).forEach(p => {
 						const b = document.createElement('button')
 						b.className = 'chip'
@@ -374,10 +364,6 @@
 			document.getElementById('clear').onclick = () => {
 				sessionId = null
 				chatEl.innerHTML = ''
-				addMsg(
-					'Чат очищен. Уточните запрос по закупке, продаже, логистике или хранению.',
-					'b',
-				)
 				setStatus('Готово')
 			}
 
@@ -389,10 +375,6 @@
 			})
 			;(async () => {
 				await bootstrap()
-				addMsg(
-					'Здравствуйте! Я помогу по ценам, наличию, поставке и хранению зерновых культур.',
-					'b',
-				)
 			})()
 		</script>
 	</body>

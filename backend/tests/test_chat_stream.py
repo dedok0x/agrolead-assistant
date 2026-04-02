@@ -9,7 +9,6 @@ os.environ.setdefault("DATABASE_URL", "sqlite:///./test_chat_stream.db")
 os.environ.setdefault("TOXIC_STRICT_MODE", "1")
 os.environ.setdefault("LLM_PROVIDER", "gigachat")
 os.environ.setdefault("GIGACHAT_AUTH_KEY", "test-auth-key")
-os.environ.setdefault("LLM_TEMPLATE_FALLBACK_ENABLED", "1")
 
 BACKEND_ROOT = pathlib.Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
@@ -55,13 +54,12 @@ class ChatStreamCases(unittest.TestCase):
         self.assertEqual(payload.get("provider"), "gigachat")
         self.assertTrue(payload.get("text"))
 
-    def test_dry_run_fallback_to_template(self):
+    def test_dry_run_unavailable_when_gigachat_down(self):
         llm_service.gigachat_client.chat_completion = AsyncMock(side_effect=RuntimeError("network down"))
         response = self.client.post("/api/chat/dry-run", json={"text": "Какая цена на ячмень?"})
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 503)
         payload = response.json()
-        self.assertEqual(payload.get("provider"), "template")
-        self.assertTrue(payload.get("text"))
+        self.assertIn("detail", payload)
 
     def test_llm_status_has_router_fields(self):
         response = self.client.get("/api/llm/status")

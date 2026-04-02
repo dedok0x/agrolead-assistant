@@ -1,33 +1,75 @@
-from ..models import Lead, ProductItem
+from ..models import ConversationState, Lead, ProductItem
 
 
-class ResponseRenderer:
-    def render_qualification_question(self, question: str) -> str:
-        return question.strip()
+class StagePromptBuilder:
+    STAGE_SYSTEM_PROMPTS = {
+        "greeting": (
+            "Ты живой B2B ассистент по зерновым сделкам. "
+            "Отвечай по-человечески, без канцелярита и без шаблонных клише."
+        ),
+        "qualification": (
+            "Ты ведешь квалификацию лида в диалоге с клиентом. "
+            "Сначала ответь по теме сообщения, затем мягко задай только один следующий уточняющий вопрос."
+        ),
+        "free_question": (
+            "Ты консультируешь по зерновым сделкам и наличию. "
+            "Ответ должен быть конкретным, естественным и практичным."
+        ),
+        "product_lookup": (
+            "Ты коммерческий ассистент зерновой компании. "
+            "Дай релевантный ответ по товару и условиям без выдумок."
+        ),
+        "handoff": (
+            "Ты формируешь финальный ответ после квалификации лида. "
+            "Подтверди параметры и аккуратно обозначь следующий шаг с менеджером."
+        ),
+        "post_handoff": (
+            "Ты продолжаешь диалог после передачи лида менеджеру. "
+            "Сохраняй деловой, спокойный и полезный тон."
+        ),
+    }
 
-    def render_product_answer(self, items: list[ProductItem]) -> str:
-        if not items:
-            return "Сейчас точной позиции в каталоге не вижу. Назовите культуру, класс и объем - подберу вариант."
+    def stage_system_prompt(self, stage: str) -> str:
+        return self.STAGE_SYSTEM_PROMPTS.get(stage, self.STAGE_SYSTEM_PROMPTS["free_question"])
 
-        top = items[0]
-        price = f"{top.price_from:.0f}-{top.price_to:.0f} руб/т" if top.price_from or top.price_to else "по запросу"
-        stock = f"остаток {top.stock_tons:.0f} т" if top.stock_tons else "остаток уточняется"
-        return f"Есть {top.name}: {price}, {stock}, регион {top.location}. Если подходит, назовите объем и срок поставки."
-
-    def render_handoff(self, lead: Lead, crm_reference: str) -> str:
+    def lead_context(self, state: ConversationState, missing_fields: list[str], next_hint: str) -> str:
         return (
-            f"Заявку зафиксировал: {lead.product} {lead.grade}, {lead.volume_tons} т, {lead.region}. "
-            f"Передаю менеджеру, номер обращения {crm_reference}."
+            "Текущее состояние лида:\n"
+            f"- product: {state.product or '-'}\n"
+            f"- grade: {state.grade or '-'}\n"
+            f"- volume_tons: {state.volume_tons or '-'}\n"
+            f"- region: {state.region or '-'}\n"
+            f"- delivery_term: {state.delivery_term or '-'}\n"
+            f"- contact: {state.contact or '-'}\n"
+            f"- missing_fields: {', '.join(missing_fields) if missing_fields else 'none'}\n"
+            f"- next_hint: {next_hint or 'none'}"
         )
 
-    def render_fallback(self) -> str:
-        return "Понял запрос. Давайте зафиксируем параметры сделки: товар, класс, объем, регион и срок поставки."
+    def catalog_context(self, items: list[ProductItem]) -> str:
+        if not items:
+            return "Каталог: подходящие позиции не найдены по текущему сообщению."
 
-    def render_soft_next_step(self, base_text: str, next_question: str) -> str:
-        base = (base_text or "").strip()
-        question = (next_question or "").strip()
-        if not question:
-            return base or self.render_fallback()
-        if not base:
-            return question
-        return f"{base} {question}"
+        lines = []
+        for item in items[:3]:
+            lines.append(
+                f"- {item.name}: {item.price_from:.0f}-{item.price_to:.0f} руб/т, "
+                f"остаток {item.stock_tons:.0f} т, локация {item.location}"
+            )
+        return "Каталог-подсказка:\n" + "\n".join(lines)
+
+    def no_repeat_context(self, last_assistant_messages: list[str]) -> str:
+        if not last_assistant_messages:
+            return ""
+        rows = "\n".join(f"- {message}" for message in last_assistant_messages)
+        return (
+            "Не повторяй дословно формулировки из последних ответов ассистента:\n"
+            f"{rows}"
+        )
+
+    def handoff_brief(self, lead: Lead, crm_reference: str) -> str:
+        return (
+            "Лид квалифицирован. Дай финальное подтверждение и следующий шаг.\n"
+            f"Параметры: {lead.product} {lead.grade}, {lead.volume_tons} т, {lead.region}, срок {lead.delivery_term}.\n"
+            f"Контакт: {lead.phone or lead.email or '-'}\n"
+            f"CRM reference: {crm_reference}"
+        )

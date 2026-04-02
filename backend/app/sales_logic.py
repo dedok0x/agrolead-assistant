@@ -7,13 +7,13 @@ from .models import ChatSession, ConversationState
 
 REQUIRED_FIELDS = ["product", "grade", "volume_tons", "region", "delivery_term", "contact"]
 
-QUESTION_BY_FIELD = {
-    "product": "С какой культурой работаем: пшеница, ячмень или кукуруза?",
-    "grade": "Класс/качество какой нужен?",
-    "volume_tons": "Какой объем в тоннах нужен?",
-    "region": "Куда везем, какой регион доставки?",
-    "delivery_term": "По сроку как: срочно, завтра или планово?",
-    "contact": "Оставьте телефон или email, чтобы менеджер закрепил условия.",
+FIELD_HINT_BY_NAME = {
+    "product": "уточни культуру: пшеница, ячмень или кукуруза",
+    "grade": "уточни класс или качество зерна",
+    "volume_tons": "уточни объем в тоннах",
+    "region": "уточни регион или точку доставки",
+    "delivery_term": "уточни срок отгрузки или поставки",
+    "contact": "уточни контакт для связи: телефон или email",
 }
 
 INTENT_PRODUCT_PATTERNS = [
@@ -237,8 +237,22 @@ def classify_intent(text: str) -> str:
 def next_qualification_question(state: ConversationState) -> str:
     missing = missing_required_fields(state)
     if not missing:
-        return "Параметры собрал. Передаю менеджеру, он закрепит цену и логистику."
-    return QUESTION_BY_FIELD[missing[0]]
+        return "Параметры собраны."
+    return FIELD_HINT_BY_NAME[missing[0]]
+
+
+def next_missing_field(state: ConversationState) -> str:
+    missing = missing_required_fields(state)
+    if not missing:
+        return ""
+    return missing[0]
+
+
+def next_missing_hint(state: ConversationState) -> str:
+    field = next_missing_field(state)
+    if not field:
+        return ""
+    return FIELD_HINT_BY_NAME.get(field, "уточни недостающий параметр сделки")
 
 
 def mark_handoff(session: Session, state: ConversationState, provider: str, model: str) -> ConversationState:

@@ -17,28 +17,18 @@ def _contains_cyrillic(text: str) -> bool:
     return any("а" <= ch.lower() <= "я" or ch.lower() == "ё" for ch in text)
 
 
-def _env_bool(name: str, default: bool) -> bool:
-    raw = os.getenv(name)
-    if raw is None:
-        return default
-    return raw.strip().lower() not in {"0", "false", "no", "off"}
-
-
 class LLMService:
     def __init__(self) -> None:
-        preferred = os.getenv("LLM_PROVIDER", "gigachat").strip().lower()
-        self.preferred_provider = preferred if preferred in {"gigachat", "template"} else "gigachat"
-
+        self.preferred_provider = "gigachat"
         self.timeout_seconds = max(1.0, min(float(os.getenv("LLM_REQUEST_TIMEOUT_SECONDS", "5")), 5.0))
         self.max_retries = max(0, min(int(os.getenv("LLM_MAX_RETRIES", "1")), 2))
-        self.enable_fallback = _env_bool("LLM_TEMPLATE_FALLBACK_ENABLED", True)
-        self.enable_rewrite = _env_bool("LLM_REWRITE_ENABLED", True)
+        self.enable_rewrite = os.getenv("LLM_REWRITE_ENABLED", "1").strip().lower() not in {"0", "false", "no", "off"}
 
         self.gigachat_client = GigaChatClient(timeout_seconds=self.timeout_seconds)
         self.gigachat_model = self.gigachat_client.model
         self._inference_lock = asyncio.Lock()
 
-        self.usage: dict[str, int] = {"gigachat": 0, "template": 0, "errors": 0}
+        self.usage: dict[str, int] = {"gigachat": 0, "errors": 0}
         self.last_provider = "none"
         self.last_model = "none"
         self.last_reason = "init"
@@ -61,31 +51,23 @@ class LLMService:
     def _enforce_russian(self, text: str) -> str:
         normalized = (text or "").strip()
         if not normalized:
-            return "Принял запрос. Подготовлю ответ по зерновой заявке и следующему шагу."
+            return "Принял. Уточню детали по сделке и дам следующий шаг."
         if _contains_cyrillic(normalized):
             return normalized
-        return "Отвечаю на русском: принял запрос по зерновой сделке, уточню детали и передам менеджеру."
+        return "Отвечаю на русском: получил запрос, готов продолжать диалог по сделке."
 
-    def _template_answer(self, user_prompt: str, reason: str) -> str:
-        prompt = (user_prompt or "").strip().lower()
-        if "цена" in prompt or "прайс" in prompt or "стоим" in prompt:
-            return "По цене ориентируемся от объема и базиса. Дайте культуру, класс, тоннаж и регион доставки."
-        if "контакт" in prompt or "тел" in prompt or "email" in prompt:
-            return "Оставьте телефон или email, менеджер закрепит условия и свяжется с вами."
-        if "кто" in prompt or "компан" in prompt:
-            return "Работаем по зерновым сделкам: подбор позиции, логистика и фиксация заявки менеджером."
-        if "не хочу" in prompt or "не буду" in prompt:
-            return "Ок, без давления. Когда будете готовы, просто напишите культуру и объем, остальное быстро дособерем."
-        if "как оформить" in prompt or "оформить заявку" in prompt:
-            return "Оформление простое: фиксируем товар, класс, объем, регион и срок, после этого менеджер подтверждает условия."
-        if reason == "rewrite":
-            return self._enforce_russian(user_prompt)
-        return "Понял. Чтобы быстро собрать заявку, укажите товар, класс, объем, регион и срок отгрузки."
-
-    async def _complete_gigachat(self, system_prompt: str, user_prompt: str, reason: str) -> tuple[str, str, str]:
+    async def _complete_gigachat(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        reason: str,
+        temperature: float,
+        max_tokens: int,
+    ) -> tuple[str, str, str]:
         final_system = (
-            "Отвечай только на русском языке, коротко и по делу. "
-            "Не выдумывай факты, цены и остатки. "
+            "Отвечай только на русском языке. "
+            "Пиши живо, предметно и без шаблонного канцелярита. "
+            "Не повторяй дословно предыдущие ответы и не выдумывай факты. "
             f"{system_prompt}"
         )
 
@@ -95,8 +77,8 @@ class LLMService:
                 text, model = await self.gigachat_client.chat_completion(
                     system_prompt=final_system,
                     user_prompt=user_prompt,
-                    temperature=0.1,
-                    max_tokens=220,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
                 )
                 safe_text = self._enforce_russian(text)
                 self._mark("gigachat", model, reason)
@@ -108,52 +90,59 @@ class LLMService:
         self._mark("errors", "none", reason, error=str(last_exc) if last_exc else "unknown")
         raise LLMUnavailableError(str(last_exc) if last_exc else "GigaChat unavailable")
 
-    async def complete(self, system_prompt: str, user_prompt: str, reason: str = "chat") -> tuple[str, str, str]:
-        provider = self.preferred_provider
-        if provider == "gigachat" and self.gigachat_client.configured:
-            try:
-                async with self._inference_lock:
-                    return await self._complete_gigachat(system_prompt=system_prompt, user_prompt=user_prompt, reason=reason)
-            except (LLMUnavailableError, GigaChatClientError) as exc:
-                LOGGER.warning("Provider fallback to template: %s", exc)
-                if not self.enable_fallback:
-                    raise LLMUnavailableError(str(exc)) from exc
-        elif provider == "gigachat" and not self.gigachat_client.configured and not self.enable_fallback:
+    async def complete(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        reason: str = "chat",
+        temperature: float = 0.55,
+        max_tokens: int = 320,
+    ) -> tuple[str, str, str]:
+        if not self.gigachat_client.configured:
+            self._mark("errors", "none", reason, error="GigaChat is not configured")
             raise LLMUnavailableError("GigaChat is not configured")
 
-        text = self._template_answer(user_prompt=user_prompt, reason=reason)
-        text = self._enforce_russian(text)
-        self._mark("template", "deterministic-template", reason)
-        return text, "template", "deterministic-template"
+        try:
+            async with self._inference_lock:
+                return await self._complete_gigachat(
+                    system_prompt=system_prompt,
+                    user_prompt=user_prompt,
+                    reason=reason,
+                    temperature=max(0.05, min(temperature, 1.2)),
+                    max_tokens=max(64, min(max_tokens, 700)),
+                )
+        except (LLMUnavailableError, GigaChatClientError) as exc:
+            raise LLMUnavailableError(str(exc)) from exc
 
     async def rewrite_response(self, source_text: str, reason: str = "rewrite") -> tuple[str, str, str]:
         if not self.enable_rewrite:
             text = self._enforce_russian(source_text)
-            self._mark("template", "deterministic-template", reason)
-            return text, "template", "deterministic-template"
+            self._mark("gigachat", self.gigachat_model, reason)
+            return text, "gigachat", self.gigachat_model
 
         rewrite_prompt = (
-            "Перепиши ответ продавца естественно, без канцелярита, максимум 2 предложения. "
-            "Сохрани факты и следующий шаг.\n"
+            "Перепиши ответ продавца более живо и естественно, максимум 2 предложения. "
+            "Сохрани факты, не добавляй новые условия.\n"
             f"Черновик: {source_text}"
         )
         return await self.complete(
             system_prompt="Ты B2B ассистент по зерновым сделкам.",
             user_prompt=rewrite_prompt,
             reason=reason,
+            temperature=0.42,
+            max_tokens=220,
         )
 
     def status(self) -> dict[str, Any]:
         return {
             "mode": "provider-router",
             "preferred_provider": self.preferred_provider,
-            "fallback_provider": "template",
+            "fallback_provider": None,
             "timeout_seconds": self.timeout_seconds,
             "max_retries": self.max_retries,
             "gigachat_enabled": self.gigachat_client.configured,
             "models": {
                 "gigachat": self.gigachat_model,
-                "template": "deterministic-template",
             },
             "last_provider": self.last_provider,
             "last_model": self.last_model,

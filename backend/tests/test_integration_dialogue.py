@@ -8,7 +8,6 @@ os.environ.setdefault("DATABASE_URL", "sqlite:///./test_integration_dialogue.db"
 os.environ.setdefault("TOXIC_STRICT_MODE", "1")
 os.environ.setdefault("LLM_PROVIDER", "gigachat")
 os.environ.setdefault("GIGACHAT_AUTH_KEY", "test-auth-key")
-os.environ.setdefault("LLM_TEMPLATE_FALLBACK_ENABLED", "1")
 
 BACKEND_ROOT = pathlib.Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
@@ -49,7 +48,7 @@ class IntegrationDialogueCases(unittest.TestCase):
         )
         self.assertEqual(first.status_code, 200)
         first_payload = first.json()
-        self.assertEqual(first_payload.get("provider"), "state-machine")
+        self.assertEqual(first_payload.get("provider"), "gigachat")
         self.assertEqual(first_payload.get("state"), "qualification")
 
         session_id = first_payload["session_id"]
@@ -65,7 +64,7 @@ class IntegrationDialogueCases(unittest.TestCase):
         )
         self.assertEqual(second.status_code, 200)
         second_payload = second.json()
-        self.assertEqual(second_payload.get("provider"), "state-machine")
+        self.assertEqual(second_payload.get("provider"), "gigachat")
         self.assertEqual(second_payload.get("state"), "qualification")
 
         third = self.client.post(
@@ -80,7 +79,7 @@ class IntegrationDialogueCases(unittest.TestCase):
         self.assertEqual(third.status_code, 200)
         third_payload = third.json()
         self.assertEqual(third_payload.get("state"), "handoff")
-        self.assertIn(third_payload.get("provider"), {"gigachat", "template", "state-machine"})
+        self.assertIn(third_payload.get("provider"), {"gigachat", "service-unavailable"})
 
         token = self._admin_token()
         leads_response = self.client.get("/api/admin/leads?limit=200", headers={"x-admin-token": token})

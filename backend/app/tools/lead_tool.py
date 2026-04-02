@@ -3,7 +3,7 @@ from datetime import datetime
 from sqlmodel import Session, select
 
 from ..models import ChatMessage, ConversationState, Lead
-from ..sales_logic import missing_required_fields, next_qualification_question, update_state_with_text
+from ..sales_logic import missing_required_fields, next_missing_field, next_missing_hint, update_state_with_text
 
 
 class LeadTool:
@@ -19,8 +19,11 @@ class LeadTool:
     def is_complete(self, state: ConversationState) -> bool:
         return len(self.missing_fields(state)) == 0
 
-    def next_question(self, state: ConversationState) -> str:
-        return next_qualification_question(state)
+    def next_field(self, state: ConversationState) -> str:
+        return next_missing_field(state)
+
+    def next_hint(self, state: ConversationState) -> str:
+        return next_missing_hint(state)
 
     def _dialogue_snapshot(self, session_id: int, limit: int = 30) -> str:
         rows = list(self.session.exec(select(ChatMessage).where(ChatMessage.session_id == session_id)).all())
