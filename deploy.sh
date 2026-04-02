@@ -290,23 +290,14 @@ NANOCLAW_AGENT_CHAT_PATH=/agent/chat
 NANOCLAW_HTTP_ADAPTER_URL=http://api:8000/api/nanoclaw/agent/chat
 NANOCLAW_TIMEOUT_SECONDS=45
 NANOCLAW_LOG_LEVEL=info
-NANOCLAW_DEFAULT_PROVIDER=gigachat
-LLM_PROVIDER=auto
+NANOCLAW_DEFAULT_PROVIDER=ollama
+LLM_PROVIDER=ollama
 LLM_REQUEST_TIMEOUT_SECONDS=45
-GIGACHAT_CLIENT_ID=
-GIGACHAT_CLIENT_SECRET=
-GIGACHAT_AUTH_KEY=
-GIGACHAT_SCOPE=GIGACHAT_API_PERS
-GIGACHAT_OAUTH_URL=https://gigachat.devices.sberbank.ru/api/v2/oauth
-GIGACHAT_API_URL=https://gigachat.devices.sberbank.ru/api/v1
-GIGACHAT_MODEL=GigaChat-Max
-GIGACHAT_VERIFY_SSL=1
-GIGACHAT_TOKEN_REFRESH_SECONDS=1500
-OLLAMA_FALLBACK_ENABLED=0
+OLLAMA_FALLBACK_ENABLED=1
 OLLAMA_BASE=http://ollama:11434
-OLLAMA_MODEL=qwen2.5:72b-instruct
-OLLAMA_NUM_CTX=16384
-OLLAMA_NUM_PREDICT=220
+OLLAMA_MODEL=tinyllama
+OLLAMA_NUM_CTX=512
+OLLAMA_NUM_PREDICT=96
 OLLAMA_TEMPERATURE=0.15
 EOF
   fi
@@ -314,35 +305,24 @@ fi
 
 LLM_PROVIDER_VALUE="$(env_or_default "LLM_PROVIDER" "ollama")"
 LLM_PROVIDER_VALUE="${LLM_PROVIDER_VALUE,,}"
-
 if [[ "$LLM_PROVIDER_VALUE" != "ollama" ]]; then
-  if [[ -z "$(get_env_var "GIGACHAT_AUTH_KEY")" ]]; then
-    if [[ -t 0 ]]; then
-      read -r -p "Введите GIGACHAT_AUTH_KEY (если есть, иначе Enter): " GIGACHAT_AUTH_KEY_INPUT || true
-      if [[ -n "${GIGACHAT_AUTH_KEY_INPUT:-}" ]]; then
-        upsert_env_var "GIGACHAT_AUTH_KEY" "$GIGACHAT_AUTH_KEY_INPUT"
-      fi
-    fi
-  fi
-
-  if [[ -z "$(get_env_var "GIGACHAT_AUTH_KEY")" ]]; then
-    prompt_secret_if_empty "GIGACHAT_CLIENT_ID" "Введите GIGACHAT_CLIENT_ID"
-    prompt_secret_if_empty "GIGACHAT_CLIENT_SECRET" "Введите GIGACHAT_CLIENT_SECRET" 1
-  fi
-else
-  warn "LLM_PROVIDER=ollama: пропускаю запрос GigaChat ключей"
+  warn "Поддерживается только локальный провайдер Ollama. Принудительно ставлю LLM_PROVIDER=ollama"
+  LLM_PROVIDER_VALUE="ollama"
 fi
+upsert_env_var "LLM_PROVIDER" "ollama"
+upsert_env_var "NANOCLAW_DEFAULT_PROVIDER" "ollama"
 
 upsert_env_var "NANOCLAW_BASE_URL" "http://nanoclaw-agent:8788"
 upsert_env_var "NANOCLAW_AGENT_CHAT_PATH" "/agent/chat"
 upsert_env_var "NANOCLAW_HTTP_ADAPTER_URL" "http://api:8000/api/nanoclaw/agent/chat"
 
-if [[ "$LLM_PROVIDER_VALUE" == "ollama" ]]; then
-  upsert_env_var "OLLAMA_FALLBACK_ENABLED" "1"
-fi
+upsert_env_var "OLLAMA_FALLBACK_ENABLED" "1"
+upsert_env_var "OLLAMA_MODEL" "tinyllama"
+upsert_env_var "OLLAMA_NUM_CTX" "512"
+upsert_env_var "OLLAMA_NUM_PREDICT" "96"
 
 OLLAMA_FALLBACK_ENABLED="$(sanitize_bool "$(env_or_default "OLLAMA_FALLBACK_ENABLED" "0")")"
-OLLAMA_MODEL_VALUE="$(env_or_default "OLLAMA_MODEL" "llama3.2:3b")"
+OLLAMA_MODEL_VALUE="$(env_or_default "OLLAMA_MODEL" "tinyllama")"
 ok ".env готов"
 
 step "Проверка Python окружения"
@@ -359,12 +339,6 @@ ok "Используется локальный контейнер nanoclaw-agen
 
 step "Полная пересборка контейнеров"
 COMPOSE_ARGS=(-f "$COMPOSE_FILE")
-if [[ "$OLLAMA_FALLBACK_ENABLED" == "1" ]]; then
-  COMPOSE_ARGS+=(--profile ollama)
-  ok "Включен профиль ollama (fallback)"
-else
-  warn "Профиль ollama выключен (OLLAMA_FALLBACK_ENABLED=0)"
-fi
 
 docker compose "${COMPOSE_ARGS[@]}" build --no-cache --pull
 docker compose "${COMPOSE_ARGS[@]}" up -d --force-recreate --remove-orphans
@@ -425,17 +399,6 @@ if [[ "$LLM_PROVIDER_VALUE" == "ollama" ]]; then
     die "/api/llm/status: ожидался preferred_provider=ollama, получено: $LLM_STATUS_PROVIDER"
   fi
   ok "LLM status ok | preferred=ollama"
-elif [[ "$LLM_PROVIDER_VALUE" == "gigachat" ]]; then
-  "$PYTHON_BIN" - "$LLM_STATUS_JSON" <<'PY'
-import json
-import sys
-payload = json.loads(sys.argv[1])
-if payload.get("preferred_provider") != "gigachat":
-    raise SystemExit(f"/api/llm/status: preferred_provider не gigachat (получено: {payload.get('preferred_provider')})")
-if not payload.get("gigachat_ready"):
-    raise SystemExit(f"/api/llm/status: gigachat_ready=false (payload: {payload})")
-print("LLM status ok | preferred=gigachat")
-PY
 else
   ok "LLM status ok | preferred=$LLM_STATUS_PROVIDER"
 fi
@@ -453,25 +416,12 @@ run_dry_run_check() {
 DRY_RUN_HTTP_CODE="$(run_dry_run_check)"
 if [[ "$DRY_RUN_HTTP_CODE" != "200" ]]; then
   DRY_RUN_ERROR_BODY="$(tr -d '\n' <"$DRY_RUN_RESPONSE_FILE" 2>/dev/null || true)"
-  CURRENT_VERIFY_SSL="$(env_or_default "GIGACHAT_VERIFY_SSL" "1")"
-
-  if [[ "$DRY_RUN_ERROR_BODY" == *"CERTIFICATE_VERIFY_FAILED"* && "$CURRENT_VERIFY_SSL" != "0" ]]; then
-    warn "Обнаружена SSL-ошибка GigaChat. Включаю fallback GIGACHAT_VERIFY_SSL=0 и перезапускаю API"
-    upsert_env_var "GIGACHAT_VERIFY_SSL" "0"
+  if [[ "$DRY_RUN_ERROR_BODY" == *"requires more system memory"* ]]; then
+    warn "Не хватает RAM для dry-run. Снижаю OLLAMA_NUM_CTX до 256 и OLLAMA_NUM_PREDICT до 64"
+    upsert_env_var "OLLAMA_NUM_CTX" "256"
+    upsert_env_var "OLLAMA_NUM_PREDICT" "64"
     docker compose "${COMPOSE_ARGS[@]}" up -d --force-recreate api nanoclaw-agent
-    wait_http "$API_BASE/api/health" 60 2 || die "API не поднялся после переключения GIGACHAT_VERIFY_SSL=0"
-    DRY_RUN_HTTP_CODE="$(run_dry_run_check)"
-  fi
-fi
-
-if [[ "$DRY_RUN_HTTP_CODE" != "200" ]]; then
-  DRY_RUN_ERROR_BODY="$(tr -d '\n' <"$DRY_RUN_RESPONSE_FILE" 2>/dev/null || true)"
-  if [[ "$DRY_RUN_ERROR_BODY" == *"403 Forbidden"* && "$DRY_RUN_ERROR_BODY" == *"gigachat"* ]]; then
-    warn "GigaChat OAuth вернул 403. Включаю Ollama fallback для прохождения интеграционных проверок"
-    upsert_env_var "OLLAMA_FALLBACK_ENABLED" "1"
-    OLLAMA_FALLBACK_ENABLED="1"
-    docker compose -f "$COMPOSE_FILE" --profile ollama up -d ollama api nanoclaw-agent
-    wait_http "$API_BASE/api/health" 60 2 || die "API не поднялся после включения Ollama fallback"
+    wait_http "$API_BASE/api/health" 60 2 || die "API не поднялся после снижения лимитов Ollama"
     DRY_RUN_HTTP_CODE="$(run_dry_run_check)"
   fi
 fi
@@ -488,7 +438,7 @@ import sys
 
 payload = json.loads(sys.argv[1])
 provider = payload.get("provider")
-if provider not in {"gigachat", "ollama"}:
+if provider != "ollama":
     raise SystemExit(f"dry-run отработал через неожиданный provider: {provider}")
 if not payload.get("text"):
     raise SystemExit("dry-run вернул пустой text")
@@ -502,7 +452,7 @@ payload = json.loads(sys.argv[1])
 print(payload.get("provider", ""))
 PY
 )" == "ollama" ]]; then
-  warn "dry-run прошел через Ollama fallback. Проверьте валидность GIGACHAT_CLIENT_ID/SECRET и GIGACHAT_SCOPE"
+  ok "dry-run прошел через Ollama"
 fi
 show_service_logs api 50
 
@@ -514,7 +464,7 @@ import sys
 payload = json.loads(sys.argv[1])
 if not payload.get("done"):
     raise SystemExit("/api/nanoclaw/agent/chat: done=false")
-if payload.get("provider") not in {"gigachat", "ollama"}:
+if payload.get("provider") != "ollama":
     raise SystemExit(f"неожиданный provider: {payload.get('provider')}")
 if not payload.get("text"):
     raise SystemExit("/api/nanoclaw/agent/chat: пустой text")

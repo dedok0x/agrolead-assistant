@@ -48,23 +48,12 @@ services:
       LLM_PROVIDER: ${LLM_PROVIDER:-ollama}
       LLM_REQUEST_TIMEOUT_SECONDS: ${LLM_REQUEST_TIMEOUT_SECONDS:-45}
 
-      # GigaChat credentials
-      GIGACHAT_CLIENT_ID: ${GIGACHAT_CLIENT_ID:-}
-      GIGACHAT_CLIENT_SECRET: ${GIGACHAT_CLIENT_SECRET:-}
-      GIGACHAT_AUTH_KEY: ${GIGACHAT_AUTH_KEY:-}
-      GIGACHAT_SCOPE: ${GIGACHAT_SCOPE:-GIGACHAT_API_PERS}
-      GIGACHAT_OAUTH_URL: ${GIGACHAT_OAUTH_URL:-https://gigachat.devices.sberbank.ru/api/v2/oauth}
-      GIGACHAT_API_URL: ${GIGACHAT_API_URL:-https://gigachat.devices.sberbank.ru/api/v1}
-      GIGACHAT_MODEL: ${GIGACHAT_MODEL:-GigaChat-Max}
-      GIGACHAT_VERIFY_SSL: ${GIGACHAT_VERIFY_SSL:-1}
-      GIGACHAT_TOKEN_REFRESH_SECONDS: ${GIGACHAT_TOKEN_REFRESH_SECONDS:-1500}
-
       # Ollama fallback
       OLLAMA_FALLBACK_ENABLED: ${OLLAMA_FALLBACK_ENABLED:-1}
       OLLAMA_BASE: ${OLLAMA_BASE:-http://ollama:11434}
-      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2:3b}
-      OLLAMA_NUM_CTX: ${OLLAMA_NUM_CTX:-16384}
-      OLLAMA_NUM_PREDICT: ${OLLAMA_NUM_PREDICT:-220}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-tinyllama}
+      OLLAMA_NUM_CTX: ${OLLAMA_NUM_CTX:-512}
+      OLLAMA_NUM_PREDICT: ${OLLAMA_NUM_PREDICT:-96}
       OLLAMA_TEMPERATURE: ${OLLAMA_TEMPERATURE:-0.15}
     depends_on:
       db:
@@ -126,6 +115,10 @@ services:
     image: ollama/ollama:latest
     container_name: agrolead-ollama
     restart: unless-stopped
+    environment:
+      OLLAMA_NUM_PARALLEL: 1
+      OLLAMA_MAX_LOADED_MODELS: 1
+      OLLAMA_KEEP_ALIVE: 10m
     ports:
       - "11434:11434"
     volumes:
@@ -147,8 +140,8 @@ services:
         condition: service_healthy
     environment:
       OLLAMA_HOST: http://ollama:11434
-      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2:3b}
-    command: ["pull", "${OLLAMA_MODEL:-llama3.2:3b}"]
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-tinyllama}
+    command: ["pull", "${OLLAMA_MODEL:-tinyllama}"]
     volumes:
       - ollama_data:/root/.ollama
     networks:

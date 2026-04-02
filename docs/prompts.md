@@ -1,4 +1,4 @@
-# System-промпты (NanoClaw / GigaChat)
+# System-промпты (NanoClaw / Local LLM)
 
 ## 1) Sales Core
 

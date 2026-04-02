@@ -6,8 +6,8 @@ from unittest.mock import AsyncMock
 
 os.environ.setdefault("DATABASE_URL", "sqlite:///./test_integration_dialogue.db")
 os.environ.setdefault("TOXIC_STRICT_MODE", "1")
-os.environ.setdefault("LLM_PROVIDER", "auto")
-os.environ.setdefault("OLLAMA_FALLBACK_ENABLED", "0")
+os.environ.setdefault("LLM_PROVIDER", "ollama")
+os.environ.setdefault("OLLAMA_FALLBACK_ENABLED", "1")
 
 BACKEND_ROOT = pathlib.Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
@@ -27,15 +27,15 @@ class IntegrationDialogueCases(unittest.TestCase):
         llm_service.complete = AsyncMock(
             return_value=(
                 "Собрал заявку, менеджер уже в работе. Закрепим цену и логистику по вашему контакту.",
-                "gigachat",
-                "GigaChat-Max",
+                "ollama",
+                "tinyllama",
             )
         )
         nanoclaw.chat = AsyncMock(
             return_value={
                 "text": "Все параметры собрал. Передаю менеджеру, он свяжется с вами по контакту.",
-                "provider": "gigachat",
-                "model": "GigaChat-Max",
+                "provider": "ollama",
+                "model": "tinyllama",
             }
         )
 
@@ -76,7 +76,7 @@ class IntegrationDialogueCases(unittest.TestCase):
         self.assertEqual(third.status_code, 200)
         third_payload = third.json()
         self.assertIn(third_payload.get("state"), {"offer", "handoff"})
-        self.assertIn(third_payload.get("provider"), {"gigachat", "nanoclaw", "ollama", "service-unavailable"})
+        self.assertIn(third_payload.get("provider"), {"nanoclaw", "ollama", "service-unavailable"})
 
     def test_security_request_blocked(self):
         response = self.client.post(

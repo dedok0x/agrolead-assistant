@@ -1,184 +1,122 @@
-# AgroLead Assistant v3 (NanoClaw)
+# AgroLead Assistant v4 (Local LLM)
 
-Полностью обновленный B2B sales-assistant для ООО «Петрохлеб-Кубань».
+Локальный B2B sales-assistant для ООО «Петрохлеб-Кубань» на микросервисной архитектуре.
 
-Проект мигрирован с PicoClaw на NanoClaw и готов к zero-config деплою: `git clone -> ./deploy.sh`.
+Ключевой принцип текущей версии: **никаких внешних LLM API**, только локальная модель через Ollama.
 
-## Что внутри
+## Быстрый запуск
 
-- Полная миграция на NanoClaw в отдельном контейнере `nanoclaw-agent`.
-- FastAPI держит бизнес-логику: guardrails, state-machine, лиды, админку.
-- LLM-стратегия: GigaChat как основной провайдер, Ollama как fallback (по флагу).
-- Жесткая обработка токсичности и security-запросов.
-- Честный `/api/llm/status`: показывает реального последнего провайдера и модель.
+```bash
+git clone <repo-url>
+cd agrolead-assistant
+cp env.example .env
+bash deploy/deploy.sh
+```
+
+После деплоя:
+
+- Чат: `http://localhost:80`
+- Админка: `http://localhost:80/admin`
+- API docs: `http://localhost:8000/docs`
 
 ## Архитектура
 
 ```mermaid
 flowchart LR
-    U[Клиент в чате] --> W[webui / nginx :80]
-    W --> A[FastAPI API :8000]
+    U[Клиент] --> W[Web UI / Nginx]
+    W --> A[FastAPI API]
     A --> DB[(PostgreSQL)]
-    A --> N[NanoClaw Agent :8788]
+    A --> N[NanoClaw Agent]
     N --> A
-    A --> G[GigaChat API]
-    A -. optional fallback .-> O[Ollama]
-
-    classDef svc fill:#1f2937,color:#ffffff,stroke:#374151;
-    class W,A,DB,N,G,O svc;
+    A --> O[Ollama]
+    O --> M[Local model tinyllama]
 ```
-
-## Запуск за 30 секунд
-
-```bash
-git clone <repo-url>
-cd agrolead-assistant
-cp .env.example .env
-chmod +x deploy.sh
-./deploy.sh
-```
-
-`deploy.sh` сам спросит только критичные секреты GigaChat, если они пустые.
 
 ## Сервисы
 
-- `webui` — nginx, публичный чат и админка.
-- `api` — FastAPI + SQLModel, вся бизнес-логика и интеграции.
 - `db` — PostgreSQL 16.
-- `nanoclaw-agent` — отдельный изолированный контейнер NanoClaw.
-- `ollama` — опциональный fallback сервис (включается через `OLLAMA_FALLBACK_ENABLED=1`).
+- `api` — FastAPI, state-machine, guardrails, лиды, админ API.
+- `nanoclaw-agent` — изолированный адаптер агента (HTTP transport).
+- `ollama` — локальный LLM runtime.
+- `ollama-init` — one-shot сервис, который подтягивает модель перед стартом API.
+- `webui` — Nginx + статический фронт.
 
-## Как работает LLM
+## Почему раньше падало
 
-1. Для генерации ответа API идет в NanoClaw-контейнер.
-2. NanoClaw вызывает HTTP-адаптер: `POST /api/nanoclaw/agent/chat`.
-3. В адаптере FastAPI вызывает `LLMService`.
-4. `LLMService` пробует GigaChat первым.
-5. Если включен fallback и GigaChat недоступен — использует Ollama.
-6. В каждый ответ пишутся реальные `provider` и `model`.
+1. Внешний провайдер LLM давал 403/SSL и валил dry-run.
+2. Модель была слишком тяжелая для RAM сервера.
+3. Большой `num_ctx` создавал лишнее потребление памяти.
+4. Неподготовленная модель в Ollama приводила к 404/500 на генерации.
 
-Проверка статуса:
+## Что исправлено
 
-```bash
-curl http://localhost:8000/api/llm/status
+- Удалена интеграция с внешними LLM API, оставлен только Ollama.
+- Дефолтная модель: `tinyllama` (влезает в ограниченные ресурсы).
+- Безопасные дефолты для low-memory:
+  - `OLLAMA_NUM_CTX=512`
+  - `OLLAMA_NUM_PREDICT=96`
+- `ollama-init` гарантирует `ollama pull` до старта API.
+- `deploy.sh` автоматически снижает лимиты контекста при ошибке `requires more system memory`.
+- `webui` теперь собирается отдельным образом, без bind-mounted `nginx.conf` и ошибок entrypoint.
+
+## Параметры под сервер 4 GB RAM / 25 GB disk
+
+Рекомендуемые значения уже в `env.example`:
+
+```env
+LLM_PROVIDER=ollama
+OLLAMA_MODEL=tinyllama
+OLLAMA_NUM_CTX=512
+OLLAMA_NUM_PREDICT=96
+OLLAMA_TEMPERATURE=0.15
 ```
 
-## State-machine диалога
+Если RAM очень ограничена, можно дополнительно снизить:
 
-Состояния: `greeting -> qualification -> offer -> handoff`.
+```env
+OLLAMA_NUM_CTX=256
+OLLAMA_NUM_PREDICT=64
+```
 
-Обязательные поля лида:
+## Проверка после запуска
 
-1. Товар
-2. Класс
-3. Объем
-4. Регион
-5. Срок
-6. Контакт
+```bash
+docker compose ps
+curl -s http://localhost:11434/api/tags
+curl -s http://localhost:8000/api/llm/status
+curl -s -X POST http://localhost:8000/api/chat/dry-run \
+  -H "Content-Type: application/json" \
+  -d '{"text":"Нужна пшеница 3 класс 120 тонн в Краснодар"}'
+```
 
-Пока хоть одно поле пустое — бот задает один следующий точный вопрос.
+Ожидаемо:
 
-## Guardrails (строго)
+- `preferred_provider` = `ollama`
+- dry-run возвращает `200` и непустой `text`
 
-- Токсичность: короткий стоп-ответ, без продолжения анкеты.
-- Сильная токсичность: диалог переводится в `stopped_toxic`.
-- Кибер-запросы (`ddos`, `взлом`, `xss` и т.д.) — жесткий отказ.
+## Слабые места текущей архитектуры
 
-## Примеры: до и после
+- Нет очереди задач: все вызовы LLM идут напрямую через API.
+- Нет отдельного сервиса для аналитики и событий диалогов.
+- Нет централизованной конфигурации и секретов (Vault/KMS).
+- Ограниченная отказоустойчивость при росте нагрузки.
 
-### До (старый PicoClaw)
+## План улучшения для enterprise-интеграции
 
-Клиент: `Да пошел ты...`
+1. Ввести шину событий (NATS/RabbitMQ) для async-пайплайна.
+2. Разделить API на bounded contexts:
+   - `chat-service`
+   - `lead-service`
+   - `admin-service`
+   - `inference-gateway`
+3. Добавить `event-store` (Kafka/Postgres outbox) для аудита диалогов.
+4. Вынести observability стек:
+   - Prometheus + Grafana
+   - Loki + structured logs
+   - OpenTelemetry traces
+5. Подключить SSO/RBAC и аудит-лог на уровне enterprise policy.
+6. Добавить policy-engine (OPA) для guardrails и контуров доступа.
 
-Бот: `Пожалуйста, уточните объем и регион поставки.`
+## Примечание
 
-### После (NanoClaw + guardrails)
-
-Клиент: `Да пошел ты...`
-
-Бот: `С таким тоном не работаю. Если нужен расчет по зерну, вернись с нормальным запросом.`
-
----
-
-### После (квалификация)
-
-Клиент: `Нужна пшеница 3 класс`
-
-Бот: `Какой объем в тоннах нужен?`
-
-Клиент: `200 тонн, Краснодар, отгрузка завтра, +7 900 111 22 33`
-
-Бот: `Собрал параметры. Передаю менеджеру, он закрепит цену и логистику.`
-
-## Что проверяет deploy.sh
-
-- Жесткий wipe старых контейнеров/образов/volume и PicoClaw-артефактов.
-- `git fetch --all && git reset --hard origin/main && git clean -fdx`.
-- Подготовка `.env` + интерактивный запрос критичных секретов.
-- Полная пересборка Docker-образов.
-- Health & Integration Checks:
-  - `/api/health`
-  - `/api/llm/status` + проверка, что выбран GigaChat
-  - PostgreSQL (`pg_isready`)
-  - `/api/nanoclaw/agent/chat`
-  - Ollama (если fallback включен)
-  - 4 smoke-сценария диалогов
-- Автотесты: `test_chat_stream.py` + `test_integration_dialogue.py`.
-
-## Troubleshooting
-
-### 1) Ошибка GigaChat credentials
-
-Симптом: fail на `/api/llm/status` или `/api/chat/dry-run`.
-
-Решение:
-
-- Проверь `GIGACHAT_CLIENT_ID` и `GIGACHAT_CLIENT_SECRET` в `.env`.
-- Если используешь `GIGACHAT_AUTH_KEY`, убедись что это base64(client_id:client_secret).
-- Если в логах `403 Forbidden` на `/api/v2/oauth`, проверь `GIGACHAT_SCOPE` и доступы ключа.
-- Если у тебя только Authorization key, заполни только `GIGACHAT_AUTH_KEY` (без префикса `Basic` и без `Authorization key:`), `GIGACHAT_CLIENT_SECRET` можно оставить пустым.
-- Перезапусти: `./deploy.sh`.
-
-### 2) Не стартует `nanoclaw-agent`
-
-Симптом: fail на `/api/nanoclaw/agent/chat`.
-
-Решение:
-
-- Смотри логи: `docker logs --tail=100 agrolead-nanoclaw-agent`.
-- Проверь `NANOCLAW_HTTP_ADAPTER_URL` в `.env`.
-
-### 3) PostgreSQL недоступен
-
-Симптом: fail на `pg_isready`.
-
-Решение:
-
-- Проверь `POSTGRES_*` переменные и `DATABASE_URL`.
-- Смотри логи: `docker logs --tail=100 agrolead-db`.
-
-### 4) Ollama check падает
-
-Симптом: fail на `http://127.0.0.1:11434/api/tags`.
-
-Решение:
-
-- Убедись, что `OLLAMA_FALLBACK_ENABLED=1` только когда нужен fallback.
-- Если fallback не нужен — поставь `OLLAMA_FALLBACK_ENABLED=0`.
-
-### 5) GigaChat SSL certificate verify failed
-
-Симптом: в логах API есть `CERTIFICATE_VERIFY_FAILED`, dry-run падает 503.
-
-Решение:
-
-- `deploy.sh` теперь автоматически переключает `GIGACHAT_VERIFY_SSL=0` и перезапускает API при такой ошибке.
-- Если запускаешь вручную, выстави в `.env`: `GIGACHAT_VERIFY_SSL=0`.
-
-## Полезные ссылки после деплоя
-
-- Чат: `http://localhost:80`
-- Админка: `http://localhost:80/admin`
-- OpenAPI: `http://localhost:8000/docs`
-
-Готово, можно работать.
+Текущая версия ориентирована на стабильный локальный запуск и демонстрацию в условиях ограниченных ресурсов. Для production в экосистеме предприятия следующий шаг — переход к событийному взаимодействию и централизованной observability/безопасности.

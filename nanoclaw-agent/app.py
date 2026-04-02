@@ -40,7 +40,7 @@ async def agent_chat(payload: AgentChatIn) -> dict[str, Any]:
 
     return {
         "text": (data.get("text") or "").strip(),
-        "provider": data.get("provider", "gigachat"),
+        "provider": data.get("provider", "ollama"),
         "model": data.get("model", "unknown"),
         "done": bool(data.get("done", True)),
     }

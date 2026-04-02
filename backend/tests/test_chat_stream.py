@@ -7,8 +7,8 @@ from unittest.mock import AsyncMock
 
 os.environ.setdefault("DATABASE_URL", "sqlite:///./test_chat_stream.db")
 os.environ.setdefault("TOXIC_STRICT_MODE", "1")
-os.environ.setdefault("LLM_PROVIDER", "auto")
-os.environ.setdefault("OLLAMA_FALLBACK_ENABLED", "0")
+os.environ.setdefault("LLM_PROVIDER", "ollama")
+os.environ.setdefault("OLLAMA_FALLBACK_ENABLED", "1")
 
 BACKEND_ROOT = pathlib.Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
@@ -26,12 +26,12 @@ class ChatStreamCases(unittest.TestCase):
         self._orig_llm_complete = llm_service.complete
         self._orig_nanoclaw_chat = nanoclaw.chat
 
-        llm_service.complete = AsyncMock(return_value=("Прайс актуальный, передаю менеджеру.", "gigachat", "GigaChat-Max"))
+        llm_service.complete = AsyncMock(return_value=("Прайс актуальный, передаю менеджеру.", "ollama", "tinyllama"))
         nanoclaw.chat = AsyncMock(
             return_value={
                 "text": "Собрал параметры, передаю менеджеру на закрепление условий.",
-                "provider": "gigachat",
-                "model": "GigaChat-Max",
+                "provider": "ollama",
+                "model": "tinyllama",
             }
         )
 
@@ -63,7 +63,7 @@ class ChatStreamCases(unittest.TestCase):
         response = self.client.post("/api/chat/dry-run", json={"text": "Нужна пшеница 3 класс"})
         self.assertEqual(response.status_code, 200)
         payload = response.json()
-        self.assertEqual(payload.get("provider"), "gigachat")
+        self.assertEqual(payload.get("provider"), "ollama")
         self.assertIn("text", payload)
 
     def test_llm_status_has_provider_fields(self):
@@ -82,7 +82,7 @@ class ChatStreamCases(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertTrue(payload.get("done"))
-        self.assertEqual(payload.get("provider"), "gigachat")
+        self.assertEqual(payload.get("provider"), "ollama")
 
 
 if __name__ == "__main__":
