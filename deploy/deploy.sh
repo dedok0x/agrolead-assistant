@@ -36,6 +36,16 @@ require_cmd() {
   command -v "$1" >/dev/null 2>&1 || fail "Не найдена команда: $1"
 }
 
+replace_env_exact() {
+  local key="$1"
+  local old_value="$2"
+  local new_value="$3"
+  if grep -Eq "^${key}=${old_value}$" "$ENV_FILE"; then
+    sed -i "s|^${key}=${old_value}$|${key}=${new_value}|" "$ENV_FILE"
+    warn "Автомиграция legacy .env: ${key}=${old_value} -> ${new_value}"
+  fi
+}
+
 wait_http() {
   local url="$1"
   local tries="${2:-30}"
@@ -67,6 +77,11 @@ if [[ ! -f "$ENV_FILE" ]]; then
   cp "$ROOT_DIR/.env.example" "$ENV_FILE"
   ok "Создан .env из .env.example"
 fi
+
+log "Автомиграция legacy .env (сетевые адреса сервисов)"
+replace_env_exact "OLLAMA_BASE" "http://127.0.0.1:11434" "http://ollama:11434"
+replace_env_exact "DATABASE_URL" "postgresql+psycopg://agrolead:agrolead123@127.0.0.1:5432/agrolead" "postgresql+psycopg://agrolead:agrolead123@db:5432/agrolead"
+ok "Проверка legacy .env завершена"
 
 cd "$ROOT_DIR"
 
@@ -142,6 +157,16 @@ curl -fsS -H "Content-Type: application/json" \
 grep -q '"done": true' /tmp/agro_chat.ndjson || fail "api/chat/stream не вернул done=true"
 ok "api/chat/stream"
 
+log "Smoke: API chat (LLM provider ответ не fallback)"
+curl -fsS -H "Content-Type: application/json" \
+  -d '{"text":"Интересует пшеница 3 класс, объем 100 тонн","client_id":"smoke-llm"}' \
+  "$API_BASE/api/chat" >/tmp/agro_chat_llm.json || fail "api/chat недоступен"
+grep -q '"text"' /tmp/agro_chat_llm.json || fail "api/chat не вернул поле text"
+if grep -q "Сервис генерации временно недоступен" /tmp/agro_chat_llm.json; then
+  fail "api/chat вернул fallback о недоступности генерации (LLM provider нерабочий)"
+fi
+ok "api/chat (LLM provider)"
+
 log "Smoke: Web index и admin"
 curl -fsS $WEB_CURL_OPTS "$WEB_BASE/" >/tmp/agro_web_index.html || fail "web index недоступен"
 curl -fsS $WEB_CURL_OPTS "$WEB_BASE/admin" >/tmp/agro_web_admin.html || fail "web admin недоступен"
@@ -152,6 +177,9 @@ curl -fsS $WEB_CURL_OPTS "$WEB_BASE/api/health" >/tmp/agro_web_api_health.json |
 curl -fsS $WEB_CURL_OPTS -H "Content-Type: application/json" \
   -d '{"text":"Интересует пшеница 4 класс, объем 80 тонн","client_id":"smoke-web"}' \
   "$WEB_BASE/api/chat" >/tmp/agro_web_chat.json || fail "proxy /api/chat недоступен"
+if grep -q "Сервис генерации временно недоступен" /tmp/agro_web_chat.json; then
+  fail "proxy /api/chat вернул fallback о недоступности генерации (LLM provider нерабочий)"
+fi
 ok "proxy /api/health + /api/chat"
 
 log "Smoke: DB connect"

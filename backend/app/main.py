@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import time
 from datetime import datetime
 from typing import Optional
 from uuid import uuid4
@@ -33,6 +34,17 @@ OLLAMA_BASE = os.getenv("OLLAMA_BASE", "http://127.0.0.1:11434")
 MODEL_NAME = os.getenv("MODEL_NAME", "qwen2.5:0.5b")
 MODEL_NUM_CTX = int(os.getenv("MODEL_NUM_CTX", "8192"))
 MODEL_NUM_PREDICT = int(os.getenv("MODEL_NUM_PREDICT", "180"))
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "auto").lower()
+
+GIGACHAT_AUTH_KEY = os.getenv("GIGACHAT_AUTH_KEY", "")
+GIGACHAT_SCOPE = os.getenv("GIGACHAT_SCOPE", "GIGACHAT_API_PERS")
+GIGACHAT_OAUTH_URL = os.getenv("GIGACHAT_OAUTH_URL", "https://gigachat.devices.sberbank.ru/api/v2/oauth")
+GIGACHAT_API_URL = os.getenv("GIGACHAT_API_URL", "https://gigachat.devices.sberbank.ru/api/v1")
+GIGACHAT_MODEL = os.getenv("GIGACHAT_MODEL", "GigaChat-2")
+GIGACHAT_VERIFY_SSL = os.getenv("GIGACHAT_VERIFY_SSL", "1") not in {"0", "false", "False"}
+
+_gigachat_token: Optional[str] = None
+_gigachat_token_expire_ts: float = 0.0
 
 
 class LoginIn(BaseModel):
@@ -235,6 +247,78 @@ def sanitize_assistant_text(text: str) -> str:
     return cleaned
 
 
+def should_try_gigachat() -> bool:
+    if LLM_PROVIDER == "ollama":
+        return False
+    if LLM_PROVIDER == "gigachat":
+        return True
+    return bool(GIGACHAT_AUTH_KEY)
+
+
+async def get_gigachat_token(client: httpx.AsyncClient) -> str:
+    global _gigachat_token, _gigachat_token_expire_ts
+    now = time.time()
+    if _gigachat_token and now < (_gigachat_token_expire_ts - 60):
+        return _gigachat_token
+
+    headers = {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Accept": "application/json",
+        "RqUID": str(uuid4()),
+        "Authorization": f"Basic {GIGACHAT_AUTH_KEY}",
+    }
+    data = {"scope": GIGACHAT_SCOPE}
+    resp = await client.post(GIGACHAT_OAUTH_URL, headers=headers, data=data)
+    resp.raise_for_status()
+    payload = resp.json()
+    token = payload.get("access_token")
+    if not token:
+        raise RuntimeError("GigaChat token not found")
+
+    expires_at = payload.get("expires_at")
+    if isinstance(expires_at, (int, float)) and expires_at > 10_000_000_000:
+        _gigachat_token_expire_ts = float(expires_at) / 1000.0
+    elif isinstance(expires_at, (int, float)):
+        _gigachat_token_expire_ts = float(expires_at)
+    else:
+        _gigachat_token_expire_ts = now + 25 * 60
+
+    _gigachat_token = token
+    return token
+
+
+async def generate_via_gigachat(prompt: str) -> str:
+    if not GIGACHAT_AUTH_KEY:
+        raise RuntimeError("GIGACHAT_AUTH_KEY is empty")
+
+    async with httpx.AsyncClient(timeout=120, verify=GIGACHAT_VERIFY_SSL) as client:
+        token = await get_gigachat_token(client)
+        headers = {
+            "Accept": "application/json",
+            "Authorization": f"Bearer {token}",
+        }
+        payload = {
+            "model": GIGACHAT_MODEL,
+            "messages": [
+                {"role": "system", "content": "Ты корпоративный ассистент ООО «Петрохлеб-Кубань»."},
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": 0.05,
+            "max_tokens": MODEL_NUM_PREDICT,
+        }
+        resp = await client.post(f"{GIGACHAT_API_URL}/chat/completions", headers=headers, json=payload)
+        resp.raise_for_status()
+        data = resp.json()
+        choices = data.get("choices") or []
+        if not choices:
+            raise RuntimeError("GigaChat returned empty choices")
+        msg = choices[0].get("message") or {}
+        text = (msg.get("content") or "").strip()
+        if not text:
+            raise RuntimeError("GigaChat returned empty content")
+        return text
+
+
 @app.on_event("startup")
 def startup() -> None:
     init_db()
@@ -314,6 +398,19 @@ async def chat_stream(payload: ChatIn, session: Session = Depends(get_session)):
     async def gen():
         assistant_full = ""
         try:
+            if should_try_gigachat():
+                try:
+                    gc_text = await generate_via_gigachat(prompt)
+                    clean_gc = sanitize_assistant_text(gc_text)
+                    with Session(engine) as write_session:
+                        write_session.add(ChatMessage(session_id=chat_session.id, role="assistant", text=clean_gc))
+                        write_session.commit()
+                    yield json.dumps({"session_id": chat_session.id, "token": clean_gc, "done": True}) + "\n"
+                    return
+                except Exception:
+                    if LLM_PROVIDER == "gigachat":
+                        raise
+
             async with httpx.AsyncClient(timeout=None) as client:
                 async with client.stream(
                     "POST",
@@ -401,6 +498,19 @@ async def chat(payload: ChatIn, session: Session = Depends(get_session)):
     prompt = f"{build_system_prompt(session)}\n\n{history}\nАссистент:"
 
     try:
+        if should_try_gigachat():
+            try:
+                gc_text = await generate_via_gigachat(prompt)
+                text = sanitize_assistant_text(gc_text)
+                if not text:
+                    text = "Уточните, пожалуйста, товар, класс и объем в тоннах — передам заявку менеджеру."
+                session.add(ChatMessage(session_id=chat_session.id, role="assistant", text=text))
+                session.commit()
+                return {"session_id": chat_session.id, "text": text, "done": True}
+            except Exception:
+                if LLM_PROVIDER == "gigachat":
+                    raise
+
         async with httpx.AsyncClient(timeout=120) as client:
             r = await client.post(
                 f"{OLLAMA_BASE}/api/generate",
