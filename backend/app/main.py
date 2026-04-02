@@ -365,6 +365,8 @@ async def chat_stream(payload: ChatIn, session: Session = Depends(get_session)):
         session.commit()
         session.refresh(chat_session)
 
+    chat_session_id = chat_session.id
+
     session.add(ChatMessage(session_id=chat_session.id, role="user", text=payload.text, blocked=not ok, reason="blocked" if not ok else ""))
     session.commit()
     upsert_lead_from_text(session, chat_session.id, payload.text)
@@ -372,22 +374,22 @@ async def chat_stream(payload: ChatIn, session: Session = Depends(get_session)):
     fast = quick_reply(payload.text)
     if fast:
         def fast_gen():
-            yield json.dumps({"session_id": chat_session.id, "token": fast, "done": True}) + "\n"
+            yield json.dumps({"session_id": chat_session_id, "token": fast, "done": True}) + "\n"
 
-        session.add(ChatMessage(session_id=chat_session.id, role="assistant", text=fast))
+        session.add(ChatMessage(session_id=chat_session_id, role="assistant", text=fast))
         session.commit()
         return StreamingResponse(fast_gen(), media_type="application/x-ndjson")
 
     if not ok:
         def reject_gen():
-            yield json.dumps({"session_id": chat_session.id, "token": reject, "done": True}) + "\n"
+            yield json.dumps({"session_id": chat_session_id, "token": reject, "done": True}) + "\n"
 
-        session.add(ChatMessage(session_id=chat_session.id, role="assistant", text=reject, blocked=True, reason="policy"))
+        session.add(ChatMessage(session_id=chat_session_id, role="assistant", text=reject, blocked=True, reason="policy"))
         session.commit()
         return StreamingResponse(reject_gen(), media_type="application/x-ndjson")
 
     recent = session.exec(
-        select(ChatMessage).where(ChatMessage.session_id == chat_session.id).order_by(ChatMessage.created_at.desc())
+        select(ChatMessage).where(ChatMessage.session_id == chat_session_id).order_by(ChatMessage.created_at.desc())
     ).all()[:6]
     history = "\n".join([
         f"{'Клиент' if m.role == 'user' else 'Ассистент'}: {m.text}" for m in reversed(recent)
@@ -403,9 +405,9 @@ async def chat_stream(payload: ChatIn, session: Session = Depends(get_session)):
                     gc_text = await generate_via_gigachat(prompt)
                     clean_gc = sanitize_assistant_text(gc_text)
                     with Session(engine) as write_session:
-                        write_session.add(ChatMessage(session_id=chat_session.id, role="assistant", text=clean_gc))
+                        write_session.add(ChatMessage(session_id=chat_session_id, role="assistant", text=clean_gc))
                         write_session.commit()
-                    yield json.dumps({"session_id": chat_session.id, "token": clean_gc, "done": True}) + "\n"
+                    yield json.dumps({"session_id": chat_session_id, "token": clean_gc, "done": True}) + "\n"
                     return
                 except Exception:
                     if LLM_PROVIDER == "gigachat":
@@ -441,13 +443,13 @@ async def chat_stream(payload: ChatIn, session: Session = Depends(get_session)):
                         token = part.get("response", "")
                         if token:
                             assistant_full += token
-                            yield json.dumps({"session_id": chat_session.id, "token": token, "done": False}) + "\n"
+                            yield json.dumps({"session_id": chat_session_id, "token": token, "done": False}) + "\n"
                         if part.get("done"):
                             clean = sanitize_assistant_text(assistant_full)
                             with Session(engine) as write_session:
-                                write_session.add(ChatMessage(session_id=chat_session.id, role="assistant", text=clean))
+                                write_session.add(ChatMessage(session_id=chat_session_id, role="assistant", text=clean))
                                 write_session.commit()
-                            yield json.dumps({"session_id": chat_session.id, "token": "", "done": True}) + "\n"
+                            yield json.dumps({"session_id": chat_session_id, "token": "", "done": True}) + "\n"
                             break
         except Exception:
             fallback = (
@@ -455,9 +457,9 @@ async def chat_stream(payload: ChatIn, session: Session = Depends(get_session)):
                 "Уточните, пожалуйста, товар, класс и объем в тоннах — передам заявку менеджеру."
             )
             with Session(engine) as write_session:
-                write_session.add(ChatMessage(session_id=chat_session.id, role="assistant", text=fallback, blocked=True, reason="llm_unavailable"))
+                write_session.add(ChatMessage(session_id=chat_session_id, role="assistant", text=fallback, blocked=True, reason="llm_unavailable"))
                 write_session.commit()
-            yield json.dumps({"session_id": chat_session.id, "token": fallback, "done": True}) + "\n"
+            yield json.dumps({"session_id": chat_session_id, "token": fallback, "done": True}) + "\n"
 
     return StreamingResponse(gen(), media_type="application/x-ndjson")
 
