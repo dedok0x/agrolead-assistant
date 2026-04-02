@@ -312,26 +312,37 @@ EOF
   fi
 fi
 
-if [[ -z "$(get_env_var "GIGACHAT_AUTH_KEY")" ]]; then
-  if [[ -t 0 ]]; then
-    read -r -p "Введите GIGACHAT_AUTH_KEY (если есть, иначе Enter): " GIGACHAT_AUTH_KEY_INPUT || true
-    if [[ -n "${GIGACHAT_AUTH_KEY_INPUT:-}" ]]; then
-      upsert_env_var "GIGACHAT_AUTH_KEY" "$GIGACHAT_AUTH_KEY_INPUT"
+LLM_PROVIDER_VALUE="$(env_or_default "LLM_PROVIDER" "ollama")"
+LLM_PROVIDER_VALUE="${LLM_PROVIDER_VALUE,,}"
+
+if [[ "$LLM_PROVIDER_VALUE" != "ollama" ]]; then
+  if [[ -z "$(get_env_var "GIGACHAT_AUTH_KEY")" ]]; then
+    if [[ -t 0 ]]; then
+      read -r -p "Введите GIGACHAT_AUTH_KEY (если есть, иначе Enter): " GIGACHAT_AUTH_KEY_INPUT || true
+      if [[ -n "${GIGACHAT_AUTH_KEY_INPUT:-}" ]]; then
+        upsert_env_var "GIGACHAT_AUTH_KEY" "$GIGACHAT_AUTH_KEY_INPUT"
+      fi
     fi
   fi
+
+  if [[ -z "$(get_env_var "GIGACHAT_AUTH_KEY")" ]]; then
+    prompt_secret_if_empty "GIGACHAT_CLIENT_ID" "Введите GIGACHAT_CLIENT_ID"
+    prompt_secret_if_empty "GIGACHAT_CLIENT_SECRET" "Введите GIGACHAT_CLIENT_SECRET" 1
+  fi
+else
+  warn "LLM_PROVIDER=ollama: пропускаю запрос GigaChat ключей"
 fi
 
-if [[ -z "$(get_env_var "GIGACHAT_AUTH_KEY")" ]]; then
-  prompt_secret_if_empty "GIGACHAT_CLIENT_ID" "Введите GIGACHAT_CLIENT_ID"
-  prompt_secret_if_empty "GIGACHAT_CLIENT_SECRET" "Введите GIGACHAT_CLIENT_SECRET" 1
-fi
-
-upsert_env_var "LLM_PROVIDER" "auto"
 upsert_env_var "NANOCLAW_BASE_URL" "http://nanoclaw-agent:8788"
 upsert_env_var "NANOCLAW_AGENT_CHAT_PATH" "/agent/chat"
 upsert_env_var "NANOCLAW_HTTP_ADAPTER_URL" "http://api:8000/api/nanoclaw/agent/chat"
 
+if [[ "$LLM_PROVIDER_VALUE" == "ollama" ]]; then
+  upsert_env_var "OLLAMA_FALLBACK_ENABLED" "1"
+fi
+
 OLLAMA_FALLBACK_ENABLED="$(sanitize_bool "$(env_or_default "OLLAMA_FALLBACK_ENABLED" "0")")"
+OLLAMA_MODEL_VALUE="$(env_or_default "OLLAMA_MODEL" "llama3.2:3b")"
 ok ".env готов"
 
 step "Проверка Python окружения"
@@ -382,6 +393,13 @@ docker compose "${COMPOSE_ARGS[@]}" exec -T db pg_isready -U "$POSTGRES_USER_VAL
 ok "PostgreSQL доступен"
 show_service_logs db 50
 
+if [[ "$OLLAMA_FALLBACK_ENABLED" == "1" || "$LLM_PROVIDER_VALUE" == "ollama" ]]; then
+  wait_http "http://127.0.0.1:11434/api/tags" 90 2 || die "Ollama не поднялся: /api/tags"
+  step "Загрузка модели Ollama: $OLLAMA_MODEL_VALUE"
+  docker compose -f "$COMPOSE_FILE" exec -T ollama ollama pull "$OLLAMA_MODEL_VALUE" >/dev/null || die "Не удалось загрузить модель Ollama: $OLLAMA_MODEL_VALUE"
+  ok "Модель Ollama готова"
+fi
+
 LLM_STATUS_JSON="$(curl -fsS "$API_BASE/api/llm/status")"
 "$PYTHON_BIN" - "$LLM_STATUS_JSON" <<'PY'
 import json
@@ -389,15 +407,38 @@ import sys
 
 payload = json.loads(sys.argv[1])
 preferred = payload.get("preferred_provider")
-gigachat_ready = payload.get("gigachat_ready")
 if preferred is None:
     raise SystemExit(f"/api/llm/status вернул старый или некорректный формат: {payload}")
+print(json.dumps(payload, ensure_ascii=False))
+PY
+
+LLM_STATUS_PROVIDER="$("$PYTHON_BIN" - "$LLM_STATUS_JSON" <<'PY'
+import json
+import sys
+payload = json.loads(sys.argv[1])
+print(payload.get("preferred_provider", ""))
+PY
+)"
+
+if [[ "$LLM_PROVIDER_VALUE" == "ollama" ]]; then
+  if [[ "$LLM_STATUS_PROVIDER" != "ollama" ]]; then
+    die "/api/llm/status: ожидался preferred_provider=ollama, получено: $LLM_STATUS_PROVIDER"
+  fi
+  ok "LLM status ok | preferred=ollama"
+elif [[ "$LLM_PROVIDER_VALUE" == "gigachat" ]]; then
+  "$PYTHON_BIN" - "$LLM_STATUS_JSON" <<'PY'
+import json
+import sys
+payload = json.loads(sys.argv[1])
 if payload.get("preferred_provider") != "gigachat":
-    raise SystemExit(f"/api/llm/status: preferred_provider не gigachat (получено: {preferred})")
+    raise SystemExit(f"/api/llm/status: preferred_provider не gigachat (получено: {payload.get('preferred_provider')})")
 if not payload.get("gigachat_ready"):
     raise SystemExit(f"/api/llm/status: gigachat_ready=false (payload: {payload})")
 print("LLM status ok | preferred=gigachat")
 PY
+else
+  ok "LLM status ok | preferred=$LLM_STATUS_PROVIDER"
+fi
 
 DRY_RUN_REQUEST='{"text":"Нужна пшеница 3 класс 120 тонн в Краснодар"}'
 DRY_RUN_RESPONSE_FILE="$LOG_DIR/dry_run_response.json"

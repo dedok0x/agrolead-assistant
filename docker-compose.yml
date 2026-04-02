@@ -45,7 +45,7 @@ services:
       NANOCLAW_TIMEOUT_SECONDS: ${NANOCLAW_TIMEOUT_SECONDS:-45}
 
       # LLM strategy
-      LLM_PROVIDER: ${LLM_PROVIDER:-auto}
+      LLM_PROVIDER: ${LLM_PROVIDER:-ollama}
       LLM_REQUEST_TIMEOUT_SECONDS: ${LLM_REQUEST_TIMEOUT_SECONDS:-45}
 
       # GigaChat credentials
@@ -60,15 +60,19 @@ services:
       GIGACHAT_TOKEN_REFRESH_SECONDS: ${GIGACHAT_TOKEN_REFRESH_SECONDS:-1500}
 
       # Ollama fallback
-      OLLAMA_FALLBACK_ENABLED: ${OLLAMA_FALLBACK_ENABLED:-0}
+      OLLAMA_FALLBACK_ENABLED: ${OLLAMA_FALLBACK_ENABLED:-1}
       OLLAMA_BASE: ${OLLAMA_BASE:-http://ollama:11434}
-      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:72b-instruct}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2:3b}
       OLLAMA_NUM_CTX: ${OLLAMA_NUM_CTX:-16384}
       OLLAMA_NUM_PREDICT: ${OLLAMA_NUM_PREDICT:-220}
       OLLAMA_TEMPERATURE: ${OLLAMA_TEMPERATURE:-0.15}
     depends_on:
       db:
         condition: service_healthy
+      ollama:
+        condition: service_started
+      ollama-init:
+        condition: service_completed_successfully
     volumes:
       - app_data:/data
     healthcheck:
@@ -98,7 +102,7 @@ services:
       NANOCLAW_LOG_LEVEL: ${NANOCLAW_LOG_LEVEL:-info}
       NANOCLAW_SANDBOX_MODE: container
       NANOCLAW_HTTP_ADAPTER_URL: ${NANOCLAW_HTTP_ADAPTER_URL:-http://api:8000/api/nanoclaw/agent/chat}
-      NANOCLAW_DEFAULT_PROVIDER: ${NANOCLAW_DEFAULT_PROVIDER:-gigachat}
+      NANOCLAW_DEFAULT_PROVIDER: ${NANOCLAW_DEFAULT_PROVIDER:-ollama}
     depends_on:
       api:
         condition: service_started
@@ -122,17 +126,38 @@ services:
     image: ollama/ollama:latest
     container_name: agrolead-ollama
     restart: unless-stopped
-    profiles:
-      - ollama
     ports:
       - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+    networks:
+      - agrolead
+
+  ollama-init:
+    image: ollama/ollama:latest
+    container_name: agrolead-ollama-init
+    restart: "no"
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2:3b}
+    command: ["pull", "${OLLAMA_MODEL:-llama3.2:3b}"]
     volumes:
       - ollama_data:/root/.ollama
     networks:
       - agrolead
 
   webui:
-    image: nginx:1.27-alpine
+    build:
+      context: ./web
+    image: agrolead/webui:local
     container_name: agrolead-webui
     restart: unless-stopped
     ports:
@@ -140,10 +165,6 @@ services:
     depends_on:
       api:
         condition: service_healthy
-    volumes:
-      - ./web/index.html:/usr/share/nginx/html/index.html:ro
-      - ./web/admin.html:/usr/share/nginx/html/admin.html:ro
-      - ./web/nginx.conf:/etc/nginx/conf.d/default.conf:ro
     networks:
       - agrolead
 
