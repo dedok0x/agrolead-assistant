@@ -21,4 +21,13 @@ class ResponseRenderer:
         )
 
     def render_fallback(self) -> str:
-        return "Принял. Уточните товар, класс, объем и регион доставки, чтобы оформить заявку."
+        return "Понял запрос. Давайте зафиксируем параметры сделки: товар, класс, объем, регион и срок поставки."
+
+    def render_soft_next_step(self, base_text: str, next_question: str) -> str:
+        base = (base_text or "").strip()
+        question = (next_question or "").strip()
+        if not question:
+            return base or self.render_fallback()
+        if not base:
+            return question
+        return f"{base} {question}"

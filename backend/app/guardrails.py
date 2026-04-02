@@ -13,6 +13,8 @@ class GuardrailDecision:
 
 
 SEVERE_TOXIC_PATTERNS = [
+    r"\bхуй\b",
+    r"\bнахуй\b",
     r"иди\s+на\s*х[уюй]",
     r"пош[её]л\s+на\s*х[уюй]",
     r"рот\s+е?б",
@@ -20,6 +22,8 @@ SEVERE_TOXIC_PATTERNS = [
 ]
 
 MILD_TOXIC_PATTERNS = [
+    r"\bбля\b",
+    r"\bблять\b",
     r"\bбля(?:дь)?\b",
     r"\bсука\b",
     r"\bдолбо[её]б\w*",
