@@ -52,11 +52,13 @@ services:
       GIGACHAT_API_BASE_URL: ${GIGACHAT_API_BASE_URL:-https://gigachat.devices.sberbank.ru/api/v1}
       GIGACHAT_MODEL: ${GIGACHAT_MODEL:-GigaChat-2}
       GIGACHAT_VERIFY_SSL: ${GIGACHAT_VERIFY_SSL:-1}
+      GIGACHAT_CA_FILE: ${GIGACHAT_CA_FILE:-}
     depends_on:
       db:
         condition: service_healthy
     volumes:
       - app_data:/data
+      - ./ssl:/ssl:ro
     healthcheck:
       test:
         [

@@ -62,7 +62,13 @@ flowchart LR
 - `LLM_REQUEST_TIMEOUT_SECONDS=5`
 - `LLM_MAX_RETRIES=1`
 - одиночный inference-lock (без параллельной генерации)
-- `GIGACHAT_VERIFY_SSL=0` (нужен для самоподписных сертификатов)
+- `GIGACHAT_VERIFY_SSL=1`
+- `GIGACHAT_CA_FILE=/ssl/fullchain.pem` (если используется свой CA)
+
+## SSL и GigaChat
+
+- Поместите подписанный CA-chain в `./ssl/fullchain.pem`; `deploy.sh` примонтирует `./ssl` внутрь контейнера `api`.
+- В переменных окружения укажите `GIGACHAT_CA_FILE=/ssl/fullchain.pem` и `GIGACHAT_VERIFY_SSL=1`.
 
 ## Обязательные env для GigaChat
 

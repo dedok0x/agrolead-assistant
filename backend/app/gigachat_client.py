@@ -35,10 +35,12 @@ class GigaChatClient:
         ).strip().rstrip("/")
         self.model = os.getenv("GIGACHAT_MODEL", "GigaChat-2").strip()
         self.verify_ssl = _env_bool("GIGACHAT_VERIFY_SSL", True)
+        self.ca_file = os.getenv("GIGACHAT_CA_FILE", "").strip()
 
         timeout_seconds = max(1.0, min(float(timeout_seconds), 5.0))
         timeout = httpx.Timeout(timeout_seconds, connect=min(timeout_seconds, 3.0))
-        self._client = httpx.AsyncClient(timeout=timeout, verify=self.verify_ssl)
+        verify = self.ca_file or self.verify_ssl
+        self._client = httpx.AsyncClient(timeout=timeout, verify=verify)
 
         self._access_token = ""
         self._expires_at = datetime.now(timezone.utc)
