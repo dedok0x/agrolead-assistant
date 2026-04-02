@@ -241,11 +241,24 @@ rm -rf \
   "$ROOT_DIR/config/picoclaw-config.json" || true
 ok "Старые артефакты удалены"
 
-step "Синхронизация с origin/main"
+step "Синхронизация с git"
 git fetch --all --prune
-git reset --hard origin/main
+
+CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo main)"
+if [[ "$CURRENT_BRANCH" == "HEAD" || -z "$CURRENT_BRANCH" ]]; then
+  CURRENT_BRANCH="main"
+fi
+
+TARGET_REF="origin/$CURRENT_BRANCH"
+if ! git show-ref --verify --quiet "refs/remotes/$TARGET_REF"; then
+  warn "Удаленная ветка $TARGET_REF не найдена, fallback на origin/main"
+  TARGET_REF="origin/main"
+fi
+
+step "Синхронизация с $TARGET_REF"
+git reset --hard "$TARGET_REF"
 git clean -fdx
-ok "Репозиторий очищен и синхронизирован"
+ok "Репозиторий очищен и синхронизирован с $TARGET_REF"
 
 step "Подготовка .env"
 if [[ -f "$ENV_BACKUP_FILE" ]]; then
@@ -366,10 +379,14 @@ import json
 import sys
 
 payload = json.loads(sys.argv[1])
+preferred = payload.get("preferred_provider")
+gigachat_ready = payload.get("gigachat_ready")
+if preferred is None:
+    raise SystemExit(f"/api/llm/status вернул старый или некорректный формат: {payload}")
 if payload.get("preferred_provider") != "gigachat":
-    raise SystemExit("/api/llm/status: preferred_provider не gigachat")
+    raise SystemExit(f"/api/llm/status: preferred_provider не gigachat (получено: {preferred})")
 if not payload.get("gigachat_ready"):
-    raise SystemExit("/api/llm/status: gigachat_ready=false")
+    raise SystemExit(f"/api/llm/status: gigachat_ready=false (payload: {payload})")
 print("LLM status ok | preferred=gigachat")
 PY
 
