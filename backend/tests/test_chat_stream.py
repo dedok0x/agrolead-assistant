@@ -47,6 +47,46 @@ class ChatStreamCases(unittest.TestCase):
         self.assertIn("session_id", payload)
         self.assertTrue(payload.get("token"))
 
+    def test_chat_sync_sales_script_price_question(self):
+        resp = self.client.post(
+            "/api/chat",
+            json={"text": "Какая цена и минимальный объем?", "client_id": "test-price"},
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertTrue(data.get("done"))
+        self.assertIn("text", data)
+        self.assertNotEqual(data.get("provider"), "fallback")
+
+    def test_chat_sync_sales_script_rejects_numeric_noise_without_error(self):
+        resp = self.client.post(
+            "/api/chat",
+            json={"text": "123", "client_id": "test-noise"},
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertTrue(data.get("done"))
+        self.assertIn("text", data)
+        self.assertNotIn("Ошибка запроса", data.get("text", ""))
+
+    def test_chat_dry_run_returns_expected_shape(self):
+        resp = self.client.post(
+            "/api/chat/dry-run",
+            json={"text": "Интересует пшеница 3 класс, объем 100 тонн, доставка в Краснодар"},
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertTrue(data.get("done"))
+        self.assertIn("provider", data)
+        self.assertIn("text", data)
+
+    def test_llm_status_endpoint_shape(self):
+        resp = self.client.get("/api/llm/status")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertIn("active", data)
+        self.assertIn("mode", data)
+
 
 if __name__ == "__main__":
     unittest.main()

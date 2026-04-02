@@ -42,9 +42,17 @@ GIGACHAT_OAUTH_URL = os.getenv("GIGACHAT_OAUTH_URL", "https://gigachat.devices.s
 GIGACHAT_API_URL = os.getenv("GIGACHAT_API_URL", "https://gigachat.devices.sberbank.ru/api/v1")
 GIGACHAT_MODEL = os.getenv("GIGACHAT_MODEL", "GigaChat-2")
 GIGACHAT_VERIFY_SSL = os.getenv("GIGACHAT_VERIFY_SSL", "1") not in {"0", "false", "False"}
+GIGACHAT_TOKEN_REFRESH_SECONDS = int(os.getenv("GIGACHAT_TOKEN_REFRESH_SECONDS", "1500"))
+LLM_REQUEST_TIMEOUT_SECONDS = float(os.getenv("LLM_REQUEST_TIMEOUT_SECONDS", "45"))
 
 _gigachat_token: Optional[str] = None
 _gigachat_token_expire_ts: float = 0.0
+_gigachat_token_issued_ts: float = 0.0
+
+_http_limits = httpx.Limits(max_keepalive_connections=20, max_connections=100)
+_http_timeout = httpx.Timeout(LLM_REQUEST_TIMEOUT_SECONDS, connect=5.0)
+_ollama_client = httpx.AsyncClient(timeout=_http_timeout, limits=_http_limits)
+_gigachat_client = httpx.AsyncClient(timeout=_http_timeout, limits=_http_limits, verify=GIGACHAT_VERIFY_SSL)
 
 
 class LoginIn(BaseModel):
@@ -56,6 +64,10 @@ class ChatIn(BaseModel):
     text: str
     session_id: Optional[int] = None
     client_id: str = "web"
+
+
+class ChatDryRunIn(BaseModel):
+    text: str
 
 
 class PromptIn(BaseModel):
@@ -141,6 +153,18 @@ def upsert_lead_from_text(session: Session, chat_session_id: int, text: str) -> 
     phone_match = re.search(r"(?:\+7|8)[\s\-\(\)]*\d[\d\s\-\(\)]{8,}", text)
     email_match = re.search(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", text)
     vol_match = re.search(r"(\d+[\.,]?\d*)\s*(?:т|тонн|тонны|тонна)", s)
+    grade_match = re.search(r"([1-6])\s*класс", s)
+
+    region = ""
+    m_region = re.search(r"(?:в|до|по)\s+([А-Яа-яA-Za-z\-\s]{3,40})", text)
+    if m_region:
+        region = m_region.group(1).strip(" .,")
+
+    delivery_term = ""
+    if any(x in s for x in ["срочно", "сегодня", "завтра"]):
+        delivery_term = "срочно"
+    elif any(x in s for x in ["недел", "месяц", "дата", "срок"]):
+        delivery_term = text.strip()[:120]
 
     product = ""
     if "пшен" in s:
@@ -150,7 +174,14 @@ def upsert_lead_from_text(session: Session, chat_session_id: int, text: str) -> 
     elif "кукуруз" in s:
         product = "Кукуруза"
 
-    if not (phone_match or email_match or vol_match or product):
+    client_name = ""
+    m_name = re.search(r"(?:меня зовут|я\s+)\s+([А-Яа-яA-Za-z\-]{3,40})", text)
+    if m_name:
+        client_name = m_name.group(1).strip()
+    elif re.fullmatch(r"[А-Яа-яA-Za-z\-]{3,40}", text.strip()):
+        client_name = text.strip()
+
+    if not (phone_match or email_match or vol_match or product or grade_match or region or delivery_term or client_name):
         return
 
     lead = session.exec(
@@ -167,6 +198,19 @@ def upsert_lead_from_text(session: Session, chat_session_id: int, text: str) -> 
         lead.volume_tons = vol_match.group(1).replace(",", ".")
     if product and not lead.product:
         lead.product = product
+    if grade_match:
+        lead.grade = f"{grade_match.group(1)} класс"
+    if region and not lead.region:
+        lead.region = region
+    if delivery_term and not lead.delivery_term:
+        lead.delivery_term = delivery_term
+    if client_name and not lead.client_name:
+        lead.client_name = client_name
+
+    if lead.product and lead.volume_tons and (lead.phone or lead.email):
+        lead.status = "qualified"
+    elif any([lead.product, lead.grade, lead.volume_tons, lead.region, lead.delivery_term, lead.client_name]):
+        lead.status = "in_progress"
 
     lead.updated_at = datetime.utcnow()
     session.add(lead)
@@ -178,14 +222,6 @@ def guard_user_text(text: str) -> tuple[bool, str]:
     blocked = ["ddos", "ддос", "взлом", "hack", "эксплойт", "ботнет", "malware", "xss", "rce"]
     if any(x in s for x in blocked):
         return False, "Я не помогаю с небезопасными запросами. Могу помочь только по зерновой продукции и оформлению заявки."
-
-    allowed = [
-        "привет", "здравствуйте", "добрый",
-        "кто вы", "чем занимаетесь", "ассортимент", "пш", "ячм", "кукуруз", "зерн", "цена", "налич",
-        "класс", "качест", "тонн", "объем", "объ", "достав", "логист", "отгруз", "заявк", "контакт",
-    ]
-    if not any(x in s for x in allowed):
-        return False, "Я консультирую только по продукции, цене, наличию, логистике и заявкам ООО «Петрохлеб-Кубань»."
 
     return True, ""
 
@@ -218,6 +254,102 @@ def quick_reply(text: str) -> Optional[str]:
             "Актуальное наличие и условия зависят от класса и объема партии. "
             "Уточните, пожалуйста, культуру, класс и объем в тоннах."
         )
+
+    return None
+
+
+def _find_product_offer(session: Session, product: str, grade: str = "") -> Optional[ProductItem]:
+    items = session.exec(
+        select(ProductItem).where(ProductItem.active == True).order_by(ProductItem.stock_tons.desc())
+    ).all()
+    p = (product or "").lower()
+    g = (grade or "").lower()
+    for it in items:
+        text = f"{it.name} {it.culture} {it.grade}".lower()
+        if p and p not in text:
+            continue
+        if g and g not in text:
+            continue
+        return it
+    return None
+
+
+def _next_question_for_lead(lead: Optional[Lead]) -> str:
+    if not lead:
+        return "Подскажите, пожалуйста, какую культуру рассматриваете и какой ориентировочный объем в тоннах?"
+    if not lead.product:
+        return "Подскажите, пожалуйста, какую культуру вы рассматриваете: пшеница, ячмень или кукуруза?"
+    if not lead.grade:
+        return "Уточните, пожалуйста, класс/качество продукции."
+    if not lead.volume_tons:
+        return "Какой ориентировочный объем партии в тоннах вам нужен?"
+    if not lead.region:
+        return "В какой регион нужна поставка?"
+    if not (lead.phone or lead.email):
+        return "Оставьте, пожалуйста, телефон или email, чтобы менеджер закрепил цену и условия."
+    return "Если удобно, могу сразу передать заявку менеджеру и зафиксировать условия."
+
+
+def scripted_sales_reply(session: Session, chat_session_id: int, text: str) -> Optional[str]:
+    s = text.lower().strip()
+    lead = session.exec(
+        select(Lead).where(Lead.session_id == chat_session_id).order_by(Lead.updated_at.desc())
+    ).first()
+
+    if not s:
+        return "Я на связи. Подскажите, пожалуйста, что именно интересует по зерновым: цена, наличие или логистика?"
+
+    if re.fullmatch(r"\d+", s):
+        return "Понял вас. Чтобы дать точный ответ, подскажите, пожалуйста, товар, класс и объем в тоннах."
+
+    if "на какой модели" in s or "какая модель" in s:
+        return "Я работаю как корпоративный ассистент отдела продаж и помогаю по наличию, цене, логистике и оформлению заявки. Давайте подберем условия под ваш запрос."
+
+    if "не хочу" in s and any(x in s for x in ["класс", "пшениц", "ячмен", "кукуруз"]):
+        if lead:
+            if "пшениц" in s:
+                lead.product = ""
+                lead.grade = ""
+            elif "ячмен" in s:
+                lead.product = ""
+                lead.grade = ""
+            elif "кукуруз" in s:
+                lead.product = ""
+                lead.grade = ""
+            session.add(lead)
+            session.commit()
+        return "Принято, скорректируем запрос. Какую культуру и класс тогда рассматриваете вместо этого варианта?"
+
+    if any(x in s for x in ["какие товары", "ассортимент", "что в наличии", "наличие"]):
+        products = session.exec(
+            select(ProductItem).where(ProductItem.active == True).order_by(ProductItem.stock_tons.desc())
+        ).all()[:4]
+        if not products:
+            return "Сейчас уточняем актуальные остатки. Подскажите, какая культура вас интересует, и я зафиксирую запрос менеджеру."
+        items = "; ".join([f"{p.name} ({p.price_from:.0f}-{p.price_to:.0f} ₽/т)" for p in products])
+        return f"Сейчас в работе по каталогу: {items}. Что из этого интересно вам по культуре и объему?"
+
+    if any(x in s for x in ["цена", "стоимость", "минимальный объем", "минимум"]):
+        if lead and lead.product:
+            offer = _find_product_offer(session, lead.product, lead.grade)
+            if offer:
+                return (
+                    f"По {offer.name} ориентир {offer.price_from:.0f}-{offer.price_to:.0f} ₽/т, доступный остаток около {offer.stock_tons:.0f} т. "
+                    f"{_next_question_for_lead(lead)}"
+                )
+        return "Ориентир по цене и минимальному объему зависит от культуры, класса и точки поставки. Уточните, пожалуйста, товар, класс и объем в тоннах."
+
+    sales_tokens = ["пшениц", "ячмен", "кукуруз", "класс", "тонн", "объем", "достав", "логист", "заявк", "краснодар", "цена"]
+    if any(x in s for x in sales_tokens):
+        if lead and lead.product:
+            offer = _find_product_offer(session, lead.product, lead.grade)
+            if offer:
+                return (
+                    f"Принял запрос: {offer.name}. По текущему ориентиру это {offer.price_from:.0f}-{offer.price_to:.0f} ₽/т, "
+                    f"остаток около {offer.stock_tons:.0f} т, отгрузка из региона {offer.location}. "
+                    f"{_next_question_for_lead(lead)}"
+                )
+        return _next_question_for_lead(lead)
 
     return None
 
@@ -256,9 +388,13 @@ def should_try_gigachat() -> bool:
 
 
 async def get_gigachat_token(client: httpx.AsyncClient) -> str:
-    global _gigachat_token, _gigachat_token_expire_ts
+    global _gigachat_token, _gigachat_token_expire_ts, _gigachat_token_issued_ts
     now = time.time()
-    if _gigachat_token and now < (_gigachat_token_expire_ts - 60):
+    if (
+        _gigachat_token
+        and (now - _gigachat_token_issued_ts) < GIGACHAT_TOKEN_REFRESH_SECONDS
+        and now < (_gigachat_token_expire_ts - 60)
+    ):
         return _gigachat_token
 
     headers = {
@@ -284,6 +420,7 @@ async def get_gigachat_token(client: httpx.AsyncClient) -> str:
         _gigachat_token_expire_ts = now + 25 * 60
 
     _gigachat_token = token
+    _gigachat_token_issued_ts = now
     return token
 
 
@@ -291,32 +428,64 @@ async def generate_via_gigachat(prompt: str) -> str:
     if not GIGACHAT_AUTH_KEY:
         raise RuntimeError("GIGACHAT_AUTH_KEY is empty")
 
-    async with httpx.AsyncClient(timeout=120, verify=GIGACHAT_VERIFY_SSL) as client:
-        token = await get_gigachat_token(client)
-        headers = {
-            "Accept": "application/json",
-            "Authorization": f"Bearer {token}",
-        }
-        payload = {
-            "model": GIGACHAT_MODEL,
-            "messages": [
-                {"role": "system", "content": "Ты корпоративный ассистент ООО «Петрохлеб-Кубань»."},
-                {"role": "user", "content": prompt},
-            ],
-            "temperature": 0.05,
-            "max_tokens": MODEL_NUM_PREDICT,
-        }
-        resp = await client.post(f"{GIGACHAT_API_URL}/chat/completions", headers=headers, json=payload)
-        resp.raise_for_status()
-        data = resp.json()
-        choices = data.get("choices") or []
-        if not choices:
-            raise RuntimeError("GigaChat returned empty choices")
-        msg = choices[0].get("message") or {}
-        text = (msg.get("content") or "").strip()
-        if not text:
-            raise RuntimeError("GigaChat returned empty content")
-        return text
+    token = await get_gigachat_token(_gigachat_client)
+    headers = {
+        "Accept": "application/json",
+        "Authorization": f"Bearer {token}",
+    }
+    payload = {
+        "model": GIGACHAT_MODEL,
+        "messages": [
+            {"role": "system", "content": "Ты корпоративный ассистент ООО «Петрохлеб-Кубань»."},
+            {"role": "user", "content": prompt},
+        ],
+        "temperature": 0.05,
+        "max_tokens": MODEL_NUM_PREDICT,
+    }
+    resp = await _gigachat_client.post(f"{GIGACHAT_API_URL}/chat/completions", headers=headers, json=payload)
+    resp.raise_for_status()
+    data = resp.json()
+    choices = data.get("choices") or []
+    if not choices:
+        raise RuntimeError("GigaChat returned empty choices")
+    msg = choices[0].get("message") or {}
+    text = (msg.get("content") or "").strip()
+    if not text:
+        raise RuntimeError("GigaChat returned empty content")
+    return text
+
+
+async def generate_via_ollama(prompt: str) -> str:
+    r = await _ollama_client.post(
+        f"{OLLAMA_BASE}/api/generate",
+        json={
+            "model": MODEL_NAME,
+            "prompt": prompt,
+            "stream": False,
+            "keep_alive": "45m",
+            "options": {
+                "temperature": 0.05,
+                "num_predict": MODEL_NUM_PREDICT,
+                "repeat_penalty": 1.1,
+                "num_ctx": MODEL_NUM_CTX,
+            },
+        },
+    )
+    r.raise_for_status()
+    data = r.json()
+    return (data.get("response") or "").strip()
+
+
+async def generate_llm_response(prompt: str) -> tuple[str, str]:
+    if should_try_gigachat():
+        try:
+            return await generate_via_gigachat(prompt), "gigachat"
+        except Exception:
+            if LLM_PROVIDER == "gigachat":
+                raise
+
+    text = await generate_via_ollama(prompt)
+    return text, "ollama"
 
 
 @app.on_event("startup")
@@ -326,9 +495,22 @@ def startup() -> None:
         seed_defaults(session)
 
 
+@app.on_event("shutdown")
+async def shutdown() -> None:
+    await _ollama_client.aclose()
+    await _gigachat_client.aclose()
+
+
 @app.get("/api/health")
 def health():
     return {"status": "ok", "time": datetime.utcnow().isoformat()}
+
+
+@app.get("/api/llm/status")
+def llm_status():
+    if should_try_gigachat():
+        return {"mode": LLM_PROVIDER, "active": "gigachat", "fallback": "ollama", "model": GIGACHAT_MODEL}
+    return {"mode": LLM_PROVIDER, "active": "ollama", "fallback": None, "model": MODEL_NAME}
 
 
 @app.get("/api/public/bootstrap")
@@ -380,6 +562,15 @@ async def chat_stream(payload: ChatIn, session: Session = Depends(get_session)):
         session.commit()
         return StreamingResponse(fast_gen(), media_type="application/x-ndjson")
 
+    scripted = scripted_sales_reply(session, chat_session_id, payload.text)
+    if scripted:
+        def scripted_gen():
+            yield json.dumps({"session_id": chat_session_id, "token": scripted, "done": True}) + "\n"
+
+        session.add(ChatMessage(session_id=chat_session_id, role="assistant", text=scripted))
+        session.commit()
+        return StreamingResponse(scripted_gen(), media_type="application/x-ndjson")
+
     if not ok:
         def reject_gen():
             yield json.dumps({"session_id": chat_session_id, "token": reject, "done": True}) + "\n"
@@ -400,66 +591,60 @@ async def chat_stream(payload: ChatIn, session: Session = Depends(get_session)):
     async def gen():
         assistant_full = ""
         try:
-            if should_try_gigachat():
-                try:
-                    gc_text = await generate_via_gigachat(prompt)
-                    clean_gc = sanitize_assistant_text(gc_text)
-                    with Session(engine) as write_session:
-                        write_session.add(ChatMessage(session_id=chat_session_id, role="assistant", text=clean_gc))
-                        write_session.commit()
-                    yield json.dumps({"session_id": chat_session_id, "token": clean_gc, "done": True}) + "\n"
-                    return
-                except Exception:
-                    if LLM_PROVIDER == "gigachat":
-                        raise
-
-            async with httpx.AsyncClient(timeout=None) as client:
-                async with client.stream(
-                    "POST",
-                    f"{OLLAMA_BASE}/api/generate",
-                    json={
-                        "model": MODEL_NAME,
-                        "prompt": prompt,
-                        "stream": True,
-                        "keep_alive": "45m",
-                        "options": {
-                            "temperature": 0.05,
-                            "num_predict": MODEL_NUM_PREDICT,
-                            "repeat_penalty": 1.1,
-                            "num_ctx": MODEL_NUM_CTX,
-                        },
+            async with _ollama_client.stream(
+                "POST",
+                f"{OLLAMA_BASE}/api/generate",
+                json={
+                    "model": MODEL_NAME,
+                    "prompt": prompt,
+                    "stream": True,
+                    "keep_alive": "45m",
+                    "options": {
+                        "temperature": 0.05,
+                        "num_predict": MODEL_NUM_PREDICT,
+                        "repeat_penalty": 1.1,
+                        "num_ctx": MODEL_NUM_CTX,
                     },
-                ) as r:
-                    if r.status_code >= 400:
-                        raise HTTPException(status_code=502, detail=f"LLM upstream error: HTTP {r.status_code}")
+                },
+            ) as r:
+                if r.status_code >= 400:
+                    raise HTTPException(status_code=502, detail=f"LLM upstream error: HTTP {r.status_code}")
 
-                    async for line in r.aiter_lines():
-                        if not line:
-                            continue
-                        try:
-                            part = json.loads(line)
-                        except Exception:
-                            continue
-                        token = part.get("response", "")
-                        if token:
-                            assistant_full += token
-                            yield json.dumps({"session_id": chat_session_id, "token": token, "done": False}) + "\n"
-                        if part.get("done"):
-                            clean = sanitize_assistant_text(assistant_full)
-                            with Session(engine) as write_session:
-                                write_session.add(ChatMessage(session_id=chat_session_id, role="assistant", text=clean))
-                                write_session.commit()
-                            yield json.dumps({"session_id": chat_session_id, "token": "", "done": True}) + "\n"
-                            break
+                async for line in r.aiter_lines():
+                    if not line:
+                        continue
+                    try:
+                        part = json.loads(line)
+                    except Exception:
+                        continue
+                    token = part.get("response", "")
+                    if token:
+                        assistant_full += token
+                        yield json.dumps({"session_id": chat_session_id, "token": token, "done": False}) + "\n"
+                    if part.get("done"):
+                        clean = sanitize_assistant_text(assistant_full)
+                        with Session(engine) as write_session:
+                            write_session.add(ChatMessage(session_id=chat_session_id, role="assistant", text=clean))
+                            write_session.commit()
+                        yield json.dumps({"session_id": chat_session_id, "token": "", "done": True}) + "\n"
+                        break
         except Exception:
-            fallback = (
-                "Сервис генерации временно недоступен. "
-                "Уточните, пожалуйста, товар, класс и объем в тоннах — передам заявку менеджеру."
-            )
-            with Session(engine) as write_session:
-                write_session.add(ChatMessage(session_id=chat_session_id, role="assistant", text=fallback, blocked=True, reason="llm_unavailable"))
-                write_session.commit()
-            yield json.dumps({"session_id": chat_session_id, "token": fallback, "done": True}) + "\n"
+            try:
+                llm_text, llm_provider = await generate_llm_response(prompt)
+                clean_fallback_llm = sanitize_assistant_text(llm_text)
+                with Session(engine) as write_session:
+                    write_session.add(ChatMessage(session_id=chat_session_id, role="assistant", text=clean_fallback_llm))
+                    write_session.commit()
+                yield json.dumps({"session_id": chat_session_id, "token": clean_fallback_llm, "done": True, "provider": llm_provider}) + "\n"
+            except Exception:
+                fallback = (
+                    "Сервис генерации временно недоступен. "
+                    "Уточните, пожалуйста, товар, класс и объем в тоннах — передам заявку менеджеру."
+                )
+                with Session(engine) as write_session:
+                    write_session.add(ChatMessage(session_id=chat_session_id, role="assistant", text=fallback, blocked=True, reason="llm_unavailable"))
+                    write_session.commit()
+                yield json.dumps({"session_id": chat_session_id, "token": fallback, "done": True}) + "\n"
 
     return StreamingResponse(gen(), media_type="application/x-ndjson")
 
@@ -486,6 +671,12 @@ async def chat(payload: ChatIn, session: Session = Depends(get_session)):
         session.commit()
         return {"session_id": chat_session.id, "text": fast, "done": True, "provider": "quick_reply"}
 
+    scripted = scripted_sales_reply(session, chat_session.id, payload.text)
+    if scripted:
+        session.add(ChatMessage(session_id=chat_session.id, role="assistant", text=scripted))
+        session.commit()
+        return {"session_id": chat_session.id, "text": scripted, "done": True, "provider": "scripted_sales"}
+
     if not ok:
         session.add(ChatMessage(session_id=chat_session.id, role="assistant", text=reject, blocked=True, reason="policy"))
         session.commit()
@@ -500,43 +691,13 @@ async def chat(payload: ChatIn, session: Session = Depends(get_session)):
     prompt = f"{build_system_prompt(session)}\n\n{history}\nАссистент:"
 
     try:
-        if should_try_gigachat():
-            try:
-                gc_text = await generate_via_gigachat(prompt)
-                text = sanitize_assistant_text(gc_text)
-                if not text:
-                    text = "Уточните, пожалуйста, товар, класс и объем в тоннах — передам заявку менеджеру."
-                session.add(ChatMessage(session_id=chat_session.id, role="assistant", text=text))
-                session.commit()
-                return {"session_id": chat_session.id, "text": text, "done": True, "provider": "gigachat"}
-            except Exception:
-                if LLM_PROVIDER == "gigachat":
-                    raise
-
-        async with httpx.AsyncClient(timeout=120) as client:
-            r = await client.post(
-                f"{OLLAMA_BASE}/api/generate",
-                json={
-                    "model": MODEL_NAME,
-                    "prompt": prompt,
-                    "stream": False,
-                    "keep_alive": "45m",
-                    "options": {
-                        "temperature": 0.05,
-                        "num_predict": MODEL_NUM_PREDICT,
-                        "repeat_penalty": 1.1,
-                        "num_ctx": MODEL_NUM_CTX,
-                    },
-                },
-            )
-            r.raise_for_status()
-            data = r.json()
-            text = sanitize_assistant_text(data.get("response", "").strip())
-            if not text:
-                text = "Уточните, пожалуйста, товар, класс и объем в тоннах — передам заявку менеджеру."
-            session.add(ChatMessage(session_id=chat_session.id, role="assistant", text=text))
-            session.commit()
-            return {"session_id": chat_session.id, "text": text, "done": True, "provider": "ollama"}
+        llm_text, llm_provider = await generate_llm_response(prompt)
+        text = sanitize_assistant_text(llm_text)
+        if not text:
+            text = "Уточните, пожалуйста, товар, класс и объем в тоннах — передам заявку менеджеру."
+        session.add(ChatMessage(session_id=chat_session.id, role="assistant", text=text))
+        session.commit()
+        return {"session_id": chat_session.id, "text": text, "done": True, "provider": llm_provider}
     except Exception:
         fallback = (
             "Сервис генерации временно недоступен. "
@@ -545,6 +706,31 @@ async def chat(payload: ChatIn, session: Session = Depends(get_session)):
         session.add(ChatMessage(session_id=chat_session.id, role="assistant", text=fallback, blocked=True, reason="llm_unavailable"))
         session.commit()
         return {"session_id": chat_session.id, "text": fallback, "done": True, "provider": "fallback"}
+
+
+@app.post("/api/chat/dry-run")
+async def chat_dry_run(payload: ChatDryRunIn, session: Session = Depends(get_session)):
+    text = (payload.text or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="text is required")
+
+    scripted = scripted_sales_reply(session, chat_session_id=0, text=text)
+    if scripted:
+        return {"done": True, "provider": "scripted_sales", "text": scripted}
+
+    prompt = f"{build_system_prompt(session)}\n\nКлиент: {text}\nАссистент:"
+    try:
+        llm_text, llm_provider = await generate_llm_response(prompt)
+        clean = sanitize_assistant_text(llm_text)
+        if not clean:
+            clean = "Уточните, пожалуйста, товар, класс и объем в тоннах — передам заявку менеджеру."
+        return {"done": True, "provider": llm_provider, "text": clean}
+    except Exception:
+        return {
+            "done": True,
+            "provider": "fallback",
+            "text": "Сервис генерации временно недоступен. Уточните, пожалуйста, товар, класс и объем в тоннах — передам заявку менеджеру.",
+        }
 
 
 @app.post("/api/admin/login")
