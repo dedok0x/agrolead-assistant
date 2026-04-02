@@ -62,6 +62,7 @@ flowchart LR
 - `LLM_REQUEST_TIMEOUT_SECONDS=5`
 - `LLM_MAX_RETRIES=1`
 - одиночный inference-lock (без параллельной генерации)
+- `GIGACHAT_VERIFY_SSL=0` (нужен для самоподписных сертификатов)
 
 ## Обязательные env для GigaChat
 
