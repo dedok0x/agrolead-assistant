@@ -266,10 +266,16 @@ upsert_env_var "LLM_REQUEST_TIMEOUT_SECONDS" "5"
 upsert_env_var "LLM_MAX_RETRIES" "1"
 prompt_secret_if_empty "GIGACHAT_AUTH_KEY" "Введите GIGACHAT_AUTH_KEY (без 'Basic ')" "1"
 upsert_env_var "GIGACHAT_SCOPE" "$(env_or_default "GIGACHAT_SCOPE" "GIGACHAT_API_PERS")"
-upsert_env_var "GIGACHAT_AUTH_URL" "$(env_or_default "GIGACHAT_AUTH_URL" "https://gigachat.devices.sberbank.ru/api/v2/oauth")"
+CURRENT_GIGACHAT_AUTH_URL="$(get_env_var "GIGACHAT_AUTH_URL")"
+if [[ "$CURRENT_GIGACHAT_AUTH_URL" == "https://gigachat.devices.sberbank.ru/api/v2/oauth" ]]; then
+  upsert_env_var "GIGACHAT_AUTH_URL" "https://ngw.devices.sberbank.ru:9443/api/v2/oauth"
+else
+  upsert_env_var "GIGACHAT_AUTH_URL" "$(env_or_default "GIGACHAT_AUTH_URL" "https://ngw.devices.sberbank.ru:9443/api/v2/oauth")"
+fi
 upsert_env_var "GIGACHAT_API_BASE_URL" "$(env_or_default "GIGACHAT_API_BASE_URL" "https://gigachat.devices.sberbank.ru/api/v1")"
 upsert_env_var "GIGACHAT_MODEL" "$(env_or_default "GIGACHAT_MODEL" "GigaChat-2")"
 upsert_env_var "GIGACHAT_VERIFY_SSL" "$(env_or_default "GIGACHAT_VERIFY_SSL" "1")"
+upsert_env_var "GIGACHAT_INSECURE_SSL_FALLBACK" "$(env_or_default "GIGACHAT_INSECURE_SSL_FALLBACK" "1")"
 if [[ -f "$ROOT_DIR/ssl/fullchain.pem" ]]; then
   upsert_env_var "GIGACHAT_CA_FILE" "/ssl/fullchain.pem"
 elif [[ -f "$ROOT_DIR/ssl/cacert.pem" ]]; then

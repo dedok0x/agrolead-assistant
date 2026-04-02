@@ -27,7 +27,7 @@ class GigaChatClient:
         self.scope = os.getenv("GIGACHAT_SCOPE", "GIGACHAT_API_PERS").strip()
         self.auth_url = os.getenv(
             "GIGACHAT_AUTH_URL",
-            "https://gigachat.devices.sberbank.ru/api/v2/oauth",
+            "https://ngw.devices.sberbank.ru:9443/api/v2/oauth",
         ).strip()
         self.api_base_url = os.getenv(
             "GIGACHAT_API_BASE_URL",
@@ -36,6 +36,7 @@ class GigaChatClient:
         self.model = os.getenv("GIGACHAT_MODEL", "GigaChat-2").strip()
         self.verify_ssl = _env_bool("GIGACHAT_VERIFY_SSL", True)
         self.ca_file = os.getenv("GIGACHAT_CA_FILE", "").strip()
+        self.insecure_ssl_fallback = _env_bool("GIGACHAT_INSECURE_SSL_FALLBACK", True)
 
         timeout_seconds = max(1.0, min(float(timeout_seconds), 5.0))
         timeout = httpx.Timeout(timeout_seconds, connect=min(timeout_seconds, 3.0))
@@ -44,6 +45,27 @@ class GigaChatClient:
 
         self._access_token = ""
         self._expires_at = datetime.now(timezone.utc)
+
+    def _is_ssl_error(self, exc: Exception) -> bool:
+        return "certificate verify failed" in str(exc).lower()
+
+    async def _post(
+        self,
+        url: str,
+        headers: dict[str, str],
+        *,
+        data: dict[str, str] | None = None,
+        json: dict[str, Any] | None = None,
+    ) -> httpx.Response:
+        try:
+            return await self._client.post(url, headers=headers, data=data, json=json)
+        except Exception as exc:
+            if not self.insecure_ssl_fallback or not self._is_ssl_error(exc):
+                raise
+
+            timeout = self._client.timeout
+            async with httpx.AsyncClient(timeout=timeout, verify=False) as insecure_client:
+                return await insecure_client.post(url, headers=headers, data=data, json=json)
 
     @property
     def configured(self) -> bool:
@@ -90,7 +112,7 @@ class GigaChatClient:
             "Accept": "application/json",
         }
 
-        response = await self._client.post(self.auth_url, headers=headers, data={"scope": self.scope})
+        response = await self._post(self.auth_url, headers=headers, data={"scope": self.scope})
         if response.status_code >= 400:
             raise GigaChatAuthError(f"OAuth failed with status={response.status_code}: {response.text}")
 
@@ -138,7 +160,7 @@ class GigaChatClient:
                 "Content-Type": "application/json",
             }
 
-            response = await self._client.post(endpoint, headers=headers, json=payload)
+            response = await self._post(endpoint, headers=headers, json=payload)
             if response.status_code == 401 and attempt == 0:
                 self._access_token = ""
                 self._expires_at = datetime.now(timezone.utc)

@@ -64,6 +64,7 @@ flowchart LR
 - одиночный inference-lock (без параллельной генерации)
 - `GIGACHAT_VERIFY_SSL=1`
 - `GIGACHAT_CA_FILE=/ssl/fullchain.pem` (если используется свой CA)
+- `GIGACHAT_INSECURE_SSL_FALLBACK=1` (авто-фолбэк на insecure TLS для окружений с подменой цепочки)
 
 ## SSL и GigaChat
 
@@ -76,9 +77,12 @@ flowchart LR
 LLM_PROVIDER=gigachat
 GIGACHAT_AUTH_KEY=<base64-key-without-Basic-prefix>
 GIGACHAT_SCOPE=GIGACHAT_API_PERS
-GIGACHAT_AUTH_URL=https://gigachat.devices.sberbank.ru/api/v2/oauth
+GIGACHAT_AUTH_URL=https://ngw.devices.sberbank.ru:9443/api/v2/oauth
 GIGACHAT_API_BASE_URL=https://gigachat.devices.sberbank.ru/api/v1
 GIGACHAT_MODEL=GigaChat-2
+GIGACHAT_VERIFY_SSL=1
+GIGACHAT_CA_FILE=/ssl/fullchain.pem
+GIGACHAT_INSECURE_SSL_FALLBACK=1
 ```
 
 ## Smoke-проверки в deploy.sh
