@@ -348,6 +348,21 @@ HTTP_CODE_HTTPS="$(curl -k -sS -o /dev/null -w "%{http_code}" "$WEB_BASE_HTTPS/"
 [[ "$HTTP_CODE_HTTPS" == "200" ]] || die "HTTPS webui недоступен"
 ok "Web UI redirect + HTTPS ok"
 
+step "Smoke: webui design-system asset"
+request_get "GET /assets/design-system.css" "$WEB_BASE_HTTPS/assets/design-system.css"
+[[ "$LAST_HTTP_CODE" == "200" ]] || die "design-system.css недоступен"
+CSS_CONTENT="$(cat "$LAST_RESPONSE_FILE")"
+"$PYTHON_BIN" - "$CSS_CONTENT" <<'PY'
+import sys
+css = sys.argv[1]
+required = ["--ds-bg", ".ds-top-nav", ".ds-table"]
+missing = [token for token in required if token not in css]
+if missing:
+    raise SystemExit(f"design-system.css не содержит ожидаемые токены: {missing}")
+print("design-system.css ok")
+PY
+ok "Design-system asset ok"
+
 step "Smoke: runtime code freshness"
 docker compose -f "$COMPOSE_FILE" exec -T api python - <<'PY'
 import inspect
