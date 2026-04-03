@@ -84,11 +84,14 @@ services:
     restart: unless-stopped
     ports:
       - "80:80"
+      - "443:443"
     depends_on:
       api:
         condition: service_healthy
     mem_limit: 128m
     cpus: 0.10
+    volumes:
+      - ./ssl:/ssl:ro
     networks:
       - agrolead
 

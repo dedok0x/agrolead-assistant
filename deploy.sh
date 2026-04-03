@@ -284,6 +284,11 @@ fi
 upsert_env_var "GIGACHAT_VERIFY_SSL" "$(env_or_default "GIGACHAT_VERIFY_SSL" "0")"
 ok ".env готов"
 
+step "Проверка SSL для webui"
+[[ -f "$ROOT_DIR/ssl/fullchain.pem" ]] || die "Не найден SSL сертификат: $ROOT_DIR/ssl/fullchain.pem"
+[[ -f "$ROOT_DIR/ssl/privkey.key" ]] || die "Не найден SSL ключ: $ROOT_DIR/ssl/privkey.key"
+ok "SSL файлы найдены"
+
 step "Пересборка и запуск контейнеров"
 docker compose -f "$COMPOSE_FILE" down -v --remove-orphans || true
 docker compose -f "$COMPOSE_FILE" build --no-cache --pull
