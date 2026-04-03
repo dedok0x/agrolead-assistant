@@ -1,44 +1,71 @@
+import hashlib
 import json
 import logging
 import os
 from datetime import datetime
 from typing import Any, Optional
-from uuid import uuid4
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlmodel import Session, select
 
-from .agent import SingleAgentOrchestrator
+from .agent import SalesAssistantAgent
 from .db import engine, get_session, init_db
 from .guardrails import evaluate_guardrails
 from .llm_service import LLMService, LLMUnavailableError
 from .models import (
+    AdminSetting,
+    AdminUser,
+    CatalogPricePolicy,
+    CatalogQualityTemplate,
+    CatalogQualityTemplateLine,
+    CatalogStockPlaceholder,
+    ChatExtractedFact,
     ChatMessage,
+    ChatMissingField,
+    ChatQualificationCheckpoint,
     ChatSession,
     CompanyProfile,
-    ConversationState,
-    Lead,
-    ProductItem,
-    PromptCategory,
-    Scenario,
-    ScenarioTemplate,
+    CrmCounterparty,
+    CrmLead,
+    CrmLeadContactSnapshot,
+    CrmLeadItem,
+    CrmTask,
+    KnowledgeArticle,
+    RefCommodity,
+    RefCounterpartyType,
+    RefDeliveryBasis,
+    RefDepartment,
+    RefLeadSource,
+    RefManagerRole,
+    RefPipelineStage,
+    RefRegion,
+    RefRequestType,
+    RefTransportMode,
 )
-from .sales_logic import get_or_create_state, mark_toxic_stop
-from .seed import reset_default_scenario_templates, seed_defaults
+from .sales_logic import (
+    detect_request_type,
+    extract_facts,
+    human_field_name,
+    minimum_viable_application,
+    next_missing_field,
+    next_question_for,
+    required_fields,
+)
+from .seed import seed_defaults
 
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 LOGGER = logging.getLogger("agrolead.api")
 
-app = FastAPI(title="AgroLead API", version="4.0.0")
+app = FastAPI(title="AgroLead Assistant API", version="5.0.0")
 
 ADMIN_USER = os.getenv("ADMIN_USER", "admin")
 ADMIN_PASS = os.getenv("ADMIN_PASS", "315920")
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "agrolead-admin-token")
 
 llm_service = LLMService()
-agent_orchestrator = SingleAgentOrchestrator(llm_service=llm_service)
+agent = SalesAssistantAgent(llm_service=llm_service)
 
 
 class LoginIn(BaseModel):
@@ -50,61 +77,37 @@ class ChatIn(BaseModel):
     text: str
     session_id: Optional[int] = None
     client_id: str = "web"
-    source_channel: str = "web"
+    source_channel: str = "web_widget"
+    external_user_id: Optional[str] = None
+    external_chat_id: Optional[str] = None
 
 
 class ChatDryRunIn(BaseModel):
     text: str
 
 
-class PromptIn(BaseModel):
-    key: str
-    title: str
-    content: str
+def _now() -> datetime:
+    return datetime.utcnow()
 
 
-class CompanyIn(BaseModel):
-    name: str
-    address: str
-    phones: str
-    email: str
-    services: str
-    contacts_markdown: str
+def _hash_password(raw: str) -> str:
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
-class ScenarioIn(BaseModel):
-    title: str
-    description: str
-    active: bool = True
+def _require_id(value: Optional[int], entity: str) -> int:
+    if value is None:
+        raise HTTPException(status_code=500, detail=f"{entity} id is not initialized")
+    return value
 
 
-class ProductIn(BaseModel):
-    name: str
-    culture: str
-    grade: str = ""
-    price_from: float = 0
-    price_to: float = 0
-    stock_tons: float = 0
-    quality: str = ""
-    location: str = ""
-    active: bool = True
-
-
-class LeadIn(BaseModel):
-    session_id: Optional[int] = None
-    client_name: str = ""
-    phone: str = ""
-    email: str = ""
-    product: str = ""
-    grade: str = ""
-    volume_tons: str = ""
-    region: str = ""
-    delivery_term: str = ""
-    status: str = "in_progress"
-    source: str = "chat"
-    source_channel: str = "web"
-    raw_dialogue: str = ""
-    comment: str = ""
+def _mask_settings(items: list[AdminSetting]) -> list[dict[str, Any]]:
+    out = []
+    for item in items:
+        payload = item.model_dump()
+        if item.is_secret:
+            payload["setting_value"] = "***"
+        out.append(payload)
+    return out
 
 
 def require_admin(x_admin_token: Optional[str] = Header(default=None)) -> None:
@@ -112,203 +115,546 @@ def require_admin(x_admin_token: Optional[str] = Header(default=None)) -> None:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 
-def _now() -> datetime:
-    return datetime.utcnow()
+def _source_code_from_channel(channel: str) -> str:
+    normalized = (channel or "").strip().lower()
+    if "telegram" in normalized:
+        return "telegram"
+    if "crm" in normalized:
+        return "crm_import"
+    if "phone" in normalized:
+        return "phone"
+    return "web_widget"
 
 
-def sanitize_text(text: str) -> str:
-    cleaned = (text or "").replace("Ассистент:", "").replace("Клиент:", "").strip()
-    if len(cleaned) > 900:
-        cleaned = cleaned[:900].rsplit(" ", 1)[0] + "..."
-    return cleaned
+def _get_ref_by_code(session: Session, model, code: str):
+    return session.exec(select(model).where(model.code == code)).first()
 
 
-def get_or_create_chat_session(session: Session, payload: ChatIn) -> ChatSession:
-    chat_session = session.get(ChatSession, payload.session_id) if payload.session_id else None
-    if chat_session:
-        chat_session.updated_at = _now()
-        session.add(chat_session)
-        session.commit()
-        session.refresh(chat_session)
-        return chat_session
+def _stage_id(session: Session, code: str) -> int:
+    row = _get_ref_by_code(session, RefPipelineStage, code)
+    if row:
+        return _require_id(row.id, "pipeline stage")
+    fallback = session.exec(select(RefPipelineStage)).first()
+    if not fallback:
+        raise HTTPException(status_code=500, detail="RefPipelineStage not seeded")
+    return _require_id(fallback.id, "pipeline stage")
 
-    chat_session = ChatSession(client_id=payload.client_id or str(uuid4()))
-    session.add(chat_session)
+
+def _request_type_name(session: Session, request_type_id: Optional[int]) -> str:
+    if not request_type_id:
+        return "Общий запрос"
+    row = session.get(RefRequestType, request_type_id)
+    return row.name if row else "Общий запрос"
+
+
+def _request_type_code(session: Session, request_type_id: Optional[int]) -> str:
+    if not request_type_id:
+        return "general_company_request"
+    row = session.get(RefRequestType, request_type_id)
+    return row.code if row else "general_company_request"
+
+
+def _get_or_create_chat_session(session: Session, payload: ChatIn) -> ChatSession:
+    if payload.session_id:
+        existing = session.get(ChatSession, payload.session_id)
+        if existing:
+            existing.updated_at = _now()
+            session.add(existing)
+            session.commit()
+            session.refresh(existing)
+            return existing
+
+    source_code = _source_code_from_channel(payload.source_channel)
+    source = _get_ref_by_code(session, RefLeadSource, source_code)
+    if not source:
+        source = session.exec(select(RefLeadSource)).first()
+    if not source:
+        raise HTTPException(status_code=500, detail="Lead source not configured")
+
+    chat = ChatSession(
+        source_id=_require_id(source.id, "lead source"),
+        external_user_id=payload.external_user_id or payload.client_id,
+        external_chat_id=payload.external_chat_id,
+        current_state_code="new",
+        language_code="ru",
+    )
+    session.add(chat)
     session.commit()
-    session.refresh(chat_session)
-    return chat_session
+    session.refresh(chat)
+    return chat
 
 
-def recent_history(session: Session, session_id: int, limit: int = 12) -> str:
-    messages = list(session.exec(select(ChatMessage).where(ChatMessage.session_id == session_id)).all())
-    messages.sort(key=lambda item: item.created_at)
-    recent = messages[-limit:]
-    rows = []
-    for message in recent:
-        role = "Клиент" if message.role == "user" else "Ассистент"
-        rows.append(f"{role}: {message.text}")
-    return "\n".join(rows)
-
-
-def load_prompt_categories(session: Session) -> dict[str, str]:
-    prompts = session.exec(select(PromptCategory)).all()
-    return {prompt.key: prompt.content for prompt in prompts}
-
-
-def sales_system_prompt(session: Session) -> str:
-    company = session.exec(select(CompanyProfile)).first()
-    products = list(session.exec(select(ProductItem).where(ProductItem.active == True)).all())
-    products.sort(key=lambda item: item.stock_tons, reverse=True)
-    products = products[:10]
-    prompts = load_prompt_categories(session)
-
-    identity = prompts.get(
-        "identity",
-        "Ты sales-ассистент ООО «Петрохлеб-Кубань». Твоя цель — быстро квалифицировать лид и передать его менеджеру.",
-    )
-    scope = prompts.get(
-        "scope",
-        "Работаешь только по зерновым сделкам: товар, класс, объем, регион, срок, контакт.",
-    )
-    safety = prompts.get(
-        "safety",
-        "Если пользователь токсичен — коротко отвечай и останавливай диалог. Если запрос про взлом — полный отказ.",
-    )
-    style = prompts.get(
-        "style",
-        "Стиль: живой, по-кубански, без канцелярщины. Не выдумывай факты и цены.",
-    )
-
-    company_block = ""
-    if company:
-        company_block = (
-            f"Компания: {company.name}\n"
-            f"Адрес: {company.address}\n"
-            f"Телефоны: {company.phones}\n"
-            f"Email: {company.email}\n"
-            f"Услуги: {company.services}"
-        )
-
-    product_lines = [
-        f"- {item.name}: {item.price_from:.0f}-{item.price_to:.0f} руб/т, остаток {item.stock_tons:.0f} т, {item.location}"
-        for item in products
-    ]
-    catalog_block = "\n".join(product_lines)
-
-    return (
-        f"{identity}\n"
-        f"{scope}\n"
-        f"{safety}\n"
-        f"{style}\n\n"
-        f"{company_block}\n\n"
-        f"Каталог:\n{catalog_block}\n\n"
-        "Никогда не обещай то, чего нет в каталоге. Если данных не хватает, честно попроси уточнение."
-    )
-
-
-def save_assistant_message(
+def _save_message(
     session: Session,
     session_id: int,
+    direction: str,
     text: str,
-    reason: str,
-    provider: str,
-    model: str,
+    message_type: str = "text",
     blocked: bool = False,
+    block_reason: str = "",
+    provider: Optional[str] = None,
+    model: Optional[str] = None,
+) -> ChatMessage:
+    message = ChatMessage(
+        session_id=session_id,
+        direction=direction,
+        text=text,
+        message_type=message_type,
+        blocked=blocked,
+        block_reason=block_reason,
+        llm_provider=provider,
+        llm_model=model,
+    )
+    session.add(message)
+    session.commit()
+    session.refresh(message)
+    return message
+
+
+def _upsert_fact(
+    session: Session,
+    chat: ChatSession,
+    lead_id: Optional[int],
+    key: str,
+    text_value: str,
+    numeric_value: Optional[float],
+    confidence: float,
+    source_message_id: Optional[int],
 ) -> None:
+    chat_id = _require_id(chat.id, "chat session")
+    row = session.exec(
+        select(ChatExtractedFact).where(
+            ChatExtractedFact.session_id == chat_id,
+            ChatExtractedFact.fact_key == key,
+        )
+    ).first()
+    if row:
+        row.fact_value_text = text_value
+        row.fact_value_numeric = numeric_value
+        row.confidence = max(row.confidence, confidence)
+        row.source_message_id = source_message_id
+        row.lead_id = lead_id
+        row.updated_at = _now()
+        session.add(row)
+    else:
+        session.add(
+            ChatExtractedFact(
+                session_id=chat_id,
+                lead_id=lead_id,
+                fact_key=key,
+                fact_value_text=text_value,
+                fact_value_numeric=numeric_value,
+                confidence=confidence,
+                source_message_id=source_message_id,
+                is_confirmed=confidence >= 0.8,
+            )
+        )
+
+
+def _facts_map(session: Session, chat_id: int) -> dict[str, ChatExtractedFact]:
+    rows = session.exec(select(ChatExtractedFact).where(ChatExtractedFact.session_id == chat_id)).all()
+    return {row.fact_key: row for row in rows}
+
+
+def _ensure_missing_fields(session: Session, chat: ChatSession, request_code: str, lead_id: Optional[int]) -> None:
+    chat_id = _require_id(chat.id, "chat session")
+    existing = session.exec(select(ChatMissingField).where(ChatMissingField.session_id == chat_id)).all()
+    existing_map = {item.field_code: item for item in existing}
+    for order, field_code in enumerate(required_fields(request_code), start=1):
+        if field_code in existing_map:
+            continue
+        session.add(
+            ChatMissingField(
+                session_id=chat_id,
+                lead_id=lead_id,
+                field_code=field_code,
+                priority_order=order,
+                is_required=True,
+                is_collected=False,
+            )
+        )
+
+
+def _update_missing_fields(session: Session, chat: ChatSession, fact_keys: set[str]) -> None:
+    chat_id = _require_id(chat.id, "chat session")
+    rows = session.exec(select(ChatMissingField).where(ChatMissingField.session_id == chat_id)).all()
+    for row in rows:
+        collected = row.field_code in fact_keys
+        if collected and not row.is_collected:
+            row.is_collected = True
+            row.resolved_at = _now()
+        row.lead_id = chat.lead_id
+        session.add(row)
+
+
+def _compact_summary(facts: dict[str, ChatExtractedFact]) -> str:
+    preferred = [
+        "commodity_id",
+        "requested_volume_value",
+        "volume_value",
+        "source_region_id",
+        "destination_region_id_or_port",
+        "transport_mode_id",
+        "contact_phone_or_telegram_or_email",
+    ]
+    lines: list[str] = []
+    for key in preferred:
+        item = facts.get(key)
+        if not item or not item.fact_value_text:
+            continue
+        lines.append(f"{human_field_name(key)}: {item.fact_value_text}")
+    return "; ".join(lines)
+
+
+def _summary_lines(facts: dict[str, ChatExtractedFact]) -> list[str]:
+    rows = []
+    for key, item in facts.items():
+        if not item.fact_value_text:
+            continue
+        rows.append(f"{human_field_name(key)}: {item.fact_value_text}")
+    rows.sort()
+    return rows[:8]
+
+
+def _sync_lead_tables(session: Session, chat: ChatSession, request_code: str, source_id: int) -> CrmLead:
+    chat_id = _require_id(chat.id, "chat session")
+    lead = session.get(CrmLead, chat.lead_id) if chat.lead_id else None
+    if not lead:
+        request_type = _get_ref_by_code(session, RefRequestType, request_code)
+        if not request_type:
+            request_type = _get_ref_by_code(session, RefRequestType, "general_company_request")
+        if not request_type:
+            raise HTTPException(status_code=500, detail="Request type not configured")
+        request_type_id = _require_id(request_type.id, "request type")
+        lead = CrmLead(
+            request_type_id=request_type_id,
+            source_id=source_id,
+            external_channel_session_id=str(chat_id),
+            current_stage_id=_stage_id(session, "new"),
+            status_code="draft",
+            priority_code="normal",
+            summary="",
+            next_action="Собрать недостающие поля заявки",
+        )
+        session.add(lead)
+        session.commit()
+        session.refresh(lead)
+        chat.lead_id = _require_id(lead.id, "lead")
+        chat.request_type_id = request_type_id
+        session.add(chat)
+        session.commit()
+
+    lead_id = _require_id(lead.id, "lead")
+
+    facts = _facts_map(session, chat_id)
+
+    # lead item
+    item = session.exec(select(CrmLeadItem).where(CrmLeadItem.lead_id == lead_id)).first()
+    if not item:
+        item = CrmLeadItem(lead_id=lead_id, volume_unit="тонна")
+
+    def _fact_text(key: str) -> str:
+        row = facts.get(key)
+        return row.fact_value_text if row else ""
+
+    def _fact_num(key: str) -> Optional[float]:
+        row = facts.get(key)
+        return row.fact_value_numeric if row else None
+
+    commodity_num = _fact_num("commodity_id")
+    if commodity_num is not None:
+        item.commodity_id = int(commodity_num)
+
+    volume_value = _fact_num("requested_volume_value") or _fact_num("volume_value")
+    if volume_value is not None:
+        item.volume_value = float(volume_value)
+
+    volume_unit = _fact_text("requested_volume_unit") or _fact_text("volume_unit")
+    if volume_unit:
+        item.volume_unit = volume_unit
+
+    source_region = _fact_num("source_region_id")
+    if source_region is not None:
+        item.source_region_id = int(source_region)
+
+    destination_region = _fact_num("destination_region_id_or_port")
+    if destination_region is not None:
+        item.destination_region_id = int(destination_region)
+
+    transport_mode = _fact_num("transport_mode_id")
+    if transport_mode is not None:
+        item.transport_mode_id = int(transport_mode)
+
+    delivery_basis = _fact_num("delivery_basis_id")
+    if delivery_basis is not None:
+        item.delivery_basis_id = int(delivery_basis)
+
+    quality_text = _fact_text("quality_profile_text") or _fact_text("requested_quality_text")
+    if quality_text:
+        item.freeform_quality_text = quality_text
+
+    target_price = _fact_num("target_price")
+    if target_price is not None:
+        item.target_price = target_price
+
+    export_flag = _fact_num("export_flag")
+    if export_flag is not None:
+        item.export_flag = int(export_flag) == 1
+
+    item.comment = _fact_text("comment") or item.comment
+    session.add(item)
+
+    # contact snapshot
+    contact_row = session.exec(select(CrmLeadContactSnapshot).where(CrmLeadContactSnapshot.lead_id == lead_id)).first()
+    if not contact_row:
+        contact_row = CrmLeadContactSnapshot(lead_id=lead_id)
+    contact = _fact_text("contact_phone_or_telegram_or_email")
+    if contact:
+        if contact.startswith("@"):
+            contact_row.telegram = contact
+        elif "@" in contact:
+            contact_row.email = contact
+        else:
+            contact_row.phone = contact
+    who = _fact_text("contact_name_or_company")
+    if who:
+        contact_row.company_name = who
+        contact_row.contact_name = who
+    session.add(contact_row)
+
+    fact_keys = set(facts.keys())
+    has_contact = bool(_fact_text("contact_phone_or_telegram_or_email"))
+    min_viable = minimum_viable_application(request_code, fact_keys=fact_keys, has_contact=has_contact)
+
+    required = required_fields(request_code)
+    collected = {key for key in fact_keys if key in required}
+    is_qualified = len(required) > 0 and all(field in collected for field in required)
+
+    lead.summary = _compact_summary(facts)
+    lead.updated_at = _now()
+
+    if is_qualified:
+        lead.status_code = "qualified"
+        lead.current_stage_id = _stage_id(session, "qualified")
+        lead.next_action = "Передать менеджеру и зафиксировать коммерческое предложение"
+    elif min_viable:
+        lead.status_code = "partially_qualified"
+        lead.current_stage_id = _stage_id(session, "partially_qualified")
+        lead.next_action = "Дособрать критичные поля и назначить менеджера"
+    else:
+        lead.status_code = "draft"
+        lead.current_stage_id = _stage_id(session, "draft")
+        lead.next_action = "Собрать минимальный набор полей"
+
+    high_volume = (item.volume_value or 0) >= 1000
+    high_urgency = (_fact_text("urgency") or "") == "high"
+    lead.hot_flag = high_volume or high_urgency
+    if lead.hot_flag:
+        lead.priority_code = "high"
+
+    session.add(lead)
+    session.commit()
+    session.refresh(lead)
+    return lead
+
+
+def _resolve_code_facts(session: Session, facts: dict[str, Any]) -> None:
+    transport = facts.get("transport_mode_code")
+    if transport and transport.text:
+        row = _get_ref_by_code(session, RefTransportMode, transport.text)
+        if row:
+            facts["transport_mode_id"] = type(transport)(text=str(row.id), numeric=float(row.id), confidence=transport.confidence)
+
+    basis = facts.get("delivery_basis_code")
+    if basis and basis.text:
+        row = _get_ref_by_code(session, RefDeliveryBasis, basis.text)
+        if row:
+            facts["delivery_basis_id"] = type(basis)(text=str(row.id), numeric=float(row.id), confidence=basis.confidence)
+
+
+def _resolve_maps(session: Session) -> tuple[dict[str, int], dict[str, int]]:
+    commodities = session.exec(select(RefCommodity).where(RefCommodity.is_active == True)).all()
+    commodity_map: dict[str, int] = {}
+    for row in commodities:
+        commodity_id = _require_id(row.id, "commodity")
+        commodity_map[row.name.lower()] = commodity_id
+        if row.full_name:
+            commodity_map[row.full_name.lower()] = commodity_id
+
+    regions = session.exec(select(RefRegion).where(RefRegion.is_active == True)).all()
+    region_map: dict[str, int] = {}
+    for row in regions:
+        region_id = _require_id(row.id, "region")
+        if row.region_name:
+            region_map[row.region_name.lower()] = region_id
+        if row.city_name:
+            region_map[row.city_name.lower()] = region_id
+        if row.port_name:
+            region_map[row.port_name.lower()] = region_id
+    return commodity_map, region_map
+
+
+def _record_checkpoint(session: Session, chat: ChatSession, code: str, status: str, note: str) -> None:
+    chat_id = _require_id(chat.id, "chat session")
     session.add(
-        ChatMessage(
-            session_id=session_id,
-            role="assistant",
-            text=text,
-            blocked=blocked,
-            reason=reason,
-            provider=provider,
-            model_used=model,
+        ChatQualificationCheckpoint(
+            session_id=chat_id,
+            lead_id=chat.lead_id,
+            checkpoint_code=code,
+            checkpoint_status=status,
+            note=note,
         )
     )
 
 
-async def process_chat(session: Session, payload: ChatIn) -> dict[str, Any]:
+async def _process_chat(session: Session, payload: ChatIn) -> dict[str, Any]:
     text = (payload.text or "").strip()
     if not text:
         raise HTTPException(status_code=400, detail="text is required")
 
-    chat_session = get_or_create_chat_session(session, payload)
-    session_id = chat_session.id
-    if session_id is None:
-        raise HTTPException(status_code=500, detail="session_id is not initialized")
-
-    session.add(ChatMessage(session_id=session_id, role="user", text=text))
+    chat = _get_or_create_chat_session(session, payload)
+    chat_id = _require_id(chat.id, "chat session")
+    chat.last_user_message_at = _now()
+    chat.updated_at = _now()
+    session.add(chat)
     session.commit()
 
-    guard = evaluate_guardrails(text)
-    state = get_or_create_state(session=session, session_id=session_id)
+    user_message = _save_message(session, chat_id, direction="in", text=text)
 
+    guard = evaluate_guardrails(text)
     if not guard.allowed:
-        if guard.reason in {"security_block", "toxic_hard_stop"}:
-            state = mark_toxic_stop(session=session, state=state, toxicity_level=guard.toxicity_level)
-        else:
-            state.toxicity_level = max(state.toxicity_level, guard.toxicity_level)
-            state.updated_at = _now()
-            session.add(state)
+        if guard.stop_dialogue:
+            chat.current_state_code = "blocked"
+            session.add(chat)
+            _record_checkpoint(session, chat, "guardrails", "blocked", guard.reason)
             session.commit()
-            session.refresh(state)
-        save_assistant_message(
-            session=session,
-            session_id=session_id,
-            text=guard.answer,
-            reason=guard.reason,
+        reply = guard.answer
+        bot_message = _save_message(
+            session,
+            chat_id,
+            direction="out",
+            text=reply,
+            blocked=True,
+            block_reason=guard.reason,
             provider="guardrails",
             model="rule-based",
-            blocked=True,
         )
+        chat.last_bot_message_at = bot_message.created_at
+        session.add(chat)
         session.commit()
         return {
-            "session_id": session_id,
-            "done": True,
-            "text": guard.answer,
+            "session_id": chat_id,
+            "lead_id": chat.lead_id,
+            "text": reply,
             "provider": "guardrails",
             "model": "rule-based",
-            "state": state.state,
+            "state": chat.current_state_code,
+            "done": True,
         }
 
-    if state.state == "stopped_toxic":
-        state.state = "greeting"
-        state.updated_at = _now()
-        session.add(state)
-        session.commit()
-        session.refresh(state)
+    request_code = _request_type_code(session, chat.request_type_id)
+    if request_code == "general_company_request":
+        request_code = detect_request_type(text)
 
-    history = recent_history(session=session, session_id=session_id)
-    result = await agent_orchestrator.handle(
-        session=session,
-        session_id=session_id,
-        text=text,
-        history=history,
-        source_channel=payload.source_channel,
+    request_type = _get_ref_by_code(session, RefRequestType, request_code)
+    if not request_type:
+        request_type = _get_ref_by_code(session, RefRequestType, "general_company_request")
+    if not request_type:
+        raise HTTPException(status_code=500, detail="Request type not configured")
+    chat.request_type_id = _require_id(request_type.id, "request type")
+    source_id = _require_id(chat.source_id, "lead source")
+
+    lead = _sync_lead_tables(session, chat, request_code=request_type.code, source_id=source_id)
+    lead_id = _require_id(lead.id, "lead")
+    chat.lead_id = lead_id
+
+    _ensure_missing_fields(session, chat, request_type.code, lead_id)
+
+    commodity_map, region_map = _resolve_maps(session)
+    extracted = extract_facts(text=text, commodity_by_name=commodity_map, region_by_name=region_map)
+    _resolve_code_facts(session, extracted)
+
+    for key, value in extracted.items():
+        _upsert_fact(
+            session=session,
+            chat=chat,
+            lead_id=lead_id,
+            key=key,
+            text_value=value.text,
+            numeric_value=value.numeric,
+            confidence=value.confidence,
+            source_message_id=user_message.id,
+        )
+
+    session.commit()
+
+    lead = _sync_lead_tables(session, chat, request_code=request_type.code, source_id=source_id)
+    lead_id = _require_id(lead.id, "lead")
+    facts = _facts_map(session, chat_id)
+    fact_keys = set(facts.keys())
+    _update_missing_fields(session, chat, fact_keys)
+
+    required = required_fields(request_type.code)
+    missing = next_missing_field(required, fact_keys)
+    next_question = ""
+    stage = "draft"
+    if lead.status_code == "qualified":
+        stage = "qualified"
+    elif lead.status_code == "partially_qualified":
+        stage = "partially_qualified"
+    elif request_type.code == "general_company_request":
+        stage = "faq"
+    elif not fact_keys:
+        stage = "new"
+
+    if lead.status_code == "qualified":
+        next_question = "Заявка зафиксирована. Менеджер продолжит работу по условиям и фиксации сделки."
+        _record_checkpoint(session, chat, "qualification", "qualified", "Все обязательные поля собраны")
+    else:
+        next_question = next_question_for(missing) if missing else "Уточните приоритетный параметр сделки."
+        _record_checkpoint(session, chat, "qualification", "in_progress", f"missing={missing or 'none'}")
+
+    # последние ответы ассистента для anti-repeat
+    out_rows = sorted(
+        session.exec(select(ChatMessage).where(ChatMessage.session_id == chat_id, ChatMessage.direction == "out")).all(),
+        key=lambda x: x.created_at,
+    )
+    last_assistant = [row.text for row in out_rows[-3:]]
+
+    reply = await agent.reply(
+        stage=stage,
+        request_type_name=request_type.name,
+        user_text=text,
+        summary_lines=_summary_lines(facts),
+        next_question=next_question,
+        last_assistant_messages=last_assistant,
     )
 
-    answer = sanitize_text(result.text)
-    if not answer:
-        answer = "Принял. Передаю менеджеру, он закрепит цену и логистику."
-
-    save_assistant_message(
-        session=session,
-        session_id=session_id,
-        text=answer,
-        reason=result.reason,
-        provider=result.provider,
-        model=result.model,
+    bot_message = _save_message(
+        session,
+        chat_id,
+        direction="out",
+        text=reply.text,
+        provider=reply.provider,
+        model=reply.model,
     )
+
+    chat.last_bot_message_at = bot_message.created_at
+    chat.current_state_code = lead.status_code
+    chat.updated_at = _now()
+    session.add(chat)
     session.commit()
 
     return {
-        "session_id": session_id,
+        "session_id": chat_id,
+        "lead_id": lead_id,
+        "request_type": request_type.code,
+        "status": lead.status_code,
+        "state": chat.current_state_code,
+        "provider": reply.provider,
+        "model": reply.model,
+        "text": reply.text,
         "done": True,
-        "text": answer,
-        "provider": result.provider,
-        "model": result.model,
-        "state": result.state,
     }
 
 
@@ -329,15 +675,14 @@ async def shutdown() -> None:
 @app.get("/api/health")
 def health(session: Session = Depends(get_session)) -> dict[str, Any]:
     try:
-        session.exec(select(CompanyProfile)).first()
+        session.exec(select(RefCommodity)).first()
         db_ok = True
     except Exception:
         db_ok = False
-
     return {
         "status": "ok" if db_ok else "error",
-        "time": datetime.utcnow().isoformat(),
-        "agent_engine": "single-agent-orchestrator",
+        "time": _now().isoformat(),
+        "agent_engine": "sales-lead-orchestrator-v5",
         "db_ok": db_ok,
     }
 
@@ -347,14 +692,19 @@ def llm_status() -> dict[str, Any]:
     return llm_service.status()
 
 
+@app.post("/api/v1/chat")
+async def chat_v1(payload: ChatIn, session: Session = Depends(get_session)) -> dict[str, Any]:
+    return await _process_chat(session, payload)
+
+
 @app.post("/api/chat")
-async def chat(payload: ChatIn, session: Session = Depends(get_session)) -> dict[str, Any]:
-    return await process_chat(session=session, payload=payload)
+async def chat_compat(payload: ChatIn, session: Session = Depends(get_session)) -> dict[str, Any]:
+    return await _process_chat(session, payload)
 
 
 @app.post("/api/chat/stream")
 async def chat_stream(payload: ChatIn, session: Session = Depends(get_session)) -> StreamingResponse:
-    result = await process_chat(session=session, payload=payload)
+    result = await _process_chat(session, payload)
 
     def generator():
         yield json.dumps({"session_id": result["session_id"], "token": result["text"], "done": True}) + "\n"
@@ -370,193 +720,479 @@ async def chat_dry_run(payload: ChatDryRunIn, session: Session = Depends(get_ses
 
     guard = evaluate_guardrails(text)
     if not guard.allowed:
-        return {
-            "done": True,
-            "provider": "guardrails",
-            "model": "rule-based",
-            "text": guard.answer,
-            "reason": guard.reason,
-        }
+        return {"done": True, "provider": "guardrails", "model": "rule-based", "text": guard.answer}
 
     try:
-        answer, provider, model = await llm_service.complete(
-            system_prompt=sales_system_prompt(session),
-            user_prompt=f"Клиент: {text}",
-            reason="dry-run",
+        request_code = detect_request_type(text)
+        request = _get_ref_by_code(session, RefRequestType, request_code)
+        commodity_map, region_map = _resolve_maps(session)
+        facts = extract_facts(text, commodity_map, region_map)
+        _resolve_code_facts(session, facts)
+        required = required_fields(request_code)
+        missing = next_missing_field(required, set(facts.keys()))
+        question = next_question_for(missing) if missing else "Если готовы, фиксирую заявку и передаю менеджеру."
+        summary = [f"{human_field_name(k)}: {v.text}" for k, v in facts.items() if v.text][:8]
+        reply = await agent.reply(
+            stage="draft",
+            request_type_name=request.name if request else request_code,
+            user_text=text,
+            summary_lines=summary,
+            next_question=question,
+            last_assistant_messages=[],
         )
     except LLMUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
-    return {
-        "done": True,
-        "provider": provider,
-        "model": model,
-        "text": sanitize_text(answer),
-    }
-
-
-@app.post("/api/admin/login")
-def admin_login(payload: LoginIn) -> dict[str, str]:
-    if payload.username != ADMIN_USER or payload.password != ADMIN_PASS:
-        raise HTTPException(status_code=401, detail="Bad credentials")
-    return {"token": ADMIN_TOKEN}
+    return {"done": True, "provider": reply.provider, "model": reply.model, "text": reply.text}
 
 
 @app.get("/api/public/bootstrap")
 def bootstrap(session: Session = Depends(get_session)) -> dict[str, Any]:
-    products = list(session.exec(select(ProductItem).where(ProductItem.active == True)).all())
-    products.sort(key=lambda item: item.stock_tons, reverse=True)
+    company = session.exec(select(CompanyProfile)).first()
+    commodities = session.exec(select(RefCommodity).where(RefCommodity.is_active == True)).all()
+    request_types = session.exec(select(RefRequestType).where(RefRequestType.is_active == True)).all()
     return {
-        "company": session.exec(select(CompanyProfile)).first(),
-        "scenarios": session.exec(select(Scenario).where(Scenario.active == True)).all(),
-        "products": products[:8],
+        "company": company,
+        "commodities": commodities,
+        "request_types": request_types,
         "llm": llm_service.status(),
     }
 
 
+@app.post("/api/admin/login")
+@app.post("/api/v1/admin/login")
+def admin_login(payload: LoginIn, session: Session = Depends(get_session)) -> dict[str, str]:
+    user = session.exec(select(AdminUser).where(AdminUser.login == payload.username, AdminUser.is_active == True)).first()
+    fallback_ok = payload.username == ADMIN_USER and payload.password == ADMIN_PASS
+    if user:
+        if user.password_hash != _hash_password(payload.password):
+            raise HTTPException(status_code=401, detail="Bad credentials")
+    elif not fallback_ok:
+        raise HTTPException(status_code=401, detail="Bad credentials")
+    return {"token": ADMIN_TOKEN}
+
+
+@app.get("/api/v1/admin/stats")
 @app.get("/api/admin/stats")
 def admin_stats(_: None = Depends(require_admin), session: Session = Depends(get_session)) -> dict[str, Any]:
+    leads = session.exec(select(CrmLead)).all()
     sessions = session.exec(select(ChatSession)).all()
-    messages = session.exec(select(ChatMessage)).all()
-    leads = session.exec(select(Lead)).all()
-    states = session.exec(select(ConversationState)).all()
+    tasks = session.exec(select(CrmTask)).all()
+    request_types = {row.id: row.code for row in session.exec(select(RefRequestType)).all()}
+
+    by_request: dict[str, int] = {}
+    for lead in leads:
+        code = request_types.get(lead.request_type_id, "unknown")
+        by_request[code] = by_request.get(code, 0) + 1
+
+    stage_counts: dict[str, int] = {}
+    for lead in leads:
+        stage_counts[lead.status_code] = stage_counts.get(lead.status_code, 0) + 1
 
     return {
-        "sessions": len(sessions),
-        "messages": len(messages),
         "leads_total": len(leads),
-        "leads_new": len([lead for lead in leads if lead.status == "in_progress"]),
-        "leads_qualified": len([lead for lead in leads if lead.status == "qualified"]),
-        "leads_blocked": len([lead for lead in leads if lead.status == "blocked"]),
-        "state_machine": {
-            "total": len(states),
-            "greeting": len([state for state in states if state.state == "greeting"]),
-            "qualification": len([state for state in states if state.state == "qualification"]),
-            "handoff": len([state for state in states if state.state == "handoff"]),
-            "stopped_toxic": len([state for state in states if state.state == "stopped_toxic"]),
-        },
-        "llm_usage": llm_service.status(),
+        "hot_leads": len([lead for lead in leads if lead.hot_flag]),
+        "unassigned_leads": len([lead for lead in leads if not lead.assigned_manager_user_id]),
+        "sessions_total": len(sessions),
+        "tasks_open": len([task for task in tasks if task.status != "done"]),
+        "by_request_type": by_request,
+        "by_stage": stage_counts,
     }
 
 
-@app.get("/api/admin/chats")
-def admin_chats(_: None = Depends(require_admin), session: Session = Depends(get_session), limit: int = 120) -> list[ChatMessage]:
-    messages = list(session.exec(select(ChatMessage)).all())
-    messages.sort(key=lambda item: item.created_at)
-    return messages[-limit:]
+@app.get("/api/v1/admin/pipeline")
+def admin_pipeline(_: None = Depends(require_admin), session: Session = Depends(get_session)) -> dict[str, Any]:
+    stages = session.exec(select(RefPipelineStage).where(RefPipelineStage.is_active == True)).all()
+    leads = session.exec(select(CrmLead)).all()
+    counters = {}
+    for lead in leads:
+        counters[lead.status_code] = counters.get(lead.status_code, 0) + 1
+    items = []
+    for stage in sorted(stages, key=lambda x: x.sort_order):
+        items.append({"code": stage.code, "name": stage.name, "count": counters.get(stage.code, 0)})
+    return {"items": items}
 
 
+@app.get("/api/v1/leads")
 @app.get("/api/admin/leads")
-def get_leads(_: None = Depends(require_admin), session: Session = Depends(get_session), limit: int = 200) -> list[Lead]:
-    leads = list(session.exec(select(Lead)).all())
-    leads.sort(key=lambda item: item.updated_at, reverse=True)
-    return leads[:limit]
+def list_leads(
+    _: None = Depends(require_admin),
+    session: Session = Depends(get_session),
+    status_code: Optional[str] = None,
+    request_type_code: Optional[str] = None,
+    hot_only: bool = False,
+    limit: int = 200,
+) -> list[dict[str, Any]]:
+    leads = session.exec(select(CrmLead)).all()
+    request_type_by_id = {row.id: row.code for row in session.exec(select(RefRequestType)).all()}
+
+    if status_code:
+        leads = [lead for lead in leads if lead.status_code == status_code]
+    if request_type_code:
+        leads = [lead for lead in leads if request_type_by_id.get(lead.request_type_id) == request_type_code]
+    if hot_only:
+        leads = [lead for lead in leads if lead.hot_flag]
+
+    leads = sorted(leads, key=lambda x: x.updated_at, reverse=True)
+    result = []
+    for lead in leads[:limit]:
+        item = lead.model_dump()
+        item["request_type_code"] = request_type_by_id.get(lead.request_type_id, "unknown")
+        lead_item = session.exec(select(CrmLeadItem).where(CrmLeadItem.lead_id == lead.id)).first()
+        snapshot = session.exec(select(CrmLeadContactSnapshot).where(CrmLeadContactSnapshot.lead_id == lead.id)).first()
+        item["lead_item"] = lead_item.model_dump() if lead_item else None
+        item["contact_snapshot"] = snapshot.model_dump() if snapshot else None
+        result.append(item)
+    return result
 
 
-@app.post("/api/admin/leads")
-def post_lead(payload: LeadIn, _: None = Depends(require_admin), session: Session = Depends(get_session)) -> Lead:
-    lead = Lead(**payload.model_dump(), created_at=_now(), updated_at=_now())
-    session.add(lead)
-    session.commit()
-    session.refresh(lead)
-    return lead
-
-
+@app.put("/api/v1/leads/{lead_id}")
 @app.put("/api/admin/leads/{lead_id}")
-def put_lead(lead_id: int, payload: LeadIn, _: None = Depends(require_admin), session: Session = Depends(get_session)) -> dict[str, bool]:
-    lead = session.get(Lead, lead_id)
+def update_lead(lead_id: int, payload: dict[str, Any], _: None = Depends(require_admin), session: Session = Depends(get_session)) -> dict[str, bool]:
+    lead = session.get(CrmLead, lead_id)
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
 
-    for field_name, value in payload.model_dump().items():
-        setattr(lead, field_name, value)
+    allowed = {
+        "current_stage_id",
+        "assigned_department_id",
+        "assigned_manager_user_id",
+        "status_code",
+        "priority_code",
+        "hot_flag",
+        "summary",
+        "next_action",
+        "manager_comment",
+        "counterparty_id",
+    }
+    for key, value in payload.items():
+        if key in allowed:
+            setattr(lead, key, value)
     lead.updated_at = _now()
+    if lead.status_code in {"closed", "blocked"}:
+        lead.closed_at = _now()
     session.add(lead)
     session.commit()
     return {"ok": True}
 
 
+def _crud_list(session: Session, model):
+    return session.exec(select(model)).all()
+
+
+def _crud_create(session: Session, model, payload: dict[str, Any]):
+    row = model(**payload)
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return row
+
+
+def _crud_update(session: Session, model, row_id: int, payload: dict[str, Any]):
+    row = session.get(model, row_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Not found")
+    for key, value in payload.items():
+        if hasattr(row, key):
+            setattr(row, key, value)
+    if hasattr(row, "updated_at"):
+        setattr(row, "updated_at", _now())
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return row
+
+
+def _crud_delete(session: Session, model, row_id: int) -> dict[str, bool]:
+    row = session.get(model, row_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Not found")
+    session.delete(row)
+    session.commit()
+    return {"ok": True}
+
+
+@app.get("/api/v1/catalog/commodities")
 @app.get("/api/admin/products")
-def get_products(_: None = Depends(require_admin), session: Session = Depends(get_session)) -> list[ProductItem]:
-    products = list(session.exec(select(ProductItem)).all())
-    products.sort(key=lambda item: item.updated_at)
-    return products
+def get_commodities(_: None = Depends(require_admin), session: Session = Depends(get_session)):
+    rows = _crud_list(session, RefCommodity)
+    return sorted(rows, key=lambda x: (x.sort_order, x.name))
 
 
-@app.put("/api/admin/products")
-def put_products(items: list[ProductIn], _: None = Depends(require_admin), session: Session = Depends(get_session)) -> dict[str, bool]:
-    for product in session.exec(select(ProductItem)).all():
-        session.delete(product)
-    session.commit()
-
-    for item in items:
-        session.add(ProductItem(**item.model_dump(), updated_at=_now()))
-    session.commit()
-    return {"ok": True}
+@app.post("/api/v1/catalog/commodities")
+def create_commodity(payload: dict[str, Any], _: None = Depends(require_admin), session: Session = Depends(get_session)):
+    return _crud_create(session, RefCommodity, payload)
 
 
-@app.get("/api/admin/prompts")
-def get_prompts(_: None = Depends(require_admin), session: Session = Depends(get_session)) -> list[PromptCategory]:
-    return list(session.exec(select(PromptCategory)).all())
+@app.put("/api/v1/catalog/commodities/{row_id}")
+def update_commodity(row_id: int, payload: dict[str, Any], _: None = Depends(require_admin), session: Session = Depends(get_session)):
+    return _crud_update(session, RefCommodity, row_id, payload)
 
 
-@app.put("/api/admin/prompts")
-def put_prompts(items: list[PromptIn], _: None = Depends(require_admin), session: Session = Depends(get_session)) -> dict[str, bool]:
-    existing = {prompt.key: prompt for prompt in session.exec(select(PromptCategory)).all()}
-    for item in items:
-        if item.key in existing:
-            prompt = existing[item.key]
-            prompt.title = item.title
-            prompt.content = item.content
-            prompt.updated_at = _now()
-            session.add(prompt)
-        else:
-            session.add(PromptCategory(key=item.key, title=item.title, content=item.content))
-    session.commit()
-    return {"ok": True}
+@app.delete("/api/v1/catalog/commodities/{row_id}")
+def delete_commodity(row_id: int, _: None = Depends(require_admin), session: Session = Depends(get_session)):
+    return _crud_delete(session, RefCommodity, row_id)
 
 
-@app.get("/api/admin/company")
-def get_company(_: None = Depends(require_admin), session: Session = Depends(get_session)) -> Optional[CompanyProfile]:
-    return session.exec(select(CompanyProfile)).first()
+@app.get("/api/v1/catalog/regions")
+def get_regions(_: None = Depends(require_admin), session: Session = Depends(get_session)):
+    return _crud_list(session, RefRegion)
 
 
-@app.put("/api/admin/company")
-def put_company(payload: CompanyIn, _: None = Depends(require_admin), session: Session = Depends(get_session)) -> dict[str, bool]:
-    company = session.exec(select(CompanyProfile)).first()
-    if not company:
-        company = CompanyProfile(**payload.model_dump())
-    else:
-        for field_name, value in payload.model_dump().items():
-            setattr(company, field_name, value)
-    session.add(company)
-    session.commit()
-    return {"ok": True}
+@app.put("/api/v1/catalog/regions/{row_id}")
+def update_region(row_id: int, payload: dict[str, Any], _: None = Depends(require_admin), session: Session = Depends(get_session)):
+    return _crud_update(session, RefRegion, row_id, payload)
 
 
-@app.get("/api/admin/scenarios")
-def get_scenarios(_: None = Depends(require_admin), session: Session = Depends(get_session)) -> list[Scenario]:
-    return list(session.exec(select(Scenario)).all())
+@app.post("/api/v1/catalog/regions")
+def create_region(payload: dict[str, Any], _: None = Depends(require_admin), session: Session = Depends(get_session)):
+    return _crud_create(session, RefRegion, payload)
 
 
-@app.put("/api/admin/scenarios")
-def put_scenarios(items: list[ScenarioIn], _: None = Depends(require_admin), session: Session = Depends(get_session)) -> dict[str, bool]:
-    for scenario in session.exec(select(Scenario)).all():
-        session.delete(scenario)
-    session.commit()
-
-    for item in items:
-        session.add(Scenario(**item.model_dump()))
-    session.commit()
-    return {"ok": True}
+@app.get("/api/v1/catalog/transport-modes")
+def get_transport_modes(_: None = Depends(require_admin), session: Session = Depends(get_session)):
+    return _crud_list(session, RefTransportMode)
 
 
-@app.get("/api/admin/scenario-templates")
-def get_scenario_templates(_: None = Depends(require_admin), session: Session = Depends(get_session)) -> list[ScenarioTemplate]:
-    return list(session.exec(select(ScenarioTemplate).where(ScenarioTemplate.active == True)).all())
+@app.post("/api/v1/catalog/transport-modes")
+def create_transport_mode(payload: dict[str, Any], _: None = Depends(require_admin), session: Session = Depends(get_session)):
+    return _crud_create(session, RefTransportMode, payload)
 
 
-@app.post("/api/admin/scenario-templates/reset-defaults")
-def reset_templates(_: None = Depends(require_admin), session: Session = Depends(get_session)) -> dict[str, bool]:
-    reset_default_scenario_templates(session)
-    return {"ok": True}
+@app.put("/api/v1/catalog/transport-modes/{row_id}")
+def update_transport_mode(row_id: int, payload: dict[str, Any], _: None = Depends(require_admin), session: Session = Depends(get_session)):
+    return _crud_update(session, RefTransportMode, row_id, payload)
+
+
+@app.get("/api/v1/catalog/delivery-basis")
+def get_delivery_basis(_: None = Depends(require_admin), session: Session = Depends(get_session)):
+    return _crud_list(session, RefDeliveryBasis)
+
+
+@app.post("/api/v1/catalog/delivery-basis")
+def create_delivery_basis(payload: dict[str, Any], _: None = Depends(require_admin), session: Session = Depends(get_session)):
+    return _crud_create(session, RefDeliveryBasis, payload)
+
+
+@app.put("/api/v1/catalog/delivery-basis/{row_id}")
+def update_delivery_basis(row_id: int, payload: dict[str, Any], _: None = Depends(require_admin), session: Session = Depends(get_session)):
+    return _crud_update(session, RefDeliveryBasis, row_id, payload)
+
+
+@app.get("/api/v1/catalog/quality-templates")
+def get_quality_templates(_: None = Depends(require_admin), session: Session = Depends(get_session)) -> list[dict[str, Any]]:
+    templates = _crud_list(session, CatalogQualityTemplate)
+    result = []
+    for item in templates:
+        payload = item.model_dump()
+        payload["lines"] = [
+            line.model_dump()
+            for line in session.exec(
+                select(CatalogQualityTemplateLine).where(CatalogQualityTemplateLine.quality_template_id == item.id)
+            ).all()
+        ]
+        result.append(payload)
+    return result
+
+
+@app.post("/api/v1/catalog/quality-templates")
+def create_quality_template(payload: dict[str, Any], _: None = Depends(require_admin), session: Session = Depends(get_session)):
+    lines = payload.pop("lines", [])
+    row = _crud_create(session, CatalogQualityTemplate, payload)
+    for line in lines:
+        line["quality_template_id"] = row.id
+        _crud_create(session, CatalogQualityTemplateLine, line)
+    return row
+
+
+@app.put("/api/v1/catalog/quality-templates/{row_id}")
+def update_quality_template(row_id: int, payload: dict[str, Any], _: None = Depends(require_admin), session: Session = Depends(get_session)):
+    lines = payload.pop("lines", None)
+    row = _crud_update(session, CatalogQualityTemplate, row_id, payload)
+    if lines is not None:
+        for existing in session.exec(
+            select(CatalogQualityTemplateLine).where(CatalogQualityTemplateLine.quality_template_id == row_id)
+        ).all():
+            session.delete(existing)
+        session.commit()
+        for line in lines:
+            line["quality_template_id"] = row_id
+            _crud_create(session, CatalogQualityTemplateLine, line)
+    return row
+
+
+@app.get("/api/v1/catalog/price-policies")
+def get_price_policies(_: None = Depends(require_admin), session: Session = Depends(get_session)):
+    return _crud_list(session, CatalogPricePolicy)
+
+
+@app.post("/api/v1/catalog/price-policies")
+def create_price_policy(payload: dict[str, Any], _: None = Depends(require_admin), session: Session = Depends(get_session)):
+    return _crud_create(session, CatalogPricePolicy, payload)
+
+
+@app.put("/api/v1/catalog/price-policies/{row_id}")
+def update_price_policy(row_id: int, payload: dict[str, Any], _: None = Depends(require_admin), session: Session = Depends(get_session)):
+    return _crud_update(session, CatalogPricePolicy, row_id, payload)
+
+
+@app.get("/api/v1/catalog/lots")
+def get_lots(_: None = Depends(require_admin), session: Session = Depends(get_session)):
+    return _crud_list(session, CatalogStockPlaceholder)
+
+
+@app.post("/api/v1/catalog/lots")
+def create_lot(payload: dict[str, Any], _: None = Depends(require_admin), session: Session = Depends(get_session)):
+    return _crud_create(session, CatalogStockPlaceholder, payload)
+
+
+@app.put("/api/v1/catalog/lots/{row_id}")
+def update_lot(row_id: int, payload: dict[str, Any], _: None = Depends(require_admin), session: Session = Depends(get_session)):
+    return _crud_update(session, CatalogStockPlaceholder, row_id, payload)
+
+
+@app.get("/api/v1/knowledge")
+def get_knowledge(session: Session = Depends(get_session), group: Optional[str] = Query(default=None)):
+    rows = session.exec(select(KnowledgeArticle).where(KnowledgeArticle.is_active == True)).all()
+    if group:
+        rows = [item for item in rows if item.article_group == group]
+    return sorted(rows, key=lambda x: (x.sort_order, x.title))
+
+
+@app.get("/api/v1/admin/knowledge")
+def get_knowledge_admin(_: None = Depends(require_admin), session: Session = Depends(get_session)):
+    return _crud_list(session, KnowledgeArticle)
+
+
+@app.post("/api/v1/admin/knowledge")
+def create_knowledge(payload: dict[str, Any], _: None = Depends(require_admin), session: Session = Depends(get_session)):
+    return _crud_create(session, KnowledgeArticle, payload)
+
+
+@app.put("/api/v1/admin/knowledge/{row_id}")
+def update_knowledge(row_id: int, payload: dict[str, Any], _: None = Depends(require_admin), session: Session = Depends(get_session)):
+    return _crud_update(session, KnowledgeArticle, row_id, payload)
+
+
+@app.get("/api/v1/admin/chat-sessions")
+def get_chat_sessions(_: None = Depends(require_admin), session: Session = Depends(get_session), limit: int = 200):
+    rows = session.exec(select(ChatSession)).all()
+    return sorted(rows, key=lambda x: x.updated_at, reverse=True)[:limit]
+
+
+@app.get("/api/v1/admin/chat-sessions/{session_id}")
+def get_chat_session_detail(session_id: int, _: None = Depends(require_admin), session: Session = Depends(get_session)):
+    chat = session.get(ChatSession, session_id)
+    if not chat:
+        raise HTTPException(status_code=404, detail="Session not found")
+    messages = sorted(session.exec(select(ChatMessage).where(ChatMessage.session_id == session_id)).all(), key=lambda x: x.created_at)
+    facts = session.exec(select(ChatExtractedFact).where(ChatExtractedFact.session_id == session_id)).all()
+    missing = session.exec(select(ChatMissingField).where(ChatMissingField.session_id == session_id)).all()
+    checkpoints = sorted(
+        session.exec(select(ChatQualificationCheckpoint).where(ChatQualificationCheckpoint.session_id == session_id)).all(),
+        key=lambda x: x.created_at,
+    )
+    lead = session.get(CrmLead, chat.lead_id) if chat.lead_id else None
+    return {
+        "session": chat,
+        "lead": lead,
+        "messages": messages,
+        "facts": facts,
+        "missing_fields": missing,
+        "checkpoints": checkpoints,
+    }
+
+
+@app.get("/api/v1/admin/counterparties")
+def get_counterparties(_: None = Depends(require_admin), session: Session = Depends(get_session)):
+    return _crud_list(session, CrmCounterparty)
+
+
+@app.post("/api/v1/admin/counterparties")
+def create_counterparty(payload: dict[str, Any], _: None = Depends(require_admin), session: Session = Depends(get_session)):
+    return _crud_create(session, CrmCounterparty, payload)
+
+
+@app.put("/api/v1/admin/counterparties/{row_id}")
+def update_counterparty(row_id: int, payload: dict[str, Any], _: None = Depends(require_admin), session: Session = Depends(get_session)):
+    return _crud_update(session, CrmCounterparty, row_id, payload)
+
+
+@app.get("/api/v1/admin/tasks")
+def get_tasks(_: None = Depends(require_admin), session: Session = Depends(get_session)):
+    rows = _crud_list(session, CrmTask)
+    return sorted(rows, key=lambda x: x.created_at, reverse=True)
+
+
+@app.post("/api/v1/admin/tasks")
+def create_task(payload: dict[str, Any], _: None = Depends(require_admin), session: Session = Depends(get_session)):
+    return _crud_create(session, CrmTask, payload)
+
+
+@app.put("/api/v1/admin/tasks/{row_id}")
+def update_task(row_id: int, payload: dict[str, Any], _: None = Depends(require_admin), session: Session = Depends(get_session)):
+    return _crud_update(session, CrmTask, row_id, payload)
+
+
+@app.get("/api/v1/admin/users")
+def get_users(_: None = Depends(require_admin), session: Session = Depends(get_session)):
+    return _crud_list(session, AdminUser)
+
+
+@app.post("/api/v1/admin/users")
+def create_user(payload: dict[str, Any], _: None = Depends(require_admin), session: Session = Depends(get_session)):
+    if "password_hash" not in payload and "password" in payload:
+        payload["password_hash"] = _hash_password(str(payload.pop("password")))
+    return _crud_create(session, AdminUser, payload)
+
+
+@app.put("/api/v1/admin/users/{row_id}")
+def update_user(row_id: int, payload: dict[str, Any], _: None = Depends(require_admin), session: Session = Depends(get_session)):
+    if "password" in payload:
+        payload["password_hash"] = _hash_password(str(payload.pop("password")))
+    return _crud_update(session, AdminUser, row_id, payload)
+
+
+@app.get("/api/v1/admin/settings")
+def get_settings(_: None = Depends(require_admin), session: Session = Depends(get_session)):
+    rows = list(_crud_list(session, AdminSetting))
+    return _mask_settings(rows)
+
+
+@app.put("/api/v1/admin/settings/{row_id}")
+def update_setting(row_id: int, payload: dict[str, Any], _: None = Depends(require_admin), session: Session = Depends(get_session)):
+    row = session.get(AdminSetting, row_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Not found")
+    if row.is_secret and payload.get("setting_value") == "***":
+        payload.pop("setting_value", None)
+    updated = _crud_update(session, AdminSetting, row_id, payload)
+    result = updated.model_dump()
+    if updated.is_secret:
+        result["setting_value"] = "***"
+    return result
+
+
+@app.get("/api/v1/admin/reference/request-types")
+def get_request_types(_: None = Depends(require_admin), session: Session = Depends(get_session)):
+    return _crud_list(session, RefRequestType)
+
+
+@app.get("/api/v1/admin/reference/lead-sources")
+def get_lead_sources(_: None = Depends(require_admin), session: Session = Depends(get_session)):
+    return _crud_list(session, RefLeadSource)
+
+
+@app.get("/api/v1/admin/reference/departments")
+def get_departments(_: None = Depends(require_admin), session: Session = Depends(get_session)):
+    return _crud_list(session, RefDepartment)
+
+
+@app.get("/api/v1/admin/reference/manager-roles")
+def get_manager_roles(_: None = Depends(require_admin), session: Session = Depends(get_session)):
+    return _crud_list(session, RefManagerRole)
+
+
+@app.get("/api/v1/admin/reference/counterparty-types")
+def get_counterparty_types(_: None = Depends(require_admin), session: Session = Depends(get_session)):
+    return _crud_list(session, RefCounterpartyType)

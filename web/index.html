@@ -1,381 +1,156 @@
 <!doctype html>
 <html lang="ru">
-	<head>
-		<meta charset="UTF-8" />
-		<meta name="viewport" content="width=device-width, initial-scale=1" />
-		<title>Петрохлеб-Кубань — AI ассистент</title>
-		<style>
-			:root {
-				--bg: #ffffff;
-				--bg-soft: #f7f8f5;
-				--ink: #1f2622;
-				--muted: #6b736e;
-				--line: #dfe4dc;
-				--brand: #5d7528;
-				--brand-dark: #2a4200;
-				--radius: 14px;
-			}
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Петрохлеб-Кубань — ассистент заявок</title>
+  <style>
+    :root { --bg:#f5f7f3; --card:#fff; --ink:#1f2a22; --line:#d7dfd2; --brand:#2f5c30; }
+    * { box-sizing:border-box; }
+    body { margin:0; font-family:"Segoe UI", Tahoma, sans-serif; background:var(--bg); color:var(--ink); }
+    .wrap { max-width:1280px; margin:0 auto; padding:14px; }
+    .top { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; margin-bottom:10px; }
+    .title { font-size:22px; font-weight:700; }
+    .sub { color:#5f6b62; font-size:13px; margin-top:4px; }
+    .layout { display:grid; grid-template-columns:320px 1fr; gap:10px; }
+    .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px; }
+    .chips { display:flex; gap:6px; flex-wrap:wrap; }
+    .chip { border:1px solid #c4d0be; background:#eef4ea; border-radius:999px; padding:6px 10px; cursor:pointer; font-size:12px; }
+    .stream { border:1px solid #e2e8de; border-radius:10px; min-height:56vh; max-height:56vh; overflow:auto; padding:10px; background:#fcfdfb; }
+    .msg { max-width:86%; padding:9px 11px; border-radius:9px; margin-bottom:8px; white-space:pre-wrap; font-size:14px; line-height:1.45; }
+    .msg.in { margin-left:auto; background:#eaf1e5; border:1px solid #d1ddc9; }
+    .msg.out { margin-right:auto; background:#fff; border:1px solid #dee5da; }
+    .composer { display:grid; grid-template-columns:1fr auto auto; gap:8px; margin-top:8px; }
+    textarea { width:100%; min-height:82px; border:1px solid #cfd8c9; border-radius:8px; padding:8px; font:inherit; }
+    button { border:1px solid var(--brand); background:var(--brand); color:#fff; border-radius:8px; padding:0 12px; cursor:pointer; }
+    button.ghost { background:#fff; color:var(--brand); }
+    .status { color:#5f6b62; font-size:12px; margin-bottom:8px; }
+    @media (max-width: 980px) { .layout { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <div class="title">Петрохлеб-Кубань</div>
+      <div class="sub">B2B ассистент: закупка, продажа, логистика, хранение, экспорт</div>
+    </div>
 
-			* {
-				box-sizing: border-box;
-			}
+    <div class="layout">
+      <aside class="card">
+        <h3 style="margin-top:0">О компании</h3>
+        <div id="company" style="font-size:13px;color:#49564d"></div>
+        <h4>Быстрые темы</h4>
+        <div class="chips" id="request-types"></div>
+        <h4>Культуры</h4>
+        <div class="chips" id="commodities"></div>
+      </aside>
 
-			body {
-				margin: 0;
-				font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-				color: var(--ink);
-				background: var(--bg);
-			}
+      <section class="card">
+        <div class="status" id="status">Готов к диалогу</div>
+        <div class="stream" id="stream"></div>
+        <div class="composer">
+          <textarea id="text" placeholder="Опишите задачу: что продаете/покупаете, объем, регион, логистику, сроки и контакт"></textarea>
+          <button id="send">Отправить</button>
+          <button id="clear" class="ghost">Очистить</button>
+        </div>
+      </section>
+    </div>
+  </div>
 
-			.page {
-				min-height: 100vh;
-				display: flex;
-				flex-direction: column;
-			}
+  <script>
+    let sessionId = null
+    const stream = document.getElementById("stream")
+    const statusEl = document.getElementById("status")
 
-			.header {
-				border-bottom: 1px solid var(--line);
-				background: var(--bg);
-			}
+    function add(text, direction) {
+      const el = document.createElement("div")
+      el.className = `msg ${direction}`
+      el.textContent = text
+      stream.appendChild(el)
+      stream.scrollTop = stream.scrollHeight
+    }
 
-			.header__inner {
-				max-width: 1240px;
-				margin: 0 auto;
-				padding: 18px 20px;
-				display: flex;
-				justify-content: space-between;
-				align-items: center;
-				gap: 16px;
-			}
+    function setStatus(text, bad = false) {
+      statusEl.textContent = text
+      statusEl.style.color = bad ? "#b01919" : "#5f6b62"
+    }
 
-			.logo {
-				font-size: 22px;
-				font-weight: 700;
-				letter-spacing: -0.02em;
-				text-transform: uppercase;
-			}
+    async function bootstrap() {
+      try {
+        const res = await fetch("/api/public/bootstrap")
+        const data = await res.json()
+        document.getElementById("company").textContent = `${data.company?.name || ""}. ${data.company?.services || ""}`
 
-			.sublogo {
-				font-size: 12px;
-				color: var(--muted);
-				text-transform: uppercase;
-				letter-spacing: 0.08em;
-			}
+        const reqWrap = document.getElementById("request-types")
+        ;(data.request_types || []).forEach(item => {
+          const b = document.createElement("button")
+          b.className = "chip"
+          b.textContent = item.name
+          b.onclick = () => {
+            document.getElementById("text").value = `Нужна консультация: ${item.name}`
+            document.getElementById("text").focus()
+          }
+          reqWrap.appendChild(b)
+        })
 
-			.main {
-				max-width: 1240px;
-				margin: 0 auto;
-				padding: 26px 20px 30px;
-				display: grid;
-				grid-template-columns: 320px minmax(0, 1fr);
-				gap: 18px;
-				width: 100%;
-				flex: 1;
-			}
+        const comWrap = document.getElementById("commodities")
+        ;(data.commodities || []).forEach(item => {
+          const b = document.createElement("button")
+          b.className = "chip"
+          b.textContent = item.name
+          b.onclick = () => {
+            document.getElementById("text").value = `Интересует ${item.name}, объем 200 тонн, регион Краснодар.`
+            document.getElementById("text").focus()
+          }
+          comWrap.appendChild(b)
+        })
+      } catch {
+        document.getElementById("company").textContent = "Справка временно недоступна."
+      }
+    }
 
-			.card {
-				border: 1px solid var(--line);
-				border-radius: var(--radius);
-				background: var(--bg);
-			}
+    async function send() {
+      const textEl = document.getElementById("text")
+      const text = textEl.value.trim()
+      if (!text) return
+      add(text, "in")
+      textEl.value = ""
+      setStatus("Обработка сообщения...")
 
-			.side {
-				padding: 18px;
-				background: var(--bg-soft);
-			}
+      try {
+        const res = await fetch("/api/v1/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text, session_id: sessionId, client_id: "web-user", source_channel: "web_widget" }),
+        })
+        const payload = await res.json()
+        if (!res.ok) throw new Error(payload.detail || `HTTP ${res.status}`)
+        sessionId = payload.session_id || sessionId
+        add(payload.text || "Ответ пуст", "out")
+        setStatus(`Готово · ${payload.provider || "engine"} · ${payload.status || "draft"}`)
+      } catch (e) {
+        add(`Ошибка: ${e.message || e}`, "out")
+        setStatus("Сбой запроса", true)
+      }
+    }
 
-			.side h3 {
-				margin: 0 0 12px;
-				font-size: 15px;
-				text-transform: uppercase;
-				letter-spacing: 0.08em;
-			}
+    document.getElementById("send").onclick = send
+    document.getElementById("clear").onclick = () => {
+      sessionId = null
+      stream.innerHTML = ""
+      setStatus("Диалог очищен")
+    }
+    document.getElementById("text").addEventListener("keydown", e => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault()
+        send()
+      }
+    })
 
-			.muted {
-				color: var(--muted);
-				font-size: 13px;
-				line-height: 1.5;
-			}
-
-			.chips {
-				display: flex;
-				flex-wrap: wrap;
-				gap: 8px;
-				margin-top: 14px;
-			}
-
-			.chip {
-				appearance: none;
-				border: 1px solid #cad3c4;
-				background: #fff;
-				color: #364036;
-				border-radius: 999px;
-				padding: 8px 12px;
-				font-size: 12px;
-				cursor: pointer;
-				transition: 0.2s ease;
-			}
-
-			.chip:hover {
-				border-color: var(--brand);
-				color: var(--brand-dark);
-			}
-
-			.chat {
-				display: flex;
-				flex-direction: column;
-				min-height: 74vh;
-			}
-
-			.chat__head {
-				display: flex;
-				justify-content: space-between;
-				align-items: center;
-				padding: 14px 16px;
-				border-bottom: 1px solid var(--line);
-			}
-
-			.chat__title {
-				font-size: 14px;
-				font-weight: 700;
-				letter-spacing: 0.08em;
-				text-transform: uppercase;
-			}
-
-			.stream {
-				display: flex;
-				flex-direction: column;
-				gap: 10px;
-				padding: 16px;
-				height: 58vh;
-				overflow: auto;
-			}
-
-			.msg {
-				max-width: 82%;
-				padding: 11px 12px;
-				border-radius: 10px;
-				line-height: 1.45;
-				white-space: pre-wrap;
-				font-size: 14px;
-			}
-
-			.msg.u {
-				align-self: flex-end;
-				background: #ecf1e6;
-				border: 1px solid #d3dcc8;
-			}
-
-			.msg.b {
-				align-self: flex-start;
-				background: #fff;
-				border: 1px solid #e2e6df;
-			}
-
-			.composer {
-				display: grid;
-				grid-template-columns: 1fr auto auto;
-				gap: 10px;
-				padding: 14px;
-				border-top: 1px solid var(--line);
-			}
-
-			textarea {
-				width: 100%;
-				min-height: 80px;
-				resize: vertical;
-				border: 1px solid #cfd7cb;
-				border-radius: 10px;
-				padding: 10px 12px;
-				font: inherit;
-			}
-
-			button {
-				appearance: none;
-				border: 1px solid var(--brand);
-				background: var(--brand);
-				color: #fff;
-				border-radius: 10px;
-				padding: 0 14px;
-				font-weight: 700;
-				cursor: pointer;
-			}
-
-			button:hover {
-				background: var(--brand-dark);
-				border-color: var(--brand-dark);
-			}
-
-			button.ghost {
-				background: #fff;
-				color: #364036;
-				border-color: #c9d2c4;
-			}
-
-			button.ghost:hover {
-				background: #f2f5ef;
-			}
-
-			@media (max-width: 980px) {
-				.main {
-					grid-template-columns: 1fr;
-				}
-
-				.chat {
-					min-height: 68vh;
-				}
-
-				.stream {
-					height: 50vh;
-				}
-			}
-		</style>
-	</head>
-	<body>
-		<div class="page">
-			<header class="header">
-				<div class="header__inner">
-					<div>
-						<div class="logo">Петрохлеб-Кубань</div>
-						<div class="sublogo">AI ассистент по зерновым сделкам</div>
-					</div>
-				</div>
-			</header>
-
-			<main class="main">
-				<aside class="card side">
-					<h3>О компании</h3>
-					<div class="muted" id="company"></div>
-					<div class="chips" id="chips"></div>
-				</aside>
-
-				<section class="card chat">
-					<div class="chat__head">
-						<div class="chat__title">Чат с ассистентом</div>
-						<div id="status" class="muted">Готово</div>
-					</div>
-					<div class="stream" id="chat"></div>
-					<div class="composer">
-						<textarea
-							id="input"
-							placeholder="Введите запрос: цена, наличие, логистика, условия поставки"
-						></textarea>
-						<button id="send">Отправить</button>
-						<button id="clear" class="ghost">Очистить</button>
-					</div>
-				</section>
-			</main>
-		</div>
-
-		<script>
-			const chatEl = document.getElementById('chat')
-			const inputEl = document.getElementById('input')
-			const statusEl = document.getElementById('status')
-			const chipsEl = document.getElementById('chips')
-			let sessionId = null
-
-			function addMsg(text, role) {
-				const el = document.createElement('div')
-				el.className = `msg ${role}`
-				el.textContent = text
-				chatEl.appendChild(el)
-				chatEl.scrollTop = chatEl.scrollHeight
-				return el
-			}
-
-			function setStatus(text, error = false) {
-				statusEl.textContent = text
-				statusEl.style.color = error ? '#b00020' : '#6b736e'
-			}
-
-			async function bootstrap() {
-				try {
-					const res = await fetch('/api/public/bootstrap')
-					if (!res.ok) throw new Error(`HTTP ${res.status}`)
-					const data = await res.json()
-
-					document.getElementById('company').textContent = `${
-						data.company?.name || ''
-					}. ${data.company?.services || ''}`
-					;(data.products || []).slice(0, 6).forEach(p => {
-						const b = document.createElement('button')
-						b.className = 'chip'
-						b.textContent = `${p.culture} ${p.grade}`.trim()
-						b.onclick = () => {
-							inputEl.value = `Интересует ${p.name}. Объем 100 тонн, доставка в Краснодар.`
-							inputEl.focus()
-						}
-						chipsEl.appendChild(b)
-					})
-				} catch {
-					document.getElementById('company').textContent =
-						'Данные о компании временно недоступны. Вы можете задать вопрос в чат.'
-				}
-			}
-
-			async function send() {
-				const text = inputEl.value.trim()
-				if (!text) return
-
-				addMsg(text, 'u')
-				inputEl.value = ''
-				setStatus('Генерирую ответ...')
-
-				let bot = addMsg('', 'b')
-
-				try {
-					const res = await fetch('/api/chat', {
-						method: 'POST',
-						headers: { 'Content-Type': 'application/json' },
-						cache: 'no-store',
-						body: JSON.stringify({
-							text,
-							session_id: sessionId,
-							client_id: 'web-client',
-						}),
-					})
-
-					const raw = await res.text()
-					let data = null
-					try {
-						data = raw ? JSON.parse(raw) : {}
-					} catch {
-						throw new Error(`Некорректный ответ API: HTTP ${res.status}`)
-					}
-
-					if (!res.ok) {
-						const details = data?.detail || `HTTP ${res.status}`
-						throw new Error(`Ошибка API: ${details}`)
-					}
-
-					if (data.session_id) sessionId = data.session_id
-					bot.textContent =
-						(data.text || '').trim() ||
-						'Ответ пуст. Уточните, пожалуйста, товар, класс и объём в тоннах.'
-					const provider = data.provider ? ` · ${String(data.provider)}` : ''
-					setStatus(`Готово${provider}`)
-				} catch (e) {
-					bot.textContent = `Ошибка запроса: ${e?.message || 'неизвестная ошибка'}`
-					setStatus('Сетевой сбой или недоступен API', true)
-				}
-			}
-
-			document.getElementById('send').onclick = send
-			document.getElementById('clear').onclick = () => {
-				sessionId = null
-				chatEl.innerHTML = ''
-				setStatus('Готово')
-			}
-
-			inputEl.addEventListener('keydown', e => {
-				if (e.key === 'Enter' && !e.shiftKey) {
-					e.preventDefault()
-					send()
-				}
-			})
-			;(async () => {
-				await bootstrap()
-			})()
-		</script>
-	</body>
+    ;(async () => {
+      await bootstrap()
+      add("Добрый день. Зафиксирую заявку по зерну и логистике, чтобы менеджер быстро вышел с условиями.", "out")
+    })()
+  </script>
+</body>
 </html>

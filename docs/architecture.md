@@ -1,40 +1,41 @@
-# Архитектура v5: single-agent orchestration
+# Архитектура v6: sales assistant + backoffice
 
 ```mermaid
 flowchart TD
-    U[Клиент] --> WEB[Nginx + Web UI]
-    WEB --> API[FastAPI API]
+    U[Клиент] --> W[Web UI / Nginx]
+    W --> API[FastAPI]
     API --> DB[(PostgreSQL)]
-    API --> GC[GigaChat API]
+    API --> LLM[GigaChat]
 
-    API --> GR[Guardrails]
-    API --> ORCH[Single Agent Orchestrator]
-    ORCH --> LT[Lead Tool]
-    ORCH --> PT[Product Tool]
-    ORCH --> RT[Response Tool]
+    API --> G[Guardrails]
+    API --> E[Deterministic Extractor]
+    E --> F[chat_extracted_fact]
+    E --> M[chat_missing_field]
+    E --> L[crm_lead + crm_lead_item]
 ```
 
 ## Принципы
 
-1. NanoClaw и Ollama полностью удалены из runtime-цепочки.
-2. Все бизнес-решения по лиду выполняются детерминированно в backend.
-3. Основной диалог формируется через GigaChat по этапным промптам (greeting/qualification/free_question/handoff).
-4. Для снижения повторов в промпт передаются последние ответы ассистента с запретом дословного повтора.
+1. Конверсия в лид важнее свободной болтовни.
+2. Этапы заявки и обязательные поля определяются backend-правилами.
+3. Все промежуточные данные пишутся в SQL таблицы.
+4. LLM используется только для естественной формулировки ответа.
 
-## Поток запроса `/api/chat`
+## Поток `/api/v1/chat`
 
-1. Guardrails: блок токсичных и security запросов.
-2. `LeadTool` извлекает поля (regex + rules) и обновляет `ConversationState`.
-3. Оркестратор формирует этапный промпт и отдает генерацию ответа GigaChat.
-4. Если лид заполнен:
-   - сохраняется запись `Lead` (status=`qualified`);
-   - фиксируется `source_channel` и `raw_dialogue`;
-   - возвращается финальный ответ handoff.
-5. При недоступности LLM возвращается технический `service-unavailable` ответ без сценарных шаблонов.
+1. Guardrails (tox/security).
+2. Детекция типа запроса (purchase/sale/logistics/storage/export/faq).
+3. Извлечение фактов rule-based (культура, объем, регион, контакт и т.д.).
+4. Upsert фактов в `chat_extracted_fact`.
+5. Синхронизация черновика в `crm_lead` и `crm_lead_item`.
+6. Пересчет `chat_missing_field` и выбор следующего вопроса.
+7. Генерация короткого B2B-ответа через GigaChat.
+8. Сохранение сообщения ассистента в `chat_message`.
 
-## Ограничения производительности
+## Слои данных
 
-- max timeout LLM = 5 секунд;
-- `LLM_MAX_RETRIES=1`;
-- inference выполняется через lock (без параллельной генерации);
-- стек состоит из 3 сервисов: `api`, `db`, `webui`.
+- Справочники: `ref_*`
+- Каталоги: `catalog_*`
+- CRM: `crm_*`
+- Чат: `chat_*`
+- Администрирование: `admin_*`, `knowledge_article`

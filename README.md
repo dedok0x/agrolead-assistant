@@ -1,101 +1,93 @@
-# AgroLead Assistant v5 (Single-Agent + GigaChat)
+# AgroLead Assistant v6 — Petrokhleb-Kuban sales backoffice
 
-Легковесный B2B sales-assistant для низкоресурсного сервера (1 CPU / ~2 GB RAM).
+Прототип B2B ассистента и бэк-офиса для зернового трейдера и логистического оператора.
 
-Ключевой принцип текущей версии:
+## Что реализовано
 
-- один оркестратор-агент в API;
-- детерминированный lead pipeline;
-- LLM (GigaChat) формирует основную часть диалога по этапным промптам;
-- в ответах запрещены повторяющиеся шаблонные формулировки.
+- диалоговый движок ориентирован на конвертацию в структурированные заявки;
+- deterministic сбор фактов (тип запроса, культура, объем, регион, контакт и т.д.);
+- хранение промежуточных данных в SQL:
+  - `chat_message`
+  - `chat_extracted_fact`
+  - `chat_missing_field`
+  - `chat_qualification_checkpoint`
+- CRM слой:
+  - `crm_lead`
+  - `crm_lead_item`
+  - `crm_lead_contact_snapshot`
+  - `crm_task`
+- 1C-подобные справочники и каталоги (редактируются из admin UI/API);
+- admin backoffice с разделами: Dashboard, Leads, Pipeline, Counterparties, Nomenclature, Quality Templates, Price Policies, Lots, Regions, Transport, Delivery Basis, Knowledge Base, Chat Sessions, Tasks, Users, Settings.
+
+## Архитектура
+
+- `api` (FastAPI): чат-оркестрация, CRM/API, admin CRUD
+- `db` (PostgreSQL): единый источник данных
+- `webui` (Nginx + HTML/JS): клиентский чат и бэк-офис
+- `llm` (GigaChat через HTTP): только для естественной формулировки ответов
+
+## Основные API
+
+- чат:
+  - `POST /api/v1/chat`
+  - `POST /api/chat` (shim)
+  - `POST /api/chat/dry-run`
+- лиды:
+  - `GET /api/v1/leads`
+  - `PUT /api/v1/leads/{lead_id}`
+- каталоги:
+  - `GET/POST/PUT /api/v1/catalog/commodities`
+  - `GET/POST/PUT /api/v1/catalog/quality-templates`
+  - `GET/POST/PUT /api/v1/catalog/price-policies`
+  - `GET/POST/PUT /api/v1/catalog/lots`
+  - `GET/POST/PUT /api/v1/catalog/regions`
+  - `GET/POST/PUT /api/v1/catalog/transport-modes`
+  - `GET/POST/PUT /api/v1/catalog/delivery-basis`
+- admin:
+  - `POST /api/v1/admin/login`
+  - `GET /api/v1/admin/stats`
+  - `GET /api/v1/admin/pipeline`
+  - `GET /api/v1/admin/chat-sessions`
+  - `GET /api/v1/admin/chat-sessions/{id}`
+  - `GET/POST/PUT /api/v1/admin/counterparties`
+  - `GET/POST/PUT /api/v1/admin/knowledge`
+  - `GET/POST/PUT /api/v1/admin/tasks`
+  - `GET/POST/PUT /api/v1/admin/users`
+  - `GET/PUT /api/v1/admin/settings`
 
 ## Быстрый запуск
 
 ```bash
-git clone <repo-url>
-cd agrolead-assistant
 cp env.example .env
 bash ./deploy.sh
 ```
 
-После деплоя:
+После успешного деплоя:
 
-- Чат: `http://localhost:80`
-- Админка: `http://localhost:80/admin`
-- API docs: `http://localhost:8000/docs`
+- чат: `https://localhost`
+- admin: `https://localhost/admin`
+- docs: `http://localhost:8000/docs`
 
-## Архитектура
+## GigaChat
 
-```mermaid
-flowchart LR
-    U[Клиент] --> W[Web UI / Nginx]
-    W --> A[FastAPI API]
-    A --> DB[(PostgreSQL)]
-    A --> LLM[GigaChat API]
-
-    A --> ORCH[Single Agent Orchestrator]
-    ORCH --> LT[Lead Tool]
-    ORCH --> PT[Product Tool]
-    ORCH --> RT[Response Tool]
-```
-
-## Сервисы Docker Compose
-
-- `db` — PostgreSQL 16
-- `api` — FastAPI + агент-оркестратор + state-machine + guardrails
-- `webui` — Nginx + статический фронт
-
-## Что убрано в v5
-
-- NanoClaw transport и backend-адаптеры;
-- Ollama runtime и pull-init сервис;
-- недетерминированный путь lead extraction через LLM.
-
-## LLM режим
-
-Провайдер:
-
-- `gigachat`
-
-Дефолтные ограничения:
-
-- `LLM_REQUEST_TIMEOUT_SECONDS=5`
-- `LLM_MAX_RETRIES=1`
-- одиночный inference-lock (без параллельной генерации)
-- `GIGACHAT_VERIFY_SSL=1`
-- `GIGACHAT_CA_FILE=/ssl/fullchain.pem` (если используется свой CA)
-- `GIGACHAT_INSECURE_SSL_FALLBACK=1` (авто-фолбэк на insecure TLS для окружений с подменой цепочки)
-
-## SSL и GigaChat
-
-- Поместите подписанный CA-chain в `./ssl/fullchain.pem`; `deploy.sh` примонтирует `./ssl` внутрь контейнера `api`.
-- В переменных окружения укажите `GIGACHAT_CA_FILE=/ssl/fullchain.pem` и `GIGACHAT_VERIFY_SSL=1`.
-
-## Обязательные env для GigaChat
+Обязательные env:
 
 ```env
-LLM_PROVIDER=gigachat
-GIGACHAT_AUTH_KEY=<base64-key-without-Basic-prefix>
-GIGACHAT_SCOPE=GIGACHAT_API_PERS
+GIGACHAT_AUTH_KEY=<base64 key без префикса Basic>
 GIGACHAT_AUTH_URL=https://ngw.devices.sberbank.ru:9443/api/v2/oauth
 GIGACHAT_API_BASE_URL=https://gigachat.devices.sberbank.ru/api/v1
+GIGACHAT_SCOPE=GIGACHAT_API_PERS
 GIGACHAT_MODEL=GigaChat-2
 GIGACHAT_VERIFY_SSL=1
 GIGACHAT_CA_FILE=/ssl/fullchain.pem
 GIGACHAT_INSECURE_SSL_FALLBACK=1
 ```
 
-## Smoke-проверки в deploy.sh
+## SSL webui
 
-Скрипт выполняет:
+Файлы должны лежать в `./ssl`:
 
-1. `/api/health`
-2. `/api/chat/dry-run`
-3. lead-сценарий из 3 сообщений с проверкой записи в БД (`status=qualified`)
-4. запуск backend тестов (`unittest`)
+- `fullchain.pem`
+- `privkey.key`
 
-При любой ошибке печатаются:
-
-- logs контейнеров;
-- тело падающего запроса/ответа;
-- путь к полному deploy-логу.
+Nginx на `80` делает redirect на `443`.

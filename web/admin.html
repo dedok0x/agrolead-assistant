@@ -1,528 +1,308 @@
 <!doctype html>
 <html lang="ru">
-	<head>
-		<meta charset="UTF-8" />
-		<meta name="viewport" content="width=device-width, initial-scale=1" />
-		<title>Admin — Петрохлеб-Кубань</title>
-		<style>
-			body {
-				margin: 0;
-				font-family: Inter, Arial, sans-serif;
-				background: #f4f7ee;
-				color: #24301f;
-			}
-			.wrap {
-				max-width: 1240px;
-				margin: 18px auto;
-				padding: 0 14px;
-			}
-			.card {
-				background: #fff;
-				border: 1px solid #d6dfc5;
-				border-radius: 12px;
-				padding: 14px;
-				margin-bottom: 12px;
-			}
-			.tabs {
-				display: flex;
-				gap: 8px;
-				flex-wrap: wrap;
-			}
-			.tab {
-				padding: 8px 12px;
-				border-radius: 8px;
-				border: 1px solid #c8d9aa;
-				background: #edf4de;
-				cursor: pointer;
-			}
-			.tab.active {
-				background: #4f6f2b;
-				color: #fff;
-				border-color: #4f6f2b;
-			}
-			.hidden {
-				display: none;
-			}
-			input,
-			textarea,
-			button,
-			select {
-				font: inherit;
-			}
-			input,
-			textarea,
-			select {
-				width: 100%;
-				padding: 8px;
-				border: 1px solid #cedbb7;
-				border-radius: 8px;
-			}
-			textarea {
-				min-height: 80px;
-			}
-			button {
-				padding: 8px 12px;
-				border: 1px solid #4f6f2b;
-				background: #4f6f2b;
-				color: #fff;
-				border-radius: 8px;
-				cursor: pointer;
-			}
-			button.ghost {
-				background: #fff;
-				color: #2b3a20;
-				border-color: #b8c7a0;
-			}
-			.grid {
-				display: grid;
-				grid-template-columns: 1fr 1fr;
-				gap: 10px;
-			}
-			.grid3 {
-				display: grid;
-				grid-template-columns: repeat(3, 1fr);
-				gap: 10px;
-			}
-			table {
-				width: 100%;
-				border-collapse: collapse;
-			}
-			th,
-			td {
-				border: 1px solid #e2e8d5;
-				padding: 8px;
-				font-size: 13px;
-				text-align: left;
-				vertical-align: top;
-			}
-			th {
-				background: #f5f8ee;
-			}
-			pre {
-				white-space: pre-wrap;
-				background: #f7f9f1;
-				border: 1px solid #dfe7cf;
-				padding: 10px;
-				border-radius: 8px;
-				max-height: 320px;
-				overflow: auto;
-			}
-			.row {
-				display: flex;
-				gap: 8px;
-				flex-wrap: wrap;
-				margin-top: 8px;
-			}
-			.badge {
-				display: inline-block;
-				border-radius: 999px;
-				padding: 4px 8px;
-				background: #edf4de;
-				border: 1px solid #d4e0bf;
-				font-size: 12px;
-			}
-		</style>
-	</head>
-	<body>
-		<div class="wrap">
-			<div class="card" id="login-card">
-				<h2>Вход в /admin</h2>
-				<div class="grid">
-					<input id="login" placeholder="Логин" value="admin" />
-					<input id="pass" placeholder="Пароль" type="password" />
-				</div>
-				<div class="row"><button id="login-btn">Войти</button></div>
-			</div>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Бэк-офис — Петрохлеб-Кубань</title>
+  <style>
+    body { margin: 0; font-family: "Segoe UI", Tahoma, sans-serif; background: #eef2ec; color: #1f2a22; }
+    .wrap { max-width: 1440px; margin: 16px auto; padding: 0 12px; }
+    .card { background: #fff; border: 1px solid #d8dfd2; border-radius: 10px; padding: 12px; margin-bottom: 10px; }
+    .tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+    .tab { border: 1px solid #a8b99f; background: #f3f7ef; border-radius: 8px; padding: 7px 10px; cursor: pointer; }
+    .tab.active { background: #2f5c30; color: #fff; border-color: #2f5c30; }
+    .hidden { display: none; }
+    .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+    input, textarea, select, button { font: inherit; }
+    input, textarea, select { width: 100%; border: 1px solid #cfd8c9; border-radius: 8px; padding: 7px; }
+    textarea { min-height: 120px; }
+    button { border: 1px solid #2f5c30; background: #2f5c30; color: #fff; border-radius: 8px; padding: 7px 10px; cursor: pointer; }
+    button.ghost { background: #fff; color: #2f5c30; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border: 1px solid #e1e7dc; padding: 6px; font-size: 13px; vertical-align: top; text-align: left; }
+    th { background: #f4f8f1; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+    .mono { font-family: Consolas, monospace; white-space: pre-wrap; background: #f6f8f5; border: 1px solid #dfe6db; border-radius: 8px; padding: 8px; max-height: 340px; overflow: auto; }
+    .badge { display: inline-block; padding: 4px 8px; border-radius: 999px; border: 1px solid #c4d3bc; background: #edf3e8; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card" id="login-card">
+      <h2>Вход в бэк-офис</h2>
+      <div class="grid">
+        <input id="login" value="admin" placeholder="Логин" />
+        <input id="password" type="password" placeholder="Пароль" />
+      </div>
+      <div class="row"><button id="login-btn">Войти</button></div>
+    </div>
 
-			<div id="panel" class="hidden">
-				<div class="card">
-					<h2 style="margin-top: 0">Панель продаж и лидов</h2>
-					<div class="tabs" id="tabs"></div>
-				</div>
+    <div id="panel" class="hidden">
+      <div class="card">
+        <h2 style="margin:0 0 8px">Операционный бэк-офис Петрохлеб-Кубань</h2>
+        <div class="tabs" id="tabs"></div>
+      </div>
 
-				<section id="tab-overview" class="card tab-pane">
-					<h3>Сводка</h3>
-					<div class="grid3">
-						<div>
-							<div class="badge">Сессии</div>
-							<h2 id="s-sessions">0</h2>
-						</div>
-						<div>
-							<div class="badge">Сообщения</div>
-							<h2 id="s-messages">0</h2>
-						</div>
-						<div>
-							<div class="badge">Лиды (новые)</div>
-							<h2 id="s-leads">0 / 0</h2>
-						</div>
-					</div>
-					<h4>Последние чаты</h4>
-					<pre id="chat-log">Загрузка...</pre>
-				</section>
+      <section id="tab-dashboard" class="card tab-pane"></section>
+      <section id="tab-leads" class="card tab-pane hidden"></section>
+      <section id="tab-pipeline" class="card tab-pane hidden"></section>
+      <section id="tab-counterparties" class="card tab-pane hidden"></section>
+      <section id="tab-nomenclature" class="card tab-pane hidden"></section>
+      <section id="tab-quality" class="card tab-pane hidden"></section>
+      <section id="tab-price-policies" class="card tab-pane hidden"></section>
+      <section id="tab-lots" class="card tab-pane hidden"></section>
+      <section id="tab-regions" class="card tab-pane hidden"></section>
+      <section id="tab-transport" class="card tab-pane hidden"></section>
+      <section id="tab-delivery-basis" class="card tab-pane hidden"></section>
+      <section id="tab-knowledge" class="card tab-pane hidden"></section>
+      <section id="tab-chat-sessions" class="card tab-pane hidden"></section>
+      <section id="tab-tasks" class="card tab-pane hidden"></section>
+      <section id="tab-users" class="card tab-pane hidden"></section>
+      <section id="tab-settings" class="card tab-pane hidden"></section>
+    </div>
+  </div>
 
-				<section id="tab-leads" class="card tab-pane hidden">
-					<h3>Лиды</h3>
-					<div class="row">
-						<button id="refresh-leads" class="ghost">Обновить</button>
-					</div>
-					<div style="overflow: auto; margin-top: 8px">
-						<table>
-							<thead>
-								<tr>
-									<th>ID</th>
-									<th>Статус</th>
-									<th>Контакты</th>
-									<th>Товар</th>
-									<th>Параметры</th>
-									<th>Комментарий</th>
-								</tr>
-							</thead>
-							<tbody id="leads-body"></tbody>
-						</table>
-					</div>
-				</section>
+  <script>
+    const tabs = [
+      ["dashboard", "Сводка"],
+      ["leads", "Лиды"],
+      ["pipeline", "Воронка"],
+      ["counterparties", "Контрагенты"],
+      ["nomenclature", "Номенклатура"],
+      ["quality", "Шаблоны качества"],
+      ["price-policies", "Ценовые политики"],
+      ["lots", "Лоты и наличие"],
+      ["regions", "Регионы и порты"],
+      ["transport", "Виды транспорта"],
+      ["delivery-basis", "Базисы поставки"],
+      ["knowledge", "База знаний"],
+      ["chat-sessions", "Чат-сессии"],
+      ["tasks", "Задачи"],
+      ["users", "Пользователи и роли"],
+      ["settings", "Настройки"],
+    ]
 
-				<section id="tab-products" class="card tab-pane hidden">
-					<h3>Номенклатура (JSON-массив)</h3>
-					<textarea id="products-json" style="min-height: 260px"></textarea>
-					<div class="row">
-						<button id="save-products">Сохранить номенклатуру</button>
-					</div>
-				</section>
+    let token = ""
+    let currentLeadRows = []
+    const statusLabels = {
+      draft: "Черновик",
+      partially_qualified: "Частично квалифицирован",
+      qualified: "Квалифицирован",
+      handed_to_manager: "Передан менеджеру",
+      closed: "Закрыт",
+      blocked: "Заблокирован",
+    }
 
-				<section id="tab-scenarios" class="card tab-pane hidden">
-					<h3>Сценарии в клиентском чате</h3>
-					<textarea id="scenarios-json" style="min-height: 220px"></textarea>
-					<div class="row">
-						<button id="save-scenarios">Сохранить сценарии</button>
-					</div>
-					<h4>Готовые шаблоны сценариев</h4>
-					<pre id="templates-log">Загрузка...</pre>
-					<div class="row">
-						<button id="reset-templates" class="ghost">
-							Пересоздать дефолтные шаблоны
-						</button>
-					</div>
-				</section>
+    function activateTab(name) {
+      document.querySelectorAll(".tab-pane").forEach(x => x.classList.add("hidden"))
+      document.querySelectorAll(".tab").forEach(x => x.classList.remove("active"))
+      document.getElementById(`tab-${name}`).classList.remove("hidden")
+      document.querySelector(`.tab[data-name='${name}']`)?.classList.add("active")
+    }
 
-				<section id="tab-prompts" class="card tab-pane hidden">
-					<h3>Системные промпты</h3>
-					<div id="prompts-list"></div>
-					<div class="row">
-						<button id="save-prompts">Сохранить промпты</button>
-					</div>
-				</section>
+    function renderTabs() {
+      const wrap = document.getElementById("tabs")
+      wrap.innerHTML = ""
+      tabs.forEach(([code, title]) => {
+        const b = document.createElement("button")
+        b.className = "tab"
+        b.dataset.name = code
+        b.textContent = title
+        b.onclick = () => activateTab(code)
+        wrap.appendChild(b)
+      })
+      activateTab("dashboard")
+    }
 
-				<section id="tab-company" class="card tab-pane hidden">
-					<h3>Данные компании</h3>
-					<div class="grid">
-						<input id="c-name" placeholder="Название" /><input
-							id="c-email"
-							placeholder="Email"
-						/>
-					</div>
-					<div class="grid" style="margin-top: 8px">
-						<input id="c-phones" placeholder="Телефоны" /><input
-							id="c-services"
-							placeholder="Услуги"
-						/>
-					</div>
-					<div style="margin-top: 8px">
-						<textarea id="c-address" placeholder="Адрес"></textarea>
-					</div>
-					<div style="margin-top: 8px">
-						<textarea
-							id="c-contacts"
-							placeholder="Подробные контакты"
-						></textarea>
-					</div>
-					<div class="row">
-						<button id="save-company">Сохранить компанию</button>
-					</div>
-				</section>
-			</div>
-		</div>
+    async function api(url, opts = {}) {
+      const headers = { "Content-Type": "application/json", ...(opts.headers || {}) }
+      if (token) headers["x-admin-token"] = token
+      const res = await fetch(url, { ...opts, headers })
+      const text = await res.text()
+      let data = {}
+      try { data = text ? JSON.parse(text) : {} } catch {}
+      if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`)
+      return data
+    }
 
-		<script>
-			let token = ''
-			const tabOrder = [
-				'overview',
-				'leads',
-				'products',
-				'scenarios',
-				'prompts',
-				'company',
-			]
-			const tabTitle = {
-				overview: 'Сводка',
-				leads: 'Лиды',
-				products: 'Номенклатура',
-				scenarios: 'Сценарии',
-				prompts: 'Промпты',
-				company: 'Компания',
-			}
+    function renderDashboard(stats) {
+      const el = document.getElementById("tab-dashboard")
+      el.innerHTML = `
+        <h3>Дашборд</h3>
+        <div class="grid4">
+          <div><span class="badge">Лиды всего</span><h2>${stats.leads_total || 0}</h2></div>
+          <div><span class="badge">Горячие лиды</span><h2>${stats.hot_leads || 0}</h2></div>
+          <div><span class="badge">Неназначенные</span><h2>${stats.unassigned_leads || 0}</h2></div>
+          <div><span class="badge">Открытые задачи</span><h2>${stats.tasks_open || 0}</h2></div>
+        </div>
+        <h4>Разбивка по типам запросов</h4>
+        <div class="mono">${JSON.stringify(stats.by_request_type || {}, null, 2)}</div>
+      `
+    }
 
-			function activateTab(name) {
-				document
-					.querySelectorAll('.tab-pane')
-					.forEach(x => x.classList.add('hidden'))
-				document
-					.querySelectorAll('.tab')
-					.forEach(x => x.classList.remove('active'))
-				document.getElementById(`tab-${name}`).classList.remove('hidden')
-				document.querySelector(`[data-tab="${name}"]`)?.classList.add('active')
-			}
-
-			function renderTabs() {
-				const t = document.getElementById('tabs')
-				t.innerHTML = ''
-				tabOrder.forEach(name => {
-					const b = document.createElement('button')
-					b.className = 'tab'
-					b.dataset.tab = name
-					b.textContent = tabTitle[name]
-					b.onclick = () => activateTab(name)
-					t.appendChild(b)
-				})
-				activateTab('overview')
-			}
-
-			async function api(url, opts = {}) {
-				const headers = {
-					'Content-Type': 'application/json',
-					...(opts.headers || {}),
-				}
-				if (token) headers['x-admin-token'] = token
-				const res = await fetch(url, { ...opts, headers })
-				if (!res.ok) throw new Error(`HTTP ${res.status}`)
-				return res.json()
-			}
-
-			function statusOptions(selected) {
-				return ['new', 'in_progress', 'qualified', 'closed']
-					.map(
-						s =>
-							`<option value="${s}" ${selected === s ? 'selected' : ''}>${s}</option>`,
-					)
-					.join('')
-			}
-
-			async function loadAll() {
-				const [
-					prompts,
-					company,
-					scenarios,
-					stats,
-					chats,
-					products,
-					leads,
-					templates,
-				] = await Promise.all([
-					api('/api/admin/prompts'),
-					api('/api/admin/company'),
-					api('/api/admin/scenarios'),
-					api('/api/admin/stats'),
-					api('/api/admin/chats?limit=120'),
-					api('/api/admin/products'),
-					api('/api/admin/leads?limit=200'),
-					api('/api/admin/scenario-templates'),
-				])
-
-				const pWrap = document.getElementById('prompts-list')
-				pWrap.innerHTML = ''
-				prompts.forEach((p, i) => {
-					const block = document.createElement('div')
-					block.style.marginBottom = '10px'
-					block.innerHTML = `<label><b>${p.key}</b> (${p.title})</label><textarea data-i="${i}" style="min-height:90px">${p.content}</textarea>`
-					pWrap.appendChild(block)
-				})
-				pWrap.dataset.raw = JSON.stringify(prompts)
-
-				document.getElementById('c-name').value = company?.name || ''
-				document.getElementById('c-email').value = company?.email || ''
-				document.getElementById('c-phones').value = company?.phones || ''
-				document.getElementById('c-services').value = company?.services || ''
-				document.getElementById('c-address').value = company?.address || ''
-				document.getElementById('c-contacts').value =
-					company?.contacts_markdown || ''
-
-				document.getElementById('scenarios-json').value = JSON.stringify(
-					scenarios,
-					null,
-					2,
-				)
-				document.getElementById('products-json').value = JSON.stringify(
-					products,
-					null,
-					2,
-				)
-
-				document.getElementById('s-sessions').textContent = stats.sessions
-				document.getElementById('s-messages').textContent = stats.messages
-				document.getElementById('s-leads').textContent =
-					`${stats.leads_new || 0} / ${stats.leads_total || 0}`
-				document.getElementById('chat-log').textContent = chats
-					.map(c => `[${c.created_at}] #${c.session_id} ${c.role}: ${c.text}`)
-					.join('\n')
-
-				document.getElementById('templates-log').textContent = templates
-					.map(
-						t => `• ${t.title}\nЦель: ${t.goal}\nСтарт: ${t.starter_message}`,
-					)
-					.join('\n\n')
-
-				const leadsBody = document.getElementById('leads-body')
-				leadsBody.innerHTML = ''
-				leads.forEach(l => {
-					const tr = document.createElement('tr')
-					tr.innerHTML = `
-            <td>${l.id}</td>
+    function renderLeads(rows) {
+      currentLeadRows = rows
+      const body = rows.map(row => {
+        const contact = row.contact_snapshot || {}
+        const item = row.lead_item || {}
+        return `
+          <tr>
+            <td>${row.id}</td>
+            <td>${row.request_type_code || ""}</td>
             <td>
-              <select data-id="${l.id}" class="lead-status">${statusOptions(l.status)}</select>
+              <select data-status='${row.id}'>
+                ${["draft","partially_qualified","qualified","handed_to_manager","closed","blocked"].map(s => `<option value='${s}' ${row.status_code===s?"selected":""}>${statusLabels[s] || s}</option>`).join("")}
+              </select>
             </td>
-            <td>${l.client_name || ''}<br>${l.phone || ''}<br>${l.email || ''}</td>
-            <td>${l.product || ''}<br>${l.grade || ''}</td>
-            <td>Объем: ${l.volume_tons || ''}<br>Регион: ${l.region || ''}<br>Срок: ${l.delivery_term || ''}</td>
-            <td><textarea data-comment-id="${l.id}" style="min-height:50px">${l.comment || ''}</textarea><div class="row"><button data-save-id="${l.id}" class="save-lead">Сохранить</button></div></td>
-          `
-					leadsBody.appendChild(tr)
-				})
+            <td>${row.priority_code || ""}</td>
+            <td>${contact.company_name || contact.contact_name || ""}<br>${contact.phone || contact.email || contact.telegram || ""}</td>
+            <td>Товар ID: ${item.commodity_id || ""}<br>Объем: ${item.volume_value || ""} ${item.volume_unit || ""}</td>
+            <td>${row.summary || ""}</td>
+            <td><textarea data-comment='${row.id}' style='min-height:64px'>${row.manager_comment || ""}</textarea><div class='row'><button data-save='${row.id}'>Сохранить</button></div></td>
+          </tr>
+        `
+      }).join("")
+      document.getElementById("tab-leads").innerHTML = `
+        <h3>Лиды</h3>
+        <div class="row"><button id="reload-leads" class="ghost">Обновить</button></div>
+        <div style="overflow:auto;margin-top:8px">
+          <table>
+            <thead><tr><th>ID</th><th>Тип</th><th>Статус</th><th>Приоритет</th><th>Контакт</th><th>Предмет</th><th>Сводка</th><th>Комментарий</th></tr></thead>
+            <tbody>${body}</tbody>
+          </table>
+        </div>
+      `
 
-				document.querySelectorAll('.save-lead').forEach(btn => {
-					btn.onclick = async () => {
-						const id = Number(btn.dataset.saveId)
-						const lead = leads.find(x => x.id === id)
-						const status = document.querySelector(
-							`.lead-status[data-id="${id}"]`,
-						).value
-						const comment = document.querySelector(
-							`textarea[data-comment-id="${id}"]`,
-						).value
-						await api(`/api/admin/leads/${id}`, {
-							method: 'PUT',
-							body: JSON.stringify({ ...lead, status, comment }),
-						})
-						await loadAll()
-					}
-				})
-			}
+      document.getElementById("reload-leads").onclick = loadAll
+      document.querySelectorAll("button[data-save]").forEach(btn => {
+        btn.onclick = async () => {
+          const id = Number(btn.dataset.save)
+          const status = document.querySelector(`select[data-status='${id}']`).value
+          const manager_comment = document.querySelector(`textarea[data-comment='${id}']`).value
+          await api(`/api/v1/leads/${id}`, { method: "PUT", body: JSON.stringify({ status_code: status, manager_comment }) })
+          await loadAll()
+        }
+      })
+    }
 
-			document.getElementById('login-btn').onclick = async () => {
-				try {
-					const data = await api('/api/admin/login', {
-						method: 'POST',
-						body: JSON.stringify({
-							username: document.getElementById('login').value,
-							password: document.getElementById('pass').value,
-						}),
-					})
-					token = data.token
-					localStorage.setItem('agrolead_admin_token', token)
-					document.getElementById('login-card').classList.add('hidden')
-					document.getElementById('panel').classList.remove('hidden')
-					renderTabs()
-					await loadAll()
-				} catch {
-					alert('Ошибка входа')
-				}
-			}
+    function renderPipeline(data) {
+      const rows = (data.items || []).map(x => `<tr><td>${x.code}</td><td>${x.name}</td><td>${x.count}</td></tr>`).join("")
+      document.getElementById("tab-pipeline").innerHTML = `
+        <h3>Воронка лидов</h3>
+        <table><thead><tr><th>Код</th><th>Этап</th><th>Кол-во</th></tr></thead><tbody>${rows}</tbody></table>
+      `
+    }
 
-			document.getElementById('save-prompts').onclick = async () => {
-				const prompts = JSON.parse(
-					document.getElementById('prompts-list').dataset.raw || '[]',
-				)
-				document
-					.querySelectorAll('#prompts-list textarea')
-					.forEach((t, idx) => (prompts[idx].content = t.value))
-				await api('/api/admin/prompts', {
-					method: 'PUT',
-					body: JSON.stringify(
-						prompts.map(p => ({
-							key: p.key,
-							title: p.title,
-							content: p.content,
-						})),
-					),
-				})
-				alert('Промпты сохранены')
-			}
+    function renderJsonSection(tabId, title, endpoint, data) {
+      const id = `${tabId}-json`
+      document.getElementById(`tab-${tabId}`).innerHTML = `
+        <h3>${title}</h3>
+        <textarea id='${id}'>${JSON.stringify(data, null, 2)}</textarea>
+        <div class='row'><button id='save-${tabId}'>Сохранить</button><button id='reload-${tabId}' class='ghost'>Перечитать</button></div>
+      `
+      document.getElementById(`save-${tabId}`).onclick = async () => {
+        const payload = JSON.parse(document.getElementById(id).value)
+        if (Array.isArray(payload)) {
+          for (const row of payload) {
+            if (row.id) {
+              await api(`${endpoint}/${row.id}`, { method: "PUT", body: JSON.stringify(row) })
+            } else {
+              await api(endpoint, { method: "POST", body: JSON.stringify(row) })
+            }
+          }
+        }
+        await loadAll()
+      }
+      document.getElementById(`reload-${tabId}`).onclick = loadAll
+    }
 
-			document.getElementById('save-company').onclick = async () => {
-				await api('/api/admin/company', {
-					method: 'PUT',
-					body: JSON.stringify({
-						name: document.getElementById('c-name').value,
-						email: document.getElementById('c-email').value,
-						phones: document.getElementById('c-phones').value,
-						services: document.getElementById('c-services').value,
-						address: document.getElementById('c-address').value,
-						contacts_markdown: document.getElementById('c-contacts').value,
-					}),
-				})
-				alert('Данные компании сохранены')
-			}
+    function renderChatSessions(rows) {
+      const list = rows.map(row => `<tr><td>${row.id}</td><td>${row.current_state_code}</td><td>${row.request_type_id || ""}</td><td>${row.lead_id || ""}</td><td><button data-open='${row.id}'>Открыть</button></td></tr>`).join("")
+      document.getElementById("tab-chat-sessions").innerHTML = `
+        <h3>Чат-сессии</h3>
+        <table><thead><tr><th>ID</th><th>Статус</th><th>Тип запроса</th><th>Лид</th><th>Действие</th></tr></thead><tbody>${list}</tbody></table>
+        <h4>Детали</h4>
+        <div id='chat-detail' class='mono'>Выберите сессию</div>
+      `
+      document.querySelectorAll("button[data-open]").forEach(btn => {
+        btn.onclick = async () => {
+          const detail = await api(`/api/v1/admin/chat-sessions/${btn.dataset.open}`)
+          document.getElementById("chat-detail").textContent = JSON.stringify(detail, null, 2)
+        }
+      })
+    }
 
-			document.getElementById('save-scenarios').onclick = async () => {
-				const items = JSON.parse(
-					document.getElementById('scenarios-json').value,
-				)
-				await api('/api/admin/scenarios', {
-					method: 'PUT',
-					body: JSON.stringify(
-						items.map(i => ({
-							title: i.title,
-							description: i.description,
-							active: i.active !== false,
-						})),
-					),
-				})
-				alert('Сценарии сохранены')
-			}
+    async function loadAll() {
+      const [stats, leads, pipeline, counterparties, commodities, qualityTemplates, pricePolicies, lots, regions, transportModes, deliveryBasis, knowledge, sessions, tasks, users, settings] = await Promise.all([
+        api("/api/v1/admin/stats"),
+        api("/api/v1/leads"),
+        api("/api/v1/admin/pipeline"),
+        api("/api/v1/admin/counterparties"),
+        api("/api/v1/catalog/commodities"),
+        api("/api/v1/catalog/quality-templates"),
+        api("/api/v1/catalog/price-policies"),
+        api("/api/v1/catalog/lots"),
+        api("/api/v1/catalog/regions"),
+        api("/api/v1/catalog/transport-modes"),
+        api("/api/v1/catalog/delivery-basis"),
+        api("/api/v1/admin/knowledge"),
+        api("/api/v1/admin/chat-sessions"),
+        api("/api/v1/admin/tasks"),
+        api("/api/v1/admin/users"),
+        api("/api/v1/admin/settings"),
+      ])
 
-			document.getElementById('save-products').onclick = async () => {
-				const items = JSON.parse(document.getElementById('products-json').value)
-				await api('/api/admin/products', {
-					method: 'PUT',
-					body: JSON.stringify(
-						items.map(i => ({
-							name: i.name || '',
-							culture: i.culture || '',
-							grade: i.grade || '',
-							price_from: Number(i.price_from || 0),
-							price_to: Number(i.price_to || 0),
-							stock_tons: Number(i.stock_tons || 0),
-							quality: i.quality || '',
-							location: i.location || '',
-							active: i.active !== false,
-						})),
-					),
-				})
-				alert('Номенклатура сохранена')
-			}
+      renderDashboard(stats)
+      renderLeads(leads)
+      renderPipeline(pipeline)
+      renderJsonSection("counterparties", "Контрагенты", "/api/v1/admin/counterparties", counterparties)
+      renderJsonSection("nomenclature", "Номенклатура", "/api/v1/catalog/commodities", commodities)
+      renderJsonSection("quality", "Шаблоны качества", "/api/v1/catalog/quality-templates", qualityTemplates)
+      renderJsonSection("price-policies", "Ценовые политики", "/api/v1/catalog/price-policies", pricePolicies)
+      renderJsonSection("lots", "Лоты и наличие", "/api/v1/catalog/lots", lots)
+      renderJsonSection("regions", "Регионы и порты", "/api/v1/catalog/regions", regions)
+      renderJsonSection("transport", "Виды транспорта", "/api/v1/catalog/transport-modes", transportModes)
+      renderJsonSection("delivery-basis", "Базисы поставки", "/api/v1/catalog/delivery-basis", deliveryBasis)
+      renderJsonSection("knowledge", "База знаний", "/api/v1/admin/knowledge", knowledge)
+      renderChatSessions(sessions)
+      renderJsonSection("tasks", "Задачи", "/api/v1/admin/tasks", tasks)
+      renderJsonSection("users", "Пользователи и роли", "/api/v1/admin/users", users)
+      renderJsonSection("settings", "Настройки", "/api/v1/admin/settings", settings)
+    }
 
-			document.getElementById('reset-templates').onclick = async () => {
-				await api('/api/admin/scenario-templates/reset-defaults', {
-					method: 'POST',
-					body: '{}',
-				})
-				await loadAll()
-			}
+    document.getElementById("login-btn").onclick = async () => {
+      try {
+        const payload = await api("/api/v1/admin/login", {
+          method: "POST",
+          body: JSON.stringify({ username: document.getElementById("login").value, password: document.getElementById("password").value }),
+        })
+        token = payload.token
+        localStorage.setItem("agrolead_admin_token", token)
+        document.getElementById("login-card").classList.add("hidden")
+        document.getElementById("panel").classList.remove("hidden")
+        renderTabs()
+        await loadAll()
+      } catch (e) {
+        alert(`Ошибка входа: ${e.message || e}`)
+      }
+    }
 
-			document.getElementById('refresh-leads').onclick = loadAll
-			;(async () => {
-				const cached = localStorage.getItem('agrolead_admin_token')
-				if (!cached) return
-				token = cached
-				document.getElementById('login-card').classList.add('hidden')
-				document.getElementById('panel').classList.remove('hidden')
-				renderTabs()
-				try {
-					await loadAll()
-				} catch {
-					token = ''
-					localStorage.removeItem('agrolead_admin_token')
-				}
-			})()
-		</script>
-	</body>
+    ;(async () => {
+      const cached = localStorage.getItem("agrolead_admin_token")
+      if (!cached) return
+      token = cached
+      try {
+        await api("/api/v1/admin/stats")
+        document.getElementById("login-card").classList.add("hidden")
+        document.getElementById("panel").classList.remove("hidden")
+        renderTabs()
+        await loadAll()
+      } catch {
+        token = ""
+        localStorage.removeItem("agrolead_admin_token")
+      }
+    })()
+  </script>
+</body>
 </html>

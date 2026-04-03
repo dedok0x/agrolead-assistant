@@ -1,75 +1,39 @@
-from ..models import ConversationState, Lead, ProductItem
+from . import __doc__  # noqa: F401
 
 
 class StagePromptBuilder:
-    STAGE_SYSTEM_PROMPTS = {
-        "greeting": (
-            "Ты живой B2B ассистент по зерновым сделкам. "
-            "Отвечай по-человечески, без канцелярита и без шаблонных клише."
-        ),
-        "qualification": (
-            "Ты ведешь квалификацию лида в диалоге с клиентом. "
-            "Сначала ответь по теме сообщения, затем мягко задай только один следующий уточняющий вопрос."
-        ),
-        "free_question": (
-            "Ты консультируешь по зерновым сделкам и наличию. "
-            "Ответ должен быть конкретным, естественным и практичным."
-        ),
-        "product_lookup": (
-            "Ты коммерческий ассистент зерновой компании. "
-            "Дай релевантный ответ по товару и условиям без выдумок."
-        ),
-        "handoff": (
-            "Ты формируешь финальный ответ после квалификации лида. "
-            "Подтверди параметры и аккуратно обозначь следующий шаг с менеджером."
-        ),
-        "post_handoff": (
-            "Ты продолжаешь диалог после передачи лида менеджеру. "
-            "Сохраняй деловой, спокойный и полезный тон."
-        ),
+    BASE_SYSTEM = (
+        "Ты коммерческий ассистент зернотрейдера и логистического оператора. "
+        "Говори по-русски, деловым языком, кратко, без воды. "
+        "Не придумывай цены и остатки, если данных нет."
+    )
+
+    STAGE_GUIDE = {
+        "new": "Начало диалога. Определи бизнес-намерение и мягко зафиксируй ключевой параметр сделки.",
+        "draft": "Идет сбор заявки. Дай короткое подтверждение и задай один следующий коммерческий вопрос.",
+        "partially_qualified": "Заявка частично собрана. Подведи итог в 1-2 фразах и уточни критичный недостающий параметр.",
+        "qualified": "Заявка собрана. Подтверди, что менеджер продолжит работу, и обозначь следующий шаг.",
+        "faq": "Пользователь задал общий вопрос о компании. Ответь по делу и предложи перейти к заявке.",
     }
 
-    def stage_system_prompt(self, stage: str) -> str:
-        return self.STAGE_SYSTEM_PROMPTS.get(stage, self.STAGE_SYSTEM_PROMPTS["free_question"])
+    def system_prompt(self, stage: str) -> str:
+        return f"{self.BASE_SYSTEM} {self.STAGE_GUIDE.get(stage, self.STAGE_GUIDE['draft'])}"
 
-    def lead_context(self, state: ConversationState, missing_fields: list[str], next_hint: str) -> str:
+    def user_prompt(
+        self,
+        user_text: str,
+        request_type_name: str,
+        summary_lines: list[str],
+        next_question: str,
+        last_replies: list[str],
+    ) -> str:
+        summary = "\n".join(f"- {item}" for item in summary_lines) if summary_lines else "- данных пока мало"
+        last = "\n".join(f"- {item}" for item in last_replies) if last_replies else "- нет"
         return (
-            "Текущее состояние лида:\n"
-            f"- product: {state.product or '-'}\n"
-            f"- grade: {state.grade or '-'}\n"
-            f"- volume_tons: {state.volume_tons or '-'}\n"
-            f"- region: {state.region or '-'}\n"
-            f"- delivery_term: {state.delivery_term or '-'}\n"
-            f"- contact: {state.contact or '-'}\n"
-            f"- missing_fields: {', '.join(missing_fields) if missing_fields else 'none'}\n"
-            f"- next_hint: {next_hint or 'none'}"
-        )
-
-    def catalog_context(self, items: list[ProductItem]) -> str:
-        if not items:
-            return "Каталог: подходящие позиции не найдены по текущему сообщению."
-
-        lines = []
-        for item in items[:3]:
-            lines.append(
-                f"- {item.name}: {item.price_from:.0f}-{item.price_to:.0f} руб/т, "
-                f"остаток {item.stock_tons:.0f} т, локация {item.location}"
-            )
-        return "Каталог-подсказка:\n" + "\n".join(lines)
-
-    def no_repeat_context(self, last_assistant_messages: list[str]) -> str:
-        if not last_assistant_messages:
-            return ""
-        rows = "\n".join(f"- {message}" for message in last_assistant_messages)
-        return (
-            "Не повторяй дословно формулировки из последних ответов ассистента:\n"
-            f"{rows}"
-        )
-
-    def handoff_brief(self, lead: Lead, crm_reference: str) -> str:
-        return (
-            "Лид квалифицирован. Дай финальное подтверждение и следующий шаг.\n"
-            f"Параметры: {lead.product} {lead.grade}, {lead.volume_tons} т, {lead.region}, срок {lead.delivery_term}.\n"
-            f"Контакт: {lead.phone or lead.email or '-'}\n"
-            f"CRM reference: {crm_reference}"
+            f"Тип запроса: {request_type_name}\n"
+            f"Сообщение клиента: {user_text}\n"
+            f"Уже зафиксировано:\n{summary}\n"
+            f"Последние ответы ассистента (не повторяй дословно):\n{last}\n"
+            f"Следующий приоритетный вопрос: {next_question}\n\n"
+            "Сформируй ответ максимум в 3 предложениях."
         )
