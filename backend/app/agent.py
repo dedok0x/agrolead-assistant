@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import re
 
 from .llm_service import LLMService, LLMUnavailableError
 from .tools.response_tool import StagePromptBuilder
@@ -15,6 +16,35 @@ class SalesAssistantAgent:
     def __init__(self, llm_service: LLMService) -> None:
         self.llm_service = llm_service
         self.prompt_builder = StagePromptBuilder()
+
+    def _clean_reply(self, text: str, next_question: str, last_assistant_messages: list[str]) -> str:
+        cleaned = (text or "").strip()
+        if not cleaned:
+            return next_question or "Уточню детали и помогу оформить заявку."
+
+        prefixes = [
+            r"^понял[а]?\s+(твой|ваш)?\s*запрос[\s\.,!:-]*",
+            r"^принял[а]?\s+(твой|ваш)?\s*запрос[\s\.,!:-]*",
+            r"^спасибо[\s\.,!:-]*",
+        ]
+        for pattern in prefixes:
+            cleaned = re.sub(pattern, "", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"\s+", " ", cleaned).strip(" .")
+
+        if not cleaned:
+            cleaned = next_question or "Уточню детали и помогу оформить заявку."
+
+        if last_assistant_messages:
+            for previous in last_assistant_messages[-2:]:
+                prev = (previous or "").strip().lower()
+                if prev and cleaned.lower() == prev:
+                    cleaned = next_question or cleaned
+                    break
+
+        if next_question and next_question not in cleaned and "?" not in cleaned:
+            cleaned = f"{cleaned}. {next_question}".strip()
+
+        return cleaned
 
     async def reply(
         self,
@@ -42,9 +72,11 @@ class SalesAssistantAgent:
                 temperature=0.55,
                 max_tokens=260,
             )
-            return AgentReply(text=text, provider=provider, model=model)
+            safe_text = self._clean_reply(text, next_question=next_question, last_assistant_messages=last_assistant_messages)
+            return AgentReply(text=safe_text, provider=provider, model=model)
         except LLMUnavailableError:
             fallback = summary_lines[0] if summary_lines else "Заявку зафиксировал."
             if next_question:
                 fallback = f"{fallback} {next_question}"
-            return AgentReply(text=fallback, provider="service-unavailable", model="none")
+            safe_fallback = self._clean_reply(fallback, next_question=next_question, last_assistant_messages=last_assistant_messages)
+            return AgentReply(text=safe_fallback, provider="service-unavailable", model="none")

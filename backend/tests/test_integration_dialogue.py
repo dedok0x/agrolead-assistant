@@ -66,6 +66,9 @@ class IntegrationDialogueCases(unittest.TestCase):
         self.assertIn("source_region_id", facts)
         self.assertIn("contact_phone_or_telegram_or_email", facts)
 
+        no_dict_region = extract_facts("Самара, 2 тонны", commodity_map, {})
+        self.assertIn("destination_region_id_or_port", no_dict_region)
+
     def test_supplier_and_buyer_and_logistics_flows_create_leads(self):
         # ambiguous -> assistant should keep general type and clarify
         r0 = self.client.post(

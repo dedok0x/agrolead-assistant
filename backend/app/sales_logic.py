@@ -6,7 +6,7 @@ REQUEST_TYPE_KEYWORDS = {
     "sale_to_buyer": ["купить", "нужна", "нужно", "интересует", "покупка", "приобрести"],
     "logistics_request": ["логист", "перевоз", "машин", "вагон", "маршрут", "доставка"],
     "storage_request": ["хранени", "элеватор", "перевалк", "склад"],
-    "export_request": ["экспорт", "порт", "fob", "cfr", "инкотермс", "вэд", "иностран"],
+    "export_request": ["экспорт", "fob", "cfr", "инкотермс", "вэд", "иностран"],
 }
 
 
@@ -67,8 +67,8 @@ FIELD_QUESTION = {
     "volume_value": "Какой ориентир по объему в тоннах?",
     "volume_unit": "Подтвердите единицу объема: тонны или другая?",
     "source_region_id": "Из какого региона планируется отгрузка?",
-    "destination_region_id_or_port": "Куда нужна поставка: регион или порт назначения?",
-    "contact_name_or_company": "Как вас корректно записать: компания и контактное лицо?",
+    "destination_region_id_or_port": "Куда нужна поставка: город или регион доставки?",
+    "contact_name_or_company": "Как к вам обращаться: имя или название компании?",
     "contact_phone_or_telegram_or_email": "Оставьте удобный контакт: телефон, Telegram или email.",
     "transport_mode_id": "Какой вид транспорта нужен: авто, ж/д или вода?",
     "route_from": "Откуда стартует маршрут?",
@@ -145,7 +145,7 @@ def parse_request_type_hint(text: str) -> str:
         return "logistics_request"
     if any(word in normalized for word in ["хранен", "склад", "элеватор", "перевалк"]):
         return "storage_request"
-    if any(word in normalized for word in ["экспорт", "fob", "cfr", "порт", "вэд"]):
+    if any(word in normalized for word in ["экспорт", "fob", "cfr", "вэд"]):
         return "export_request"
     if any(word in normalized for word in ["прода", "реализ", "поставщик", "закупите у нас"]):
         return "purchase_from_supplier"
@@ -188,6 +188,61 @@ def parse_route(text: str) -> tuple[str, str]:
     if not m:
         return "", ""
     return m.group(1).strip(" ,."), m.group(2).strip(" ,.")
+
+
+def parse_destination_location(text: str) -> str:
+    normalized = normalize_text(text)
+    if not normalized:
+        return ""
+
+    _, route_to = parse_route(text)
+    if route_to:
+        return route_to
+
+    city_marker = re.search(r"(?:\bг\.?|\bгород)\s*([а-яa-z\-]{2,40})", normalized)
+    if city_marker:
+        return city_marker.group(1).strip(" ,.")
+
+    preposition = re.search(r"(?:\bв|\bдо)\s+([а-яa-z\-]{3,40})", normalized)
+    if preposition:
+        token = preposition.group(1).strip(" ,.")
+        stop = {
+            "наличие",
+            "продаже",
+            "покупке",
+            "логистике",
+            "склад",
+            "пшеницы",
+            "ячменя",
+            "кукурузы",
+            "зерна",
+            "тонн",
+        }
+        if token not in stop:
+            return token
+
+    chunks = [item.strip() for item in normalized.split(",") if item.strip()]
+    if chunks:
+        first = chunks[0]
+        words = first.split()
+        if 1 <= len(words) <= 3 and not any(ch.isdigit() for ch in first):
+            black_list = {
+                "купить",
+                "продать",
+                "логистика",
+                "доставка",
+                "хранение",
+                "консультация",
+                "пшеница",
+                "ячмень",
+                "кукуруза",
+                "все",
+                "всё",
+            }
+            if not any(word in black_list for word in words):
+                return first
+
+    return ""
 
 
 def parse_contact_name_or_company(text: str) -> str:
@@ -266,7 +321,7 @@ def parse_transport_code(text: str) -> str:
     normalized = normalize_text(text)
     if any(word in normalized for word in ["жд", "ж/д", "вагон", "железнодорож"]):
         return "rail"
-    if any(word in normalized for word in ["вода", "суд", "баржа", "порт", "мор"]):
+    if any(word in normalized for word in ["вода", "суд", "баржа"]):
         return "water"
     if any(word in normalized for word in ["авто", "машин", "фура", "truck"]):
         return "road"
@@ -374,6 +429,11 @@ def extract_facts(
     if route_to:
         facts["route_to"] = FactValue(text=route_to, confidence=0.85)
 
+    destination_location = parse_destination_location(text)
+    if destination_location:
+        facts.setdefault("destination_region_id_or_port", FactValue(text=destination_location, confidence=0.72))
+        facts.setdefault("location_text", FactValue(text=destination_location, confidence=0.68))
+
     destination_country = parse_destination_country(text)
     if destination_country:
         facts["destination_country"] = FactValue(text=destination_country, confidence=0.9)
@@ -431,7 +491,7 @@ def human_field_name(field_code: str) -> str:
         "volume_value": "объем",
         "volume_unit": "единица объема",
         "source_region_id": "регион отгрузки",
-        "destination_region_id_or_port": "регион/порт назначения",
+        "destination_region_id_or_port": "город/регион доставки",
         "contact_name_or_company": "компания/контакт",
         "contact_phone_or_telegram_or_email": "контакт для связи",
         "transport_mode_id": "вид транспорта",

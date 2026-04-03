@@ -289,10 +289,7 @@
           <div class="help-item"><b>Контакт</b>ФИО или компания, телефон/Telegram/email.</div>
         </div>
 
-        <h3 style="margin:16px 0 8px">Примеры сообщений</h3>
-        <div class="ds-row" id="prompt-chips"></div>
-
-        <div style="margin-top:16px" class="ds-msg warn">После уточнения параметров заявка уходит в рабочий контур менеджера.</div>
+        <div style="margin-top:16px" class="ds-msg warn">Скажите простыми словами: что хотите купить, продать или куда нужна перевозка.</div>
       </aside>
     </main>
   </div>
@@ -303,39 +300,32 @@
         code: "purchase_from_supplier",
         title: "Продать зерно",
         subtitle: "Передать предложение по продаже партии",
-        prompt: "Продажа пшеницы 3 класс, 400 тонн, Краснодарский край, контакт +79001112233.",
+        prompt: "Хочу продать зерно",
       },
       {
         code: "sale_to_buyer",
         title: "Купить зерно",
         subtitle: "Сформировать запрос на закупку",
-        prompt: "Покупка ячменя, 250 тонн, Ростовская область, нужен расчет по доставке.",
+        prompt: "Хочу купить зерно",
       },
       {
         code: "logistics_request",
         title: "Рассчитать логистику",
         subtitle: "Маршрут и транспорт для перевозки",
-        prompt: "Нужна логистика авто: из Краснодара в Новороссийск, 300 тонн, контакт ООО ЛогистикТранс.",
+        prompt: "Нужна перевозка груза",
       },
       {
         code: "availability",
         title: "Уточнить наличие",
         subtitle: "Проверка доступности партии",
-        prompt: "Уточните наличие кукурузы от 200 тонн и условия отгрузки по Краснодару.",
+        prompt: "Что есть в наличии",
       },
       {
         code: "consultation",
         title: "Консультация",
         subtitle: "Вопрос по услугам и условиям",
-        prompt: "Нужна консультация по работе с экспортными поставками через порт Новороссийск.",
+        prompt: "Нужна консультация",
       },
-    ]
-
-    const QUICK_PROMPTS = [
-      "Тип заявки: продажа. Пшеница 3 класс, 500 тонн, Белая Глина, контакт +7...",
-      "Тип заявки: покупка. Ячмень, 300 тонн, Ростов-на-Дону, срок до 10 дней.",
-      "Тип заявки: логистика. Из Тимашевска в Тамань, 220 тонн, интересует ж/д.",
-      "Тип заявки: консультация. Нужны условия сотрудничества по закупке у поставщиков.",
     ]
 
     let sessionId = null
@@ -417,21 +407,6 @@
       })
     }
 
-    function renderPromptChips() {
-      const wrap = document.getElementById("prompt-chips")
-      wrap.innerHTML = ""
-      QUICK_PROMPTS.forEach(text => {
-        const chip = document.createElement("button")
-        chip.type = "button"
-        chip.className = "ds-chip"
-        chip.textContent = text
-        chip.onclick = () => {
-          inputNode.value = text
-          inputNode.focus()
-        }
-        wrap.appendChild(chip)
-      })
-    }
 
     async function sendMessage() {
       if (busy) return
@@ -549,7 +524,6 @@
     })
 
     renderScenarios()
-    renderPromptChips()
   </script>
 </body>
 </html>
