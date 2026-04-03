@@ -1299,6 +1299,18 @@ def get_settings(_: None = Depends(require_admin), session: Session = Depends(ge
     return _mask_settings(rows)
 
 
+@app.post("/api/v1/admin/settings")
+def create_setting(payload: dict[str, Any], _: None = Depends(require_admin), session: Session = Depends(get_session)):
+    existing = session.exec(select(AdminSetting).where(AdminSetting.setting_key == payload.get("setting_key", ""))).first()
+    if existing:
+        raise HTTPException(status_code=409, detail="Setting key already exists")
+    row = _crud_create(session, AdminSetting, payload)
+    result = row.model_dump()
+    if row.is_secret:
+        result["setting_value"] = "***"
+    return result
+
+
 @app.put("/api/v1/admin/settings/{row_id}")
 def update_setting(row_id: int, payload: dict[str, Any], _: None = Depends(require_admin), session: Session = Depends(get_session)):
     row = session.get(AdminSetting, row_id)
@@ -1311,6 +1323,56 @@ def update_setting(row_id: int, payload: dict[str, Any], _: None = Depends(requi
     if updated.is_secret:
         result["setting_value"] = "***"
     return result
+
+
+@app.get("/api/v1/admin/leads/{lead_id}/workspace")
+def get_lead_workspace(lead_id: int, _: None = Depends(require_admin), session: Session = Depends(get_session)) -> dict[str, Any]:
+    lead = session.get(CrmLead, lead_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+
+    lead_item = session.exec(select(CrmLeadItem).where(CrmLeadItem.lead_id == lead_id)).first()
+    contact = session.exec(select(CrmLeadContactSnapshot).where(CrmLeadContactSnapshot.lead_id == lead_id)).first()
+    counterparty = session.get(CrmCounterparty, lead.counterparty_id) if lead.counterparty_id else None
+
+    sessions = session.exec(select(ChatSession).where(ChatSession.lead_id == lead_id)).all()
+    sessions = sorted(sessions, key=lambda x: x.updated_at, reverse=True)
+
+    session_payloads = []
+    latest = sessions[0] if sessions else None
+    latest_messages = []
+    latest_facts = []
+    latest_missing = []
+    latest_checkpoints = []
+
+    for row in sessions:
+        session_payloads.append(row.model_dump())
+
+    if latest and latest.id:
+        sid = latest.id
+        latest_messages = sorted(
+            session.exec(select(ChatMessage).where(ChatMessage.session_id == sid)).all(),
+            key=lambda x: x.created_at,
+        )
+        latest_facts = session.exec(select(ChatExtractedFact).where(ChatExtractedFact.session_id == sid)).all()
+        latest_missing = session.exec(select(ChatMissingField).where(ChatMissingField.session_id == sid)).all()
+        latest_checkpoints = sorted(
+            session.exec(select(ChatQualificationCheckpoint).where(ChatQualificationCheckpoint.session_id == sid)).all(),
+            key=lambda x: x.created_at,
+        )
+
+    return {
+        "lead": lead,
+        "lead_item": lead_item,
+        "contact_snapshot": contact,
+        "counterparty": counterparty,
+        "sessions": session_payloads,
+        "latest_session_id": latest.id if latest else None,
+        "messages": latest_messages,
+        "facts": latest_facts,
+        "missing_fields": latest_missing,
+        "checkpoints": latest_checkpoints,
+    }
 
 
 @app.get("/api/v1/admin/reference/request-types")

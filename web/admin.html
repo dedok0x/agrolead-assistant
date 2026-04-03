@@ -3,373 +3,286 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Петрохлеб-Кубань — админ панель</title>
+  <title>ПЕТРОХЛЕБ-КУБАНЬ · Операционный центр</title>
+  <link rel="stylesheet" href="/assets/design-system.css" />
   <style>
-    @import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap");
-
-    :root {
-      --bg: #0f1720;
-      --bg-soft: #141e2a;
-      --panel: #182534;
-      --panel-2: #1b2b3d;
-      --line: #2a3b4b;
-      --text: #e4edf6;
-      --muted: #9db2c8;
-      --brand: #6ea8db;
-      --accent: #d6b76b;
-      --ok: #78c793;
-      --danger: #f18d87;
-      --warn: #f0c874;
-      --table-head: #223548;
-      --input-bg: #11202d;
+    .admin-shell {
+      margin-top: var(--ds-space-4);
+      display: grid;
+      grid-template-columns: 260px 1fr;
+      gap: var(--ds-space-4);
+      align-items: start;
     }
 
-    * { box-sizing: border-box; }
-
-    body {
-      margin: 0;
-      min-height: 100vh;
-      color: var(--text);
-      background:
-        radial-gradient(900px 460px at -10% -10%, #22364a 0%, transparent 70%),
-        radial-gradient(900px 460px at 120% 0%, #1d3043 0%, transparent 70%),
-        var(--bg);
-      font-family: "Manrope", "IBM Plex Sans", sans-serif;
+    .admin-nav {
+      position: sticky;
+      top: 16px;
+      background: #24362f;
+      color: #eaf3ee;
+      border-radius: var(--ds-radius-md);
+      border: 1px solid #32493f;
+      box-shadow: var(--ds-shadow-1);
+      padding: var(--ds-space-3);
     }
 
-    .wrap {
-      max-width: 1500px;
-      margin: 0 auto;
-      padding: 14px;
-    }
-
-    .hero {
-      border: 1px solid var(--line);
-      border-radius: 14px;
-      background: linear-gradient(180deg, #162433 0%, #12202c 100%);
-      padding: 16px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 12px;
-      margin-bottom: 10px;
-    }
-
-    .hero h1 {
-      margin: 0;
-      font-size: 24px;
-      font-weight: 700;
-    }
-
-    .hero p {
-      margin: 6px 0 0;
-      color: var(--muted);
+    .admin-nav h3 {
+      margin: 0 0 var(--ds-space-2);
       font-size: 14px;
-      max-width: 900px;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: #cbdacf;
     }
 
-    .hero .badge {
-      border: 1px solid #4a6077;
-      border-radius: 999px;
-      padding: 6px 10px;
-      color: #c9def2;
-      font-size: 12px;
-      white-space: nowrap;
-      background: #1a2a3a;
-    }
-
-    .card {
-      border: 1px solid var(--line);
-      border-radius: 14px;
-      background: linear-gradient(180deg, var(--panel) 0%, var(--panel-2) 100%);
-      padding: 12px;
-      margin-bottom: 10px;
-    }
-
-    .hidden { display: none; }
-
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 8px;
-    }
-
-    .grid4 {
-      display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 8px;
-    }
-
-    .tabs {
-      display: flex;
-      gap: 6px;
-      overflow: auto;
-      scrollbar-width: thin;
-      padding-bottom: 2px;
-    }
-
-    .tab {
-      flex: 0 0 auto;
-      border: 1px solid #3d5369;
-      border-radius: 999px;
-      padding: 7px 11px;
-      background: #1c2e40;
-      color: #d9e7f5;
+    .admin-nav button {
+      width: 100%;
+      text-align: left;
+      border: 1px solid transparent;
+      border-radius: 10px;
+      background: transparent;
+      color: #ecf5ef;
+      padding: 8px 10px;
+      margin-bottom: 4px;
       cursor: pointer;
-      font-weight: 500;
-      white-space: nowrap;
-    }
-
-    .tab.active {
-      border-color: var(--accent);
-      background: linear-gradient(180deg, #2d4e6b 0%, #203a50 100%);
-      color: #fff;
-    }
-
-    .row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-top: 8px;
-      align-items: center;
-    }
-
-    input, textarea, select, button {
       font: inherit;
     }
 
-    input, textarea, select {
-      width: 100%;
-      border: 1px solid #3a5065;
-      border-radius: 9px;
-      background: var(--input-bg);
-      color: #e6eff8;
-      padding: 7px;
+    .admin-nav button:hover {
+      background: #30463c;
     }
 
-    input:focus, textarea:focus, select:focus {
-      outline: none;
-      border-color: #6390b8;
-      box-shadow: 0 0 0 3px rgba(102, 154, 200, 0.2);
-    }
-
-    textarea { min-height: 72px; }
-
-    button {
-      border: 1px solid #4d7395;
-      border-radius: 9px;
-      background: linear-gradient(180deg, #31546f 0%, #233d53 100%);
-      color: #f1f7fd;
-      padding: 7px 12px;
-      cursor: pointer;
+    .admin-nav button.active {
+      background: #3a5648;
+      border-color: #5f7d6c;
       font-weight: 600;
     }
 
-    button.ghost {
-      background: #1a2c3e;
-      border-color: #3f5870;
-      color: #d4e3f2;
+    .admin-main {
+      min-width: 0;
     }
 
-    button.warn {
-      border-color: #7b6838;
-      background: linear-gradient(180deg, #5a4d2e 0%, #453a24 100%);
-      color: #ffe8b0;
+    .login-card {
+      max-width: 560px;
+      margin-top: var(--ds-space-4);
     }
 
-    button:disabled {
-      opacity: 0.7;
-      cursor: not-allowed;
+    .workspace-grid {
+      display: grid;
+      grid-template-columns: 1.1fr 1fr;
+      gap: var(--ds-space-3);
+      align-items: start;
     }
 
-    .kpi {
-      border: 1px solid #344d64;
-      border-radius: 10px;
-      background: #1a2c3f;
+    .soft-kpi {
+      border: 1px solid var(--ds-border);
+      border-radius: 14px;
       padding: 10px;
+      background: #fff;
     }
 
-    .kpi .title {
-      color: var(--muted);
+    .soft-kpi .label {
+      color: var(--ds-text-muted);
       font-size: 12px;
     }
 
-    .kpi .value {
+    .soft-kpi .value {
       margin-top: 4px;
       font-size: 24px;
       font-weight: 700;
+      color: #2b3f36;
     }
 
-    .table-wrap {
+    .filter-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: var(--ds-space-2);
+      margin-top: var(--ds-space-2);
+    }
+
+    .detail-box {
+      border: 1px solid var(--ds-border);
+      border-radius: 14px;
+      background: #fff;
+      padding: var(--ds-space-3);
+      margin-top: var(--ds-space-2);
+    }
+
+    .detail-box h4 {
+      margin: 0 0 8px;
+      font-size: 14px;
+      color: #335244;
+    }
+
+    .subtabs {
+      display: flex;
+      gap: var(--ds-space-2);
       overflow: auto;
-      border: 1px solid #31475b;
-      border-radius: 10px;
-      margin-top: 8px;
-      background: #142331;
+      margin-bottom: var(--ds-space-2);
     }
 
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      min-width: 820px;
-    }
-
-    th, td {
-      border: 1px solid #2b3f52;
-      padding: 7px;
-      font-size: 13px;
-      vertical-align: top;
-      text-align: left;
-    }
-
-    th {
-      background: var(--table-head);
-      color: #d8e8f8;
-      position: sticky;
-      top: 0;
-      z-index: 1;
-    }
-
-    .muted {
-      color: var(--muted);
-      font-size: 12px;
-    }
-
-    .pill {
-      display: inline-block;
-      border: 1px solid #4a6179;
+    .subtab {
+      border: 1px solid var(--ds-border);
       border-radius: 999px;
-      padding: 3px 8px;
-      font-size: 11px;
-      color: #c9def3;
-      background: #1d3042;
-    }
-
-    .msg {
-      margin-top: 8px;
+      padding: 6px 10px;
+      background: #fff;
+      color: var(--ds-text-muted);
       font-size: 12px;
+      cursor: pointer;
+      white-space: nowrap;
     }
 
-    .msg.ok { color: var(--ok); }
-    .msg.err { color: var(--danger); }
-
-    .inline-input {
-      min-width: 140px;
+    .subtab.active {
+      border-color: #cdbf9b;
+      background: #faf4e9;
+      color: #6a5223;
+      font-weight: 600;
     }
 
-    @media (max-width: 1100px) {
-      .grid4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    }
-
-    @media (max-width: 860px) {
-      .wrap { padding: 10px; }
-      .grid,
-      .grid4 { grid-template-columns: 1fr; }
-      .hero {
-        flex-direction: column;
-        align-items: flex-start;
+    @media (max-width: 1120px) {
+      .admin-shell {
+        grid-template-columns: 1fr;
       }
-      .hero h1 { font-size: 21px; }
+
+      .admin-nav {
+        position: static;
+      }
+
+      .workspace-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .filter-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 740px) {
+      .filter-grid {
+        grid-template-columns: 1fr;
+      }
     }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <section class="hero">
-      <div>
-        <h1>Операционная админ панель</h1>
-        <p>Лиды, контрагенты, номенклатура и справочники в табличном формате для ежедневной работы менеджеров.</p>
+  <div class="ds-shell">
+    <header class="ds-top-nav">
+      <div class="ds-brand"><span class="ds-brand-mark" aria-hidden="true"></span>ПЕТРОХЛЕБ-КУБАНЬ</div>
+      <nav class="ds-product-links" aria-label="Разделы платформы">
+        <a class="ds-product-link" href="/">AI-ассистент</a>
+        <a class="ds-product-link active" href="/admin">Операционный центр</a>
+      </nav>
+    </header>
+
+    <div class="ds-breadcrumbs">ПЕТРОХЛЕБ-КУБАНЬ / Внутренние инструменты / Операционный центр</div>
+
+    <section class="ds-page-head">
+      <h1 class="ds-page-title">Операционный центр заявок</h1>
+      <p class="ds-page-desc">Единое рабочее пространство для регистрации входящих запросов, распределения менеджеров, контроля этапов и управления справочниками.</p>
+      <div class="ds-status-strip">
+        <span class="ds-status-item">Запросы принимаются</span>
+        <span class="ds-status-item warn">Контроль SLA активен</span>
+        <span class="ds-status-item accent">Роутинг в отделы по правилам</span>
       </div>
-      <div class="badge">Петрохлеб-Кубань · B2B</div>
     </section>
 
-    <section class="card" id="login-card">
-      <h2 style="margin:0 0 8px">Вход</h2>
-      <div class="grid">
-        <input id="login" value="admin" placeholder="Логин" />
-        <input id="password" type="password" placeholder="Пароль" />
+    <section id="login-card" class="ds-card pad login-card">
+      <h2 style="margin:0 0 10px">Вход в админ панель</h2>
+      <div class="ds-grid-2">
+        <input id="login" class="ds-input" placeholder="Логин" value="admin" />
+        <input id="password" class="ds-input" placeholder="Пароль" type="password" />
       </div>
-      <div class="row">
-        <button id="login-btn">Войти</button>
-        <span class="muted">Требуется токен администратора</span>
+      <div class="ds-row" style="margin-top:10px">
+        <button id="login-btn" class="ds-btn">Войти</button>
       </div>
-      <div id="login-msg" class="msg"></div>
+      <div id="login-msg" class="ds-msg"></div>
     </section>
 
-    <section id="panel" class="hidden">
-      <div class="card">
-        <h2 style="margin:0 0 8px">Рабочие разделы</h2>
-        <div class="tabs" id="tabs"></div>
-      </div>
-
-      <section id="tab-dashboard" class="card tab-pane"></section>
-      <section id="tab-leads" class="card tab-pane hidden"></section>
-      <section id="tab-pipeline" class="card tab-pane hidden"></section>
-      <section id="tab-counterparties" class="card tab-pane hidden"></section>
-      <section id="tab-nomenclature" class="card tab-pane hidden"></section>
-      <section id="tab-quality" class="card tab-pane hidden"></section>
-      <section id="tab-price-policies" class="card tab-pane hidden"></section>
-      <section id="tab-lots" class="card tab-pane hidden"></section>
-      <section id="tab-regions" class="card tab-pane hidden"></section>
-      <section id="tab-transport" class="card tab-pane hidden"></section>
-      <section id="tab-delivery-basis" class="card tab-pane hidden"></section>
-      <section id="tab-knowledge" class="card tab-pane hidden"></section>
-      <section id="tab-chat-sessions" class="card tab-pane hidden"></section>
-      <section id="tab-tasks" class="card tab-pane hidden"></section>
-      <section id="tab-users" class="card tab-pane hidden"></section>
-      <section id="tab-settings" class="card tab-pane hidden"></section>
+    <section id="admin-app" class="admin-shell hidden">
+      <aside class="admin-nav" id="admin-nav"></aside>
+      <main class="admin-main">
+        <section id="section-dashboard" class="ds-card pad admin-section"></section>
+        <section id="section-registry" class="ds-card pad admin-section hidden"></section>
+        <section id="section-workspace" class="ds-card pad admin-section hidden"></section>
+        <section id="section-reference" class="ds-card pad admin-section hidden"></section>
+        <section id="section-assistant-config" class="ds-card pad admin-section hidden"></section>
+        <section id="section-users" class="ds-card pad admin-section hidden"></section>
+        <section id="section-sessions" class="ds-card pad admin-section hidden"></section>
+      </main>
     </section>
   </div>
 
   <script>
-    const tabs = [
-      ["dashboard", "Сводка"],
-      ["leads", "Лиды"],
-      ["pipeline", "Воронка"],
-      ["counterparties", "Контрагенты"],
-      ["nomenclature", "Номенклатура"],
-      ["quality", "Шаблоны качества"],
-      ["price-policies", "Ценовые политики"],
-      ["lots", "Лоты и наличие"],
-      ["regions", "Регионы и порты"],
-      ["transport", "Транспорт"],
-      ["delivery-basis", "Базисы"],
-      ["knowledge", "База знаний"],
-      ["chat-sessions", "Чат-сессии"],
-      ["tasks", "Задачи"],
-      ["users", "Пользователи"],
-      ["settings", "Настройки"],
+    const sections = [
+      { code: "dashboard", title: "Dashboard" },
+      { code: "registry", title: "Реестр запросов" },
+      { code: "workspace", title: "Рабочее место заявки" },
+      { code: "reference", title: "Справочники" },
+      { code: "assistant-config", title: "Настройка intake" },
+      { code: "users", title: "Пользователи" },
+      { code: "sessions", title: "Чат-сессии" },
     ]
 
-    const statusLabels = {
-      draft: "Черновик",
-      partially_qualified: "Частично квалифицирован",
-      qualified: "Квалифицирован",
-      handed_to_manager: "Передан менеджеру",
-      closed: "Закрыт",
-      blocked: "Заблокирован",
+    const statusLabel = {
+      draft: "Новая",
+      partially_qualified: "В работе",
+      qualified: "Квалифицирована",
+      handed_to_manager: "У менеджера",
+      closed: "Завершена",
+      blocked: "Архив",
     }
 
-    const state = {
-      stats: {},
+    const statusClass = {
+      draft: "status-draft",
+      partially_qualified: "status-partially_qualified",
+      qualified: "status-qualified",
+      handed_to_manager: "status-handed_to_manager",
+      closed: "status-closed",
+      blocked: "status-blocked",
+    }
+
+    const viewPresets = [
+      { code: "all", title: "Все", filter: {} },
+      { code: "new", title: "Новые", filter: { status: "draft" } },
+      { code: "work", title: "В работе", filter: { status: "partially_qualified" } },
+      { code: "manager", title: "У менеджера", filter: { status: "handed_to_manager" } },
+      { code: "done", title: "Закрытые", filter: { status: "closed" } },
+      { code: "archive", title: "Архив", filter: { status: "blocked" } },
+    ]
+
+    const appState = {
+      token: "",
+      activeSection: "dashboard",
       leads: [],
+      stats: {},
       pipeline: [],
+      users: [],
+      sessions: [],
       counterparties: [],
       commodities: [],
-      qualityTemplates: [],
-      pricePolicies: [],
-      lots: [],
       regions: [],
       transportModes: [],
       deliveryBasis: [],
+      qualityTemplates: [],
+      pricePolicies: [],
+      lots: [],
       knowledge: [],
-      sessions: [],
-      tasks: [],
-      users: [],
       settings: [],
+      filters: {
+        search: "",
+        status: "",
+        requestType: "",
+        priority: "",
+        managerId: "",
+        regionId: "",
+        commodityId: "",
+        from: "",
+        to: "",
+        hotOnly: false,
+      },
+      selectedLeadId: null,
+      selectedViewCode: "all",
+      referenceTab: "commodities",
+      workspace: null,
     }
-
-    let token = ""
 
     function escapeHtml(value) {
       return String(value ?? "")
@@ -385,746 +298,949 @@
       return String(value)
     }
 
-    function toBool(value) {
-      if (typeof value === "boolean") return value
-      return ["1", "true", "yes", "on"].includes(String(value).toLowerCase())
+    function parseDateSafe(value) {
+      const date = new Date(value)
+      if (Number.isNaN(date.getTime())) return null
+      return date
     }
 
-    async function api(url, opts = {}) {
-      const headers = { ...(opts.headers || {}) }
-      const hasBody = opts.body !== undefined
-      if (hasBody) headers["Content-Type"] = "application/json"
-      if (token) headers["x-admin-token"] = token
+    function minutesBetween(a, b) {
+      const d1 = parseDateSafe(a)
+      const d2 = parseDateSafe(b)
+      if (!d1 || !d2) return null
+      return Math.max(0, Math.round((d2.getTime() - d1.getTime()) / 60000))
+    }
 
-      const response = await fetch(url, { ...opts, headers })
+    async function api(url, options = {}) {
+      const headers = { ...(options.headers || {}) }
+      if (options.body !== undefined) headers["Content-Type"] = "application/json"
+      if (appState.token) headers["x-admin-token"] = appState.token
+
+      const response = await fetch(url, { ...options, headers })
       const text = await response.text()
       let data = {}
       try { data = text ? JSON.parse(text) : {} } catch {}
-      if (!response.ok) throw new Error(data.detail || text || `HTTP ${response.status}`)
+      if (!response.ok) {
+        throw new Error(data.detail || text || `HTTP ${response.status}`)
+      }
       return data
     }
 
-    function activateTab(name) {
-      document.querySelectorAll(".tab-pane").forEach(node => node.classList.add("hidden"))
-      document.querySelectorAll(".tab").forEach(node => node.classList.remove("active"))
-      document.getElementById(`tab-${name}`).classList.remove("hidden")
-      document.querySelector(`.tab[data-name='${name}']`)?.classList.add("active")
+    function setActiveSection(code) {
+      appState.activeSection = code
+      document.querySelectorAll(".admin-section").forEach(node => node.classList.add("hidden"))
+      document.querySelectorAll(".admin-nav button").forEach(node => node.classList.remove("active"))
+      document.getElementById(`section-${code}`).classList.remove("hidden")
+      document.querySelector(`.admin-nav button[data-code='${code}']`)?.classList.add("active")
     }
 
-    function renderTabs() {
-      const wrap = document.getElementById("tabs")
-      wrap.innerHTML = ""
-      tabs.forEach(([code, title]) => {
-        const btn = document.createElement("button")
-        btn.className = "tab"
-        btn.dataset.name = code
-        btn.textContent = title
-        btn.onclick = () => activateTab(code)
-        wrap.appendChild(btn)
-      })
-      activateTab("dashboard")
-    }
-
-    function renderDashboard() {
-      const stats = state.stats || {}
-      const byRequestRows = Object.entries(stats.by_request_type || {}).map(([k, v]) => `<tr><td>${escapeHtml(k)}</td><td>${escapeHtml(v)}</td></tr>`).join("")
-      const byStageRows = Object.entries(stats.by_stage || {}).map(([k, v]) => `<tr><td>${escapeHtml(statusLabels[k] || k)}</td><td>${escapeHtml(v)}</td></tr>`).join("")
-
-      document.getElementById("tab-dashboard").innerHTML = `
-        <h3 style="margin:0 0 8px">Сводка</h3>
-        <div class="grid4">
-          <div class="kpi"><div class="title">Лиды всего</div><div class="value">${stats.leads_total || 0}</div></div>
-          <div class="kpi"><div class="title">Горячие лиды</div><div class="value">${stats.hot_leads || 0}</div></div>
-          <div class="kpi"><div class="title">Неназначенные</div><div class="value">${stats.unassigned_leads || 0}</div></div>
-          <div class="kpi"><div class="title">Открытые задачи</div><div class="value">${stats.tasks_open || 0}</div></div>
-        </div>
-        <div class="grid" style="margin-top:10px">
-          <div>
-            <div class="pill">Типы запросов</div>
-            <div class="table-wrap"><table><thead><tr><th>Тип</th><th>Кол-во</th></tr></thead><tbody>${byRequestRows || "<tr><td colspan='2'>Нет данных</td></tr>"}</tbody></table></div>
-          </div>
-          <div>
-            <div class="pill">Статусы лидов</div>
-            <div class="table-wrap"><table><thead><tr><th>Статус</th><th>Кол-во</th></tr></thead><tbody>${byStageRows || "<tr><td colspan='2'>Нет данных</td></tr>"}</tbody></table></div>
-          </div>
-        </div>
+    function renderNav() {
+      const nav = document.getElementById("admin-nav")
+      nav.innerHTML = `
+        <h3>Разделы</h3>
+        ${sections.map(item => `<button data-code='${item.code}'>${item.title}</button>`).join("")}
       `
+      nav.querySelectorAll("button[data-code]").forEach(btn => {
+        btn.onclick = () => setActiveSection(btn.dataset.code)
+      })
+      setActiveSection(appState.activeSection)
     }
 
-    function buildLeadRowsForExport(rows) {
+    function buildLeadExportRows(rows) {
       return rows.map(row => {
         const contact = row.contact_snapshot || {}
         const item = row.lead_item || {}
         return {
           id: row.id || "",
+          статус: statusLabel[row.status_code] || row.status_code || "",
           тип: row.request_type_code || "",
-          статус: statusLabels[row.status_code] || row.status_code || "",
           приоритет: row.priority_code || "",
           компания: contact.company_name || "",
           контакт: contact.contact_name || "",
-          телефон: contact.phone || "",
-          email: contact.email || "",
-          telegram: contact.telegram || "",
+          связь: contact.phone || contact.email || contact.telegram || "",
           товар_id: item.commodity_id || "",
           объем: item.volume_value || "",
           ед_изм: item.volume_unit || "",
           сводка: row.summary || "",
-          комментарий: row.manager_comment || "",
+          создано: row.created_at || "",
           обновлено: row.updated_at || "",
         }
       })
     }
 
-    function downloadBlob(filename, mimeType, content) {
-      const blob = new Blob([content], { type: mimeType })
+    function downloadBlob(filename, mime, content) {
+      const blob = new Blob([content], { type: mime })
       const url = URL.createObjectURL(blob)
-      const link = document.createElement("a")
-      link.href = url
-      link.download = filename
-      document.body.appendChild(link)
-      link.click()
-      link.remove()
+      const a = document.createElement("a")
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
       URL.revokeObjectURL(url)
     }
 
-    function exportLeadsCsv() {
-      const rows = buildLeadRowsForExport(state.leads)
-      if (!rows.length) return
-      const headers = Object.keys(rows[0])
-      const lines = [headers.join(";")]
-      for (const row of rows) {
-        lines.push(headers.map(h => `"${String(row[h] ?? "").replaceAll('"', '""')}"`).join(";"))
+    function exportLeads(format, rows) {
+      const data = buildLeadExportRows(rows)
+      if (!data.length) return
+      const headers = Object.keys(data[0])
+
+      if (format === "csv") {
+        const lines = [headers.join(";")]
+        data.forEach(row => {
+          lines.push(headers.map(h => `"${String(row[h] ?? "").replaceAll('"', '""')}"`).join(";"))
+        })
+        downloadBlob(`registry_${new Date().toISOString().slice(0, 10)}.csv`, "text/csv;charset=utf-8", lines.join("\n"))
+        return
       }
-      downloadBlob(`leads_${new Date().toISOString().slice(0, 10)}.csv`, "text/csv;charset=utf-8", lines.join("\n"))
-    }
 
-    function exportLeadsExcel() {
-      const rows = buildLeadRowsForExport(state.leads)
-      if (!rows.length) return
-      const headers = Object.keys(rows[0])
-      const table = `
-        <table border="1">
+      if (format === "excel") {
+        const html = `
+          <html><head><meta charset='UTF-8' /></head><body>
+            <table border='1'>
+              <thead><tr>${headers.map(h => `<th>${escapeHtml(h)}</th>`).join("")}</tr></thead>
+              <tbody>${data.map(row => `<tr>${headers.map(h => `<td>${escapeHtml(row[h])}</td>`).join("")}</tr>`).join("")}</tbody>
+            </table>
+          </body></html>
+        `
+        downloadBlob(`registry_${new Date().toISOString().slice(0, 10)}.xls`, "application/vnd.ms-excel;charset=utf-8", html)
+        return
+      }
+
+      const html = `
+        <!doctype html><html><head><meta charset='UTF-8' />
+        <style>
+          body { font-family: Arial, sans-serif; }
+          table { width: 100%; border-collapse: collapse; font-size: 11px; }
+          th, td { border: 1px solid #bbb; padding: 4px; text-align: left; vertical-align: top; }
+          th { background: #f3f3f3; }
+        </style></head><body>
+        <h1>Реестр заявок</h1>
+        <table>
           <thead><tr>${headers.map(h => `<th>${escapeHtml(h)}</th>`).join("")}</tr></thead>
-          <tbody>
-            ${rows.map(r => `<tr>${headers.map(h => `<td>${escapeHtml(r[h])}</td>`).join("")}</tr>`).join("")}
-          </tbody>
-        </table>
+          <tbody>${data.map(row => `<tr>${headers.map(h => `<td>${escapeHtml(row[h])}</td>`).join("")}</tr>`).join("")}</tbody>
+        </table></body></html>
       `
-      const html = `
-        <html><head><meta charset="UTF-8" /></head><body>${table}</body></html>
-      `
-      downloadBlob(`leads_${new Date().toISOString().slice(0, 10)}.xls`, "application/vnd.ms-excel;charset=utf-8", html)
-    }
-
-    function exportLeadsPdf() {
-      const rows = buildLeadRowsForExport(state.leads)
-      if (!rows.length) return
-      const headers = Object.keys(rows[0])
-      const html = `
-        <!doctype html>
-        <html lang="ru">
-        <head>
-          <meta charset="UTF-8" />
-          <title>Экспорт лидов</title>
-          <style>
-            body { font-family: Arial, sans-serif; color: #111; }
-            h1 { font-size: 20px; margin-bottom: 8px; }
-            table { width: 100%; border-collapse: collapse; font-size: 11px; }
-            th, td { border: 1px solid #bbb; padding: 4px; text-align: left; vertical-align: top; }
-            th { background: #f3f3f3; }
-          </style>
-        </head>
-        <body>
-          <h1>Лиды — ${new Date().toLocaleString("ru-RU")}</h1>
-          <table>
-            <thead><tr>${headers.map(h => `<th>${escapeHtml(h)}</th>`).join("")}</tr></thead>
-            <tbody>${rows.map(r => `<tr>${headers.map(h => `<td>${escapeHtml(r[h])}</td>`).join("")}</tr>`).join("")}</tbody>
-          </table>
-        </body>
-        </html>
-      `
-      const win = window.open("", "_blank", "width=1200,height=800")
+      const win = window.open("", "_blank", "width=1200,height=900")
       if (!win) return
       win.document.open()
       win.document.write(html)
       win.document.close()
-      win.focus()
-      setTimeout(() => win.print(), 250)
+      setTimeout(() => win.print(), 300)
     }
 
-    function renderLeads() {
-      const rows = state.leads || []
-      const body = rows.map(row => {
+    function applyViewPreset(code) {
+      appState.selectedViewCode = code
+      const preset = viewPresets.find(item => item.code === code)
+      appState.filters = {
+        search: "",
+        status: preset?.filter.status || "",
+        requestType: "",
+        priority: "",
+        managerId: "",
+        regionId: "",
+        commodityId: "",
+        from: "",
+        to: "",
+        hotOnly: false,
+      }
+      renderRegistry()
+    }
+
+    function saveCustomView() {
+      const name = prompt("Название сохраненного вида")
+      if (!name) return
+      const saved = JSON.parse(localStorage.getItem("agrolead_saved_views") || "[]")
+      saved.push({ name, filter: appState.filters })
+      localStorage.setItem("agrolead_saved_views", JSON.stringify(saved))
+      renderRegistry()
+    }
+
+    function getSavedViews() {
+      try {
+        const parsed = JSON.parse(localStorage.getItem("agrolead_saved_views") || "[]")
+        return Array.isArray(parsed) ? parsed : []
+      } catch {
+        return []
+      }
+    }
+
+    function getFilteredLeads() {
+      const filters = appState.filters
+      return appState.leads.filter(row => {
+        const item = row.lead_item || {}
+        const contact = row.contact_snapshot || {}
+
+        if (filters.status && row.status_code !== filters.status) return false
+        if (filters.requestType && row.request_type_code !== filters.requestType) return false
+        if (filters.priority && row.priority_code !== filters.priority) return false
+        if (filters.managerId && String(row.assigned_manager_user_id || "") !== filters.managerId) return false
+        if (filters.regionId && String(item.source_region_id || item.destination_region_id || "") !== filters.regionId) return false
+        if (filters.commodityId && String(item.commodity_id || "") !== filters.commodityId) return false
+        if (filters.hotOnly && !row.hot_flag) return false
+
+        if (filters.from) {
+          const fromDate = parseDateSafe(filters.from)
+          const updated = parseDateSafe(row.updated_at)
+          if (!fromDate || !updated || updated < fromDate) return false
+        }
+        if (filters.to) {
+          const toDate = parseDateSafe(filters.to)
+          const updated = parseDateSafe(row.updated_at)
+          if (!toDate || !updated || updated > new Date(toDate.getTime() + 24 * 60 * 60 * 1000 - 1)) return false
+        }
+
+        if (filters.search) {
+          const q = filters.search.toLowerCase()
+          const haystack = [
+            row.id,
+            row.summary,
+            row.manager_comment,
+            row.request_type_code,
+            contact.company_name,
+            contact.contact_name,
+            contact.phone,
+            contact.email,
+            contact.telegram,
+            item.commodity_id,
+            item.volume_value,
+          ].map(fmt).join(" ").toLowerCase()
+          if (!haystack.includes(q)) return false
+        }
+
+        return true
+      })
+    }
+
+    function renderDashboard() {
+      const stats = appState.stats || {}
+      const leads = appState.leads || []
+      const today = new Date()
+      const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000)
+
+      const todayCount = leads.filter(row => {
+        const created = parseDateSafe(row.created_at)
+        if (!created) return false
+        return created.toDateString() === today.toDateString()
+      }).length
+
+      const weekCount = leads.filter(row => {
+        const created = parseDateSafe(row.created_at)
+        if (!created) return false
+        return created >= weekAgo
+      }).length
+
+      const responseTimes = leads
+        .map(row => minutesBetween(row.created_at, row.updated_at))
+        .filter(value => value !== null)
+      const avgResponse = responseTimes.length
+        ? Math.round(responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length)
+        : 0
+
+      const rowsRequest = Object.entries(stats.by_request_type || {}).map(([code, count]) => `<tr><td>${escapeHtml(code)}</td><td>${escapeHtml(count)}</td></tr>`).join("")
+      const rowsStage = Object.entries(stats.by_stage || {}).map(([code, count]) => `<tr><td>${escapeHtml(statusLabel[code] || code)}</td><td>${escapeHtml(count)}</td></tr>`).join("")
+
+      document.getElementById("section-dashboard").innerHTML = `
+        <h2 style="margin:0 0 10px">Dashboard</h2>
+        <div class="ds-grid-4">
+          <div class="soft-kpi"><div class="label">Новые за сегодня</div><div class="value">${todayCount}</div></div>
+          <div class="soft-kpi"><div class="label">За 7 дней</div><div class="value">${weekCount}</div></div>
+          <div class="soft-kpi"><div class="label">Среднее время обновления (мин)</div><div class="value">${avgResponse}</div></div>
+          <div class="soft-kpi"><div class="label">Неназначенные</div><div class="value">${stats.unassigned_leads || 0}</div></div>
+        </div>
+
+        <div class="workspace-grid" style="margin-top:12px">
+          <div class="detail-box">
+            <h4>Статусы</h4>
+            <div class="ds-table-wrap"><table class="ds-table"><thead><tr><th>Статус</th><th>Кол-во</th></tr></thead><tbody>${rowsStage || "<tr><td colspan='2'>Нет данных</td></tr>"}</tbody></table></div>
+          </div>
+          <div class="detail-box">
+            <h4>Типы запросов</h4>
+            <div class="ds-table-wrap"><table class="ds-table"><thead><tr><th>Тип</th><th>Кол-во</th></tr></thead><tbody>${rowsRequest || "<tr><td colspan='2'>Нет данных</td></tr>"}</tbody></table></div>
+          </div>
+        </div>
+      `
+    }
+
+    function renderRegistry() {
+      const savedViews = getSavedViews()
+      const rows = getFilteredLeads()
+
+      const requestTypeOptions = [...new Set(appState.leads.map(row => row.request_type_code).filter(Boolean))]
+      const managerOptions = appState.users.map(user => `<option value='${user.id}'>${escapeHtml(user.full_name || user.login || user.id)}</option>`).join("")
+
+      const tableRows = rows.map(row => {
         const contact = row.contact_snapshot || {}
         const item = row.lead_item || {}
+        const manager = appState.users.find(u => u.id === row.assigned_manager_user_id)
+        const region = item.source_region_id || item.destination_region_id || ""
+
         return `
           <tr>
             <td>${escapeHtml(row.id)}</td>
             <td>${escapeHtml(row.request_type_code || "")}</td>
-            <td>
-              <select data-lead-status="${row.id}">
-                ${["draft", "partially_qualified", "qualified", "handed_to_manager", "closed", "blocked"].map(code =>
-                  `<option value="${code}" ${row.status_code === code ? "selected" : ""}>${escapeHtml(statusLabels[code] || code)}</option>`
-                ).join("")}
-              </select>
-            </td>
+            <td><span class='ds-badge ${statusClass[row.status_code] || ""}'>${escapeHtml(statusLabel[row.status_code] || row.status_code || "")}</span></td>
             <td>${escapeHtml(row.priority_code || "")}</td>
-            <td>${escapeHtml(contact.company_name || "")}</td>
-            <td>${escapeHtml(contact.contact_name || "")}</td>
+            <td>${escapeHtml(contact.company_name || contact.contact_name || "")}</td>
             <td>${escapeHtml(contact.phone || contact.email || contact.telegram || "")}</td>
             <td>${escapeHtml(item.commodity_id || "")}</td>
             <td>${escapeHtml(item.volume_value || "")} ${escapeHtml(item.volume_unit || "")}</td>
-            <td>${escapeHtml(row.summary || "")}</td>
+            <td>${escapeHtml(region)}</td>
+            <td>${escapeHtml(manager?.full_name || "")}</td>
+            <td>${escapeHtml(row.updated_at || "")}</td>
             <td>
-              <textarea data-lead-comment="${row.id}" style="min-height:60px">${escapeHtml(row.manager_comment || "")}</textarea>
-              <div class="row"><button data-lead-save="${row.id}">Сохранить</button></div>
+              <button class='ds-btn ghost' data-open-workspace='${row.id}'>Открыть</button>
             </td>
           </tr>
         `
       }).join("")
 
-      document.getElementById("tab-leads").innerHTML = `
-        <h3 style="margin:0 0 8px">Лиды</h3>
-        <div class="row">
-          <button id="reload-leads" class="ghost">Обновить</button>
-          <select id="lead-export-format" class="inline-input">
-            <option value="csv">Экспорт CSV</option>
-            <option value="excel">Экспорт Excel</option>
-            <option value="pdf">Экспорт PDF</option>
-          </select>
-          <button id="lead-export-btn" class="warn">Выгрузить</button>
+      document.getElementById("section-registry").innerHTML = `
+        <h2 style="margin:0 0 8px">Реестр запросов</h2>
+        <p class='ds-section-sub'>Фильтрация, сохраненные виды и быстрые действия по заявкам.</p>
+
+        <div class='ds-row' style='margin-top:10px'>
+          ${viewPresets.map(v => `<button class='ds-chip ${appState.selectedViewCode === v.code ? "accent" : ""}' data-preset='${v.code}'>${v.title}</button>`).join("")}
+          <button class='ds-chip' id='save-view-btn'>Сохранить текущий вид</button>
+          ${savedViews.map((v, idx) => `<button class='ds-chip' data-saved-view='${idx}'>${escapeHtml(v.name)}</button>`).join("")}
         </div>
-        <div class="table-wrap">
-          <table>
+
+        <div class='filter-grid'>
+          <input class='ds-input' id='f-search' placeholder='Поиск по заявкам' value='${escapeHtml(appState.filters.search)}' />
+          <select class='ds-select' id='f-status'>
+            <option value=''>Все статусы</option>
+            ${Object.entries(statusLabel).map(([k, v]) => `<option value='${k}' ${appState.filters.status === k ? "selected" : ""}>${escapeHtml(v)}</option>`).join("")}
+          </select>
+          <select class='ds-select' id='f-request'>
+            <option value=''>Все типы</option>
+            ${requestTypeOptions.map(code => `<option value='${code}' ${appState.filters.requestType === code ? "selected" : ""}>${escapeHtml(code)}</option>`).join("")}
+          </select>
+          <select class='ds-select' id='f-priority'>
+            <option value=''>Любой приоритет</option>
+            ${["low", "normal", "high"].map(p => `<option value='${p}' ${appState.filters.priority === p ? "selected" : ""}>${p}</option>`).join("")}
+          </select>
+          <select class='ds-select' id='f-manager'>
+            <option value=''>Любой менеджер</option>
+            ${managerOptions}
+          </select>
+          <input class='ds-input' id='f-region' placeholder='ID региона' value='${escapeHtml(appState.filters.regionId)}' />
+          <input class='ds-input' id='f-commodity' placeholder='ID товара' value='${escapeHtml(appState.filters.commodityId)}' />
+          <label class='ds-row'><input type='checkbox' id='f-hot' ${appState.filters.hotOnly ? "checked" : ""}/> Только приоритетные</label>
+          <input class='ds-input' type='date' id='f-from' value='${escapeHtml(appState.filters.from)}' />
+          <input class='ds-input' type='date' id='f-to' value='${escapeHtml(appState.filters.to)}' />
+          <button class='ds-btn' id='apply-filter-btn'>Применить</button>
+          <button class='ds-btn ghost' id='reset-filter-btn'>Сбросить</button>
+        </div>
+
+        <div class='ds-row' style='margin-top:8px'>
+          <select class='ds-select' id='export-format' style='max-width:180px'>
+            <option value='csv'>Экспорт CSV</option>
+            <option value='excel'>Экспорт Excel</option>
+            <option value='pdf'>Экспорт PDF</option>
+          </select>
+          <button class='ds-btn warn' id='export-btn'>Выгрузить текущую выборку</button>
+          <span class='ds-badge'>Всего в выборке: ${rows.length}</span>
+        </div>
+
+        <div class='ds-table-wrap' style='margin-top:10px'>
+          <table class='ds-table'>
             <thead>
               <tr>
-                <th>ID</th><th>Тип</th><th>Статус</th><th>Приоритет</th><th>Компания</th><th>Контакт</th><th>Связь</th><th>Товар ID</th><th>Объем</th><th>Сводка</th><th>Комментарий менеджера</th>
+                <th>ID</th><th>Тип</th><th>Статус</th><th>Приоритет</th><th>Компания/контакт</th><th>Связь</th><th>Товар ID</th><th>Объем</th><th>Регион ID</th><th>Менеджер</th><th>Обновлено</th><th>Действие</th>
               </tr>
             </thead>
-            <tbody>${body || "<tr><td colspan='11'>Нет данных</td></tr>"}</tbody>
+            <tbody>${tableRows || "<tr><td colspan='12'>Нет заявок по выбранным фильтрам</td></tr>"}</tbody>
           </table>
         </div>
       `
 
-      document.getElementById("reload-leads").onclick = loadAll
-      document.getElementById("lead-export-btn").onclick = () => {
-        const format = document.getElementById("lead-export-format").value
-        if (format === "csv") exportLeadsCsv()
-        else if (format === "excel") exportLeadsExcel()
-        else exportLeadsPdf()
-      }
-
-      document.querySelectorAll("button[data-lead-save]").forEach(btn => {
+      document.querySelectorAll("button[data-open-workspace]").forEach(btn => {
         btn.onclick = async () => {
-          const id = Number(btn.dataset.leadSave)
-          const status = document.querySelector(`select[data-lead-status='${id}']`)?.value || "draft"
-          const managerComment = document.querySelector(`textarea[data-lead-comment='${id}']`)?.value || ""
-          await api(`/api/v1/leads/${id}`, {
-            method: "PUT",
-            body: JSON.stringify({ status_code: status, manager_comment: managerComment }),
-          })
-          await loadAll()
+          const leadId = Number(btn.dataset.openWorkspace)
+          appState.selectedLeadId = leadId
+          await loadWorkspace(leadId)
+          setActiveSection("workspace")
         }
       })
+
+      document.querySelectorAll("button[data-preset]").forEach(btn => {
+        btn.onclick = () => applyViewPreset(btn.dataset.preset)
+      })
+
+      document.getElementById("save-view-btn").onclick = saveCustomView
+      document.querySelectorAll("button[data-saved-view]").forEach(btn => {
+        btn.onclick = () => {
+          const index = Number(btn.dataset.savedView)
+          const saved = getSavedViews()[index]
+          if (!saved) return
+          appState.filters = { ...saved.filter }
+          appState.selectedViewCode = "custom"
+          renderRegistry()
+        }
+      })
+
+      document.getElementById("apply-filter-btn").onclick = () => {
+        appState.filters = {
+          search: document.getElementById("f-search").value.trim(),
+          status: document.getElementById("f-status").value,
+          requestType: document.getElementById("f-request").value,
+          priority: document.getElementById("f-priority").value,
+          managerId: document.getElementById("f-manager").value,
+          regionId: document.getElementById("f-region").value.trim(),
+          commodityId: document.getElementById("f-commodity").value.trim(),
+          from: document.getElementById("f-from").value,
+          to: document.getElementById("f-to").value,
+          hotOnly: document.getElementById("f-hot").checked,
+        }
+        appState.selectedViewCode = "custom"
+        renderRegistry()
+      }
+
+      document.getElementById("reset-filter-btn").onclick = () => {
+        applyViewPreset("all")
+      }
+
+      document.getElementById("export-btn").onclick = () => {
+        const format = document.getElementById("export-format").value
+        exportLeads(format, rows)
+      }
     }
 
-    function renderPipeline() {
-      const rows = (state.pipeline || []).map(item => `<tr><td>${escapeHtml(item.code)}</td><td>${escapeHtml(item.name)}</td><td>${escapeHtml(item.count)}</td></tr>`).join("")
-      document.getElementById("tab-pipeline").innerHTML = `
-        <h3 style="margin:0 0 8px">Воронка</h3>
-        <div class="table-wrap">
-          <table><thead><tr><th>Код</th><th>Этап</th><th>Кол-во</th></tr></thead><tbody>${rows || "<tr><td colspan='3'>Нет данных</td></tr>"}</tbody></table>
+    async function loadWorkspace(leadId) {
+      appState.workspace = await api(`/api/v1/admin/leads/${leadId}/workspace`)
+      renderWorkspace()
+    }
+
+    function renderWorkspace() {
+      const root = document.getElementById("section-workspace")
+      if (!appState.selectedLeadId) {
+        root.innerHTML = `<h2 style='margin:0 0 8px'>Рабочее место заявки</h2><p class='ds-section-sub'>Выберите заявку в реестре для детального просмотра и обработки.</p>`
+        return
+      }
+
+      const data = appState.workspace
+      const lead = data?.lead || {}
+      const item = data?.lead_item || {}
+      const contact = data?.contact_snapshot || {}
+      const counterparty = data?.counterparty || {}
+      const messages = data?.messages || []
+      const facts = data?.facts || []
+      const missing = data?.missing_fields || []
+      const checkpoints = data?.checkpoints || []
+
+      const managerOptions = `<option value=''>Не назначен</option>${appState.users.map(user => `<option value='${user.id}' ${String(lead.assigned_manager_user_id || "") === String(user.id) ? "selected" : ""}>${escapeHtml(user.full_name || user.login || user.id)}</option>`).join("")}`
+
+      const transcriptRows = messages.map(row => `<tr><td>${escapeHtml(row.created_at || "")}</td><td>${escapeHtml(row.direction || "")}</td><td>${escapeHtml(row.text || "")}</td></tr>`).join("")
+      const factRows = facts.map(row => `<tr><td>${escapeHtml(row.fact_key || "")}</td><td>${escapeHtml(row.fact_value_text || "")}</td><td>${escapeHtml(row.confidence || "")}</td></tr>`).join("")
+      const missingRows = missing.map(row => `<tr><td>${escapeHtml(row.field_code || "")}</td><td>${row.is_collected ? "Да" : "Нет"}</td><td>${escapeHtml(row.priority_order || "")}</td></tr>`).join("")
+      const checkpointRows = checkpoints.map(row => `<tr><td>${escapeHtml(row.created_at || "")}</td><td>${escapeHtml(row.checkpoint_code || "")}</td><td>${escapeHtml(row.checkpoint_status || "")}</td><td>${escapeHtml(row.note || "")}</td></tr>`).join("")
+
+      root.innerHTML = `
+        <h2 style='margin:0 0 8px'>Рабочее место заявки #${escapeHtml(lead.id || "")}</h2>
+        <p class='ds-section-sub'>Редактирование карточки, назначение менеджера и контроль хода обработки.</p>
+
+        <div class='workspace-grid' style='margin-top:10px'>
+          <div class='detail-box'>
+            <h4>Карточка заявки</h4>
+            <div class='filter-grid'>
+              <select id='ws-status' class='ds-select'>
+                ${Object.entries(statusLabel).map(([code, name]) => `<option value='${code}' ${lead.status_code === code ? "selected" : ""}>${escapeHtml(name)}</option>`).join("")}
+              </select>
+              <select id='ws-priority' class='ds-select'>
+                ${["low", "normal", "high"].map(p => `<option value='${p}' ${lead.priority_code === p ? "selected" : ""}>${p}</option>`).join("")}
+              </select>
+              <select id='ws-manager' class='ds-select'>${managerOptions}</select>
+              <input id='ws-next-action' class='ds-input' value='${escapeHtml(lead.next_action || "")}' placeholder='Следующее действие' />
+            </div>
+            <textarea id='ws-manager-comment' class='ds-textarea' placeholder='Комментарий менеджера'>${escapeHtml(lead.manager_comment || "")}</textarea>
+            <div class='ds-row'>
+              <button id='ws-save' class='ds-btn'>Сохранить изменения</button>
+              <button id='ws-transfer' class='ds-btn ghost'>Передать менеджеру</button>
+              <button id='ws-close' class='ds-btn ghost'>Закрыть</button>
+              <button id='ws-archive' class='ds-btn ghost'>Архивировать</button>
+              <button id='ws-reopen' class='ds-btn ghost'>Переоткрыть</button>
+              <button id='ws-escalate' class='ds-btn warn'>Эскалация</button>
+            </div>
+            <div id='ws-msg' class='ds-msg'></div>
+          </div>
+
+          <div class='detail-box'>
+            <h4>Сводка контрагента и предмета</h4>
+            <div class='ds-grid-2'>
+              <div><b>Компания</b><br />${escapeHtml(contact.company_name || counterparty.company_name || "—")}</div>
+              <div><b>Контакт</b><br />${escapeHtml(contact.contact_name || counterparty.contact_person || "—")}</div>
+              <div><b>Связь</b><br />${escapeHtml(contact.phone || contact.email || contact.telegram || "—")}</div>
+              <div><b>Тип запроса</b><br />${escapeHtml(lead.request_type_id || "—")}</div>
+              <div><b>Товар ID</b><br />${escapeHtml(item.commodity_id || "—")}</div>
+              <div><b>Объем</b><br />${escapeHtml(item.volume_value || "")} ${escapeHtml(item.volume_unit || "")}</div>
+              <div><b>Регион отгрузки</b><br />${escapeHtml(item.source_region_id || "—")}</div>
+              <div><b>Регион назначения</b><br />${escapeHtml(item.destination_region_id || "—")}</div>
+            </div>
+          </div>
+        </div>
+
+        <div class='workspace-grid'>
+          <div class='detail-box'>
+            <h4>Транскрипт диалога</h4>
+            <div class='ds-table-wrap'><table class='ds-table'><thead><tr><th>Время</th><th>Канал</th><th>Текст</th></tr></thead><tbody>${transcriptRows || "<tr><td colspan='3'>Нет сообщений</td></tr>"}</tbody></table></div>
+          </div>
+
+          <div class='detail-box'>
+            <h4>Структурированные поля</h4>
+            <div class='ds-table-wrap'><table class='ds-table'><thead><tr><th>Поле</th><th>Значение</th><th>Уверенность</th></tr></thead><tbody>${factRows || "<tr><td colspan='3'>Нет данных</td></tr>"}</tbody></table></div>
+            <h4 style='margin-top:10px'>Недостающие поля</h4>
+            <div class='ds-table-wrap'><table class='ds-table'><thead><tr><th>Поле</th><th>Собрано</th><th>Приоритет</th></tr></thead><tbody>${missingRows || "<tr><td colspan='3'>Нет данных</td></tr>"}</tbody></table></div>
+          </div>
+        </div>
+
+        <div class='detail-box'>
+          <h4>История статусов / аудит</h4>
+          <div class='ds-table-wrap'><table class='ds-table'><thead><tr><th>Время</th><th>Этап</th><th>Статус</th><th>Комментарий</th></tr></thead><tbody>${checkpointRows || "<tr><td colspan='4'>Нет истории</td></tr>"}</tbody></table></div>
         </div>
       `
+
+      async function updateLead(payload) {
+        await api(`/api/v1/leads/${lead.id}`, { method: "PUT", body: JSON.stringify(payload) })
+        await loadAll()
+        await loadWorkspace(lead.id)
+      }
+
+      document.getElementById("ws-save").onclick = async () => {
+        const payload = {
+          status_code: document.getElementById("ws-status").value,
+          priority_code: document.getElementById("ws-priority").value,
+          assigned_manager_user_id: document.getElementById("ws-manager").value ? Number(document.getElementById("ws-manager").value) : null,
+          next_action: document.getElementById("ws-next-action").value.trim(),
+          manager_comment: document.getElementById("ws-manager-comment").value.trim(),
+        }
+        try {
+          await updateLead(payload)
+          const msg = document.getElementById("ws-msg")
+          msg.className = "ds-msg ok"
+          msg.textContent = "Карточка обновлена"
+        } catch (error) {
+          const msg = document.getElementById("ws-msg")
+          msg.className = "ds-msg err"
+          msg.textContent = `Ошибка сохранения: ${error.message || error}`
+        }
+      }
+
+      document.getElementById("ws-transfer").onclick = () => updateLead({ status_code: "handed_to_manager" })
+      document.getElementById("ws-close").onclick = () => updateLead({ status_code: "closed" })
+      document.getElementById("ws-archive").onclick = () => updateLead({ status_code: "blocked" })
+      document.getElementById("ws-reopen").onclick = () => updateLead({ status_code: "draft" })
+      document.getElementById("ws-escalate").onclick = () => updateLead({ priority_code: "high", hot_flag: true })
     }
 
-    function buildInput(tabId, rowId, field) {
-      const value = rowId === "new" ? (field.defaultValue ?? "") : (field.getValue ? field.getValue(rowId) : "")
-      const safeValue = escapeHtml(value)
-      const attrs = `data-tab='${tabId}' data-row='${rowId}' data-field='${field.key}'`
+    function renderCrudTable(containerId, title, rows, cfg) {
+      const container = document.getElementById(containerId)
 
-      if (field.type === "boolean") {
-        return `<input type='checkbox' ${attrs} ${toBool(value) ? "checked" : ""} />`
+      const makeInput = (rowId, field, value) => {
+        const attrs = `data-row='${rowId}' data-field='${field.key}'`
+        if (field.type === "boolean") {
+          return `<input type='checkbox' ${attrs} ${value ? "checked" : ""} />`
+        }
+        if (field.type === "number") {
+          return `<input type='number' class='ds-input' ${attrs} value='${escapeHtml(value ?? "")}' />`
+        }
+        if (field.type === "textarea") {
+          return `<textarea class='ds-textarea' ${attrs}>${escapeHtml(value ?? "")}</textarea>`
+        }
+        return `<input type='text' class='ds-input' ${attrs} value='${escapeHtml(value ?? "")}' />`
       }
-      if (field.options) {
-        return `<select ${attrs}>${field.options.map(opt => `<option value='${escapeHtml(opt.value)}' ${String(value) === String(opt.value) ? "selected" : ""}>${escapeHtml(opt.label)}</option>`).join("")}</select>`
-      }
-      if (field.type === "textarea") {
-        return `<textarea ${attrs}>${safeValue}</textarea>`
-      }
-      const inputType = field.type === "number" ? "number" : "text"
-      return `<input type='${inputType}' value='${safeValue}' ${attrs} />`
-    }
 
-    function readFieldValue(tabId, rowId, field) {
-      const selector = `[data-tab='${tabId}'][data-row='${rowId}'][data-field='${field.key}']`
-      const el = document.querySelector(selector)
-      if (!el) return undefined
-      if (field.type === "boolean") return !!el.checked
-      if (field.type === "number") {
-        const raw = String(el.value || "").trim()
-        return raw ? Number(raw) : null
-      }
-      return String(el.value || "").trim()
-    }
-
-    function renderCrudTab(tabId, title, rows, cfg) {
-      const rowHtml = rows.map(row => {
-        const rowId = row.id
+      const tableRows = rows.map(row => {
         const cells = cfg.columns.map(field => {
-          const valueGetter = () => row[field.key]
-          const fieldCtx = { ...field, getValue: valueGetter }
-          const content = field.readonly ? escapeHtml(valueGetter()) : buildInput(tabId, rowId, fieldCtx)
+          const raw = row[field.key]
+          const content = field.readonly
+            ? escapeHtml(raw ?? "")
+            : makeInput(row.id, field, raw)
           return `<td>${content}</td>`
         }).join("")
-
-        return `<tr>${cells}<td><button data-save-row='${tabId}:${rowId}'>Сохранить</button></td></tr>`
+        return `<tr>${cells}<td><button class='ds-btn ghost' data-save='${row.id}'>Сохранить</button></td></tr>`
       }).join("")
 
-      const createCells = (cfg.create || []).map(field => `<td>${buildInput(tabId, "new", field)}</td>`).join("")
-      const createFillers = new Array(Math.max(0, cfg.columns.length - (cfg.create || []).length)).fill("<td></td>").join("")
+      const createRow = cfg.create
+        ? `<tr>
+            ${cfg.columns.map(field => `<td>${cfg.create.includes(field.key) ? makeInput("new", field, field.defaultValue ?? "") : ""}</td>`).join("")}
+            <td><button class='ds-btn' id='${containerId}-create'>Создать</button></td>
+          </tr>`
+        : ""
 
-      document.getElementById(`tab-${tabId}`).innerHTML = `
-        <h3 style="margin:0 0 8px">${escapeHtml(title)}</h3>
-        <div class="row">
-          <button id='reload-${tabId}' class='ghost'>Обновить</button>
-          ${cfg.create ? `<button id='create-${tabId}'>Добавить запись</button>` : ""}
-        </div>
-        <div id='msg-${tabId}' class='msg'></div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                ${cfg.columns.map(field => `<th>${escapeHtml(field.label)}</th>`).join("")}
-                <th>Действие</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${cfg.create ? `<tr>${createCells}${createFillers}<td><button data-create='${tabId}'>Создать</button></td></tr>` : ""}
-              ${rowHtml || `<tr><td colspan='${cfg.columns.length + 1}'>Нет данных</td></tr>`}
-            </tbody>
+      container.innerHTML = `
+        <h3 style='margin:0 0 8px'>${escapeHtml(title)}</h3>
+        <div class='ds-table-wrap'>
+          <table class='ds-table'>
+            <thead><tr>${cfg.columns.map(field => `<th>${escapeHtml(field.label)}</th>`).join("")}<th>Действие</th></tr></thead>
+            <tbody>${createRow}${tableRows || `<tr><td colspan='${cfg.columns.length + 1}'>Нет данных</td></tr>`}</tbody>
           </table>
         </div>
+        <div id='${containerId}-msg' class='ds-msg'></div>
       `
 
-      document.getElementById(`reload-${tabId}`).onclick = loadAll
+      function readValue(rowId, field) {
+        const el = container.querySelector(`[data-row='${rowId}'][data-field='${field.key}']`)
+        if (!el) return undefined
+        if (field.type === "boolean") return !!el.checked
+        if (field.type === "number") return el.value.trim() ? Number(el.value) : null
+        return el.value
+      }
 
-      document.querySelectorAll(`button[data-save-row^='${tabId}:']`).forEach(btn => {
+      container.querySelectorAll("button[data-save]").forEach(btn => {
         btn.onclick = async () => {
-          const id = Number(btn.dataset.saveRow.split(":")[1])
+          const id = Number(btn.dataset.save)
           const payload = {}
-          for (const field of cfg.columns.filter(col => !col.readonly && !col.locked)) {
-            const value = readFieldValue(tabId, id, field)
-            if (value !== undefined) payload[field.key] = value
+          for (const field of cfg.columns.filter(item => !item.readonly)) {
+            payload[field.key] = readValue(id, field)
           }
 
           try {
             await api(`${cfg.endpoint}/${id}`, { method: "PUT", body: JSON.stringify(payload) })
-            const msg = document.getElementById(`msg-${tabId}`)
-            msg.className = "msg ok"
-            msg.textContent = "Изменения сохранены"
+            document.getElementById(`${containerId}-msg`).className = "ds-msg ok"
+            document.getElementById(`${containerId}-msg`).textContent = "Изменения сохранены"
             await loadAll()
           } catch (error) {
-            const msg = document.getElementById(`msg-${tabId}`)
-            msg.className = "msg err"
-            msg.textContent = `Ошибка сохранения: ${error.message || error}`
+            document.getElementById(`${containerId}-msg`).className = "ds-msg err"
+            document.getElementById(`${containerId}-msg`).textContent = `Ошибка: ${error.message || error}`
           }
         }
       })
 
       if (cfg.create) {
-        document.querySelector(`button[data-create='${tabId}']`).onclick = async () => {
-          const payload = { ...(cfg.createDefaults || {}) }
-          for (const field of cfg.create) {
-            payload[field.key] = readFieldValue(tabId, "new", field)
-          }
-
-          try {
-            await api(cfg.endpoint, { method: "POST", body: JSON.stringify(payload) })
-            const msg = document.getElementById(`msg-${tabId}`)
-            msg.className = "msg ok"
-            msg.textContent = "Запись создана"
-            await loadAll()
-          } catch (error) {
-            const msg = document.getElementById(`msg-${tabId}`)
-            msg.className = "msg err"
-            msg.textContent = `Ошибка создания: ${error.message || error}`
+        const createBtn = document.getElementById(`${containerId}-create`)
+        if (createBtn) {
+          createBtn.onclick = async () => {
+            const payload = { ...(cfg.createDefaults || {}) }
+            for (const field of cfg.columns.filter(item => cfg.create.includes(item.key))) {
+              payload[field.key] = readValue("new", field)
+            }
+            try {
+              await api(cfg.endpoint, { method: "POST", body: JSON.stringify(payload) })
+              document.getElementById(`${containerId}-msg`).className = "ds-msg ok"
+              document.getElementById(`${containerId}-msg`).textContent = "Запись создана"
+              await loadAll()
+            } catch (error) {
+              document.getElementById(`${containerId}-msg`).className = "ds-msg err"
+              document.getElementById(`${containerId}-msg`).textContent = `Ошибка: ${error.message || error}`
+            }
           }
         }
       }
     }
 
-    function renderChatSessions() {
-      const rows = state.sessions || []
-      const body = rows.map(row => `
-        <tr>
-          <td>${escapeHtml(row.id)}</td>
-          <td>${escapeHtml(row.current_state_code)}</td>
-          <td>${escapeHtml(row.request_type_id || "")}</td>
-          <td>${escapeHtml(row.lead_id || "")}</td>
-          <td>${escapeHtml(row.updated_at || "")}</td>
-          <td><button data-open-session='${row.id}'>Открыть</button></td>
-        </tr>
-      `).join("")
+    function renderReference() {
+      const root = document.getElementById("section-reference")
+      const tabs = [
+        ["commodities", "Культуры"],
+        ["regions", "Регионы"],
+        ["transport", "Транспорт"],
+        ["basis", "Базисы"],
+        ["quality", "Шаблоны качества"],
+        ["price", "Ценовые политики"],
+        ["lots", "Лоты"],
+      ]
 
-      document.getElementById("tab-chat-sessions").innerHTML = `
-        <h3 style="margin:0 0 8px">Чат-сессии</h3>
-        <div class="row"><button id='reload-sessions' class='ghost'>Обновить</button></div>
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th>ID</th><th>Состояние</th><th>Тип запроса</th><th>Лид</th><th>Обновлено</th><th>Детали</th></tr></thead>
-            <tbody>${body || "<tr><td colspan='6'>Нет данных</td></tr>"}</tbody>
-          </table>
+      root.innerHTML = `
+        <h2 style='margin:0 0 8px'>Справочники</h2>
+        <div class='subtabs'>
+          ${tabs.map(tab => `<button class='subtab ${appState.referenceTab === tab[0] ? "active" : ""}' data-ref='${tab[0]}'>${tab[1]}</button>`).join("")}
         </div>
-        <div id='chat-session-detail' style='margin-top:10px' class='muted'>Выберите сессию для просмотра деталей</div>
+        <div id='reference-table'></div>
       `
 
-      document.getElementById("reload-sessions").onclick = loadAll
-      document.querySelectorAll("button[data-open-session]").forEach(btn => {
+      root.querySelectorAll("button[data-ref]").forEach(btn => {
+        btn.onclick = () => {
+          appState.referenceTab = btn.dataset.ref
+          renderReference()
+        }
+      })
+
+      const targetId = "reference-table"
+      if (appState.referenceTab === "commodities") {
+        renderCrudTable(targetId, "Культуры", appState.commodities, {
+          endpoint: "/api/v1/catalog/commodities",
+          columns: [
+            { key: "id", label: "ID", readonly: true },
+            { key: "code", label: "Код" },
+            { key: "name", label: "Название" },
+            { key: "commodity_group", label: "Группа" },
+            { key: "unit_of_measure_default", label: "Ед. изм." },
+            { key: "sort_order", label: "Сорт", type: "number" },
+            { key: "is_active", label: "Активна", type: "boolean" },
+          ],
+          create: ["code", "name", "commodity_group", "unit_of_measure_default", "sort_order", "is_active"],
+        })
+      } else if (appState.referenceTab === "regions") {
+        renderCrudTable(targetId, "Регионы", appState.regions, {
+          endpoint: "/api/v1/catalog/regions",
+          columns: [
+            { key: "id", label: "ID", readonly: true },
+            { key: "code", label: "Код" },
+            { key: "country", label: "Страна" },
+            { key: "region_name", label: "Регион" },
+            { key: "city_name", label: "Город" },
+            { key: "port_name", label: "Порт" },
+            { key: "is_active", label: "Активен", type: "boolean" },
+          ],
+          create: ["code", "country", "region_name", "city_name", "port_name", "is_active"],
+        })
+      } else if (appState.referenceTab === "transport") {
+        renderCrudTable(targetId, "Транспорт", appState.transportModes, {
+          endpoint: "/api/v1/catalog/transport-modes",
+          columns: [
+            { key: "id", label: "ID", readonly: true },
+            { key: "code", label: "Код" },
+            { key: "name", label: "Название" },
+            { key: "description", label: "Описание" },
+            { key: "is_active", label: "Активен", type: "boolean" },
+          ],
+          create: ["code", "name", "description", "is_active"],
+        })
+      } else if (appState.referenceTab === "basis") {
+        renderCrudTable(targetId, "Базисы поставки", appState.deliveryBasis, {
+          endpoint: "/api/v1/catalog/delivery-basis",
+          columns: [
+            { key: "id", label: "ID", readonly: true },
+            { key: "code", label: "Код" },
+            { key: "name", label: "Название" },
+            { key: "description", label: "Описание" },
+            { key: "is_active", label: "Активен", type: "boolean" },
+          ],
+          create: ["code", "name", "description", "is_active"],
+        })
+      } else if (appState.referenceTab === "quality") {
+        const rows = (appState.qualityTemplates || []).map(row => ({
+          ...row,
+          lines_preview: Array.isArray(row.lines) ? row.lines.map(line => `${line.parameter_code || "param"} ${line.operator || ""} ${line.target_value || ""} ${line.unit || ""}`.trim()).join("; ") : "",
+        }))
+        renderCrudTable(targetId, "Шаблоны качества", rows, {
+          endpoint: "/api/v1/catalog/quality-templates",
+          columns: [
+            { key: "id", label: "ID", readonly: true },
+            { key: "code", label: "Код" },
+            { key: "name", label: "Название" },
+            { key: "commodity_id", label: "Товар ID", type: "number" },
+            { key: "description", label: "Описание" },
+            { key: "is_active", label: "Активен", type: "boolean" },
+            { key: "lines_preview", label: "Параметры", readonly: true },
+          ],
+          create: ["code", "name", "commodity_id", "description", "is_active"],
+          createDefaults: { lines: [] },
+        })
+      } else if (appState.referenceTab === "price") {
+        renderCrudTable(targetId, "Ценовые политики", appState.pricePolicies, {
+          endpoint: "/api/v1/catalog/price-policies",
+          columns: [
+            { key: "id", label: "ID", readonly: true },
+            { key: "code", label: "Код" },
+            { key: "name", label: "Название" },
+            { key: "commodity_id", label: "Товар ID", type: "number" },
+            { key: "region_id", label: "Регион ID", type: "number" },
+            { key: "currency_code", label: "Валюта" },
+            { key: "price_formula_text", label: "Формула" },
+            { key: "is_active", label: "Активна", type: "boolean" },
+          ],
+          create: ["code", "name", "commodity_id", "region_id", "currency_code", "price_formula_text", "is_active"],
+        })
+      } else {
+        renderCrudTable(targetId, "Лоты", appState.lots, {
+          endpoint: "/api/v1/catalog/lots",
+          columns: [
+            { key: "id", label: "ID", readonly: true },
+            { key: "commodity_id", label: "Товар ID", type: "number" },
+            { key: "location_region_id", label: "Регион ID", type: "number" },
+            { key: "volume_available", label: "Объем", type: "number" },
+            { key: "unit", label: "Ед. изм." },
+            { key: "availability_status", label: "Статус" },
+            { key: "owner_label", label: "Владелец" },
+            { key: "is_active", label: "Активен", type: "boolean" },
+          ],
+          create: ["commodity_id", "location_region_id", "volume_available", "unit", "availability_status", "owner_label", "is_active"],
+        })
+      }
+    }
+
+    async function saveSetting(settingKey, value, group, description) {
+      const existing = appState.settings.find(item => item.setting_key === settingKey)
+      if (existing) {
+        await api(`/api/v1/admin/settings/${existing.id}`, {
+          method: "PUT",
+          body: JSON.stringify({ setting_value: value, setting_group: group, description }),
+        })
+      } else {
+        await api("/api/v1/admin/settings", {
+          method: "POST",
+          body: JSON.stringify({ setting_key: settingKey, setting_value: value, setting_group: group, description, is_secret: false }),
+        })
+      }
+    }
+
+    function getSettingValue(key, fallback = "") {
+      const item = appState.settings.find(row => row.setting_key === key)
+      return item ? item.setting_value : fallback
+    }
+
+    function renderAssistantConfig() {
+      const root = document.getElementById("section-assistant-config")
+      root.innerHTML = `
+        <h2 style='margin:0 0 8px'>Настройка intake и маршрутизации</h2>
+        <p class='ds-section-sub'>Управление сценариями, примерами сообщений, логикой сбора полей и правилами передачи заявки.</p>
+
+        <div class='detail-box'>
+          <h4>Сценарии на публичной странице</h4>
+          <div class='ds-grid-2'>
+            <input class='ds-input' id='cfg-scenario-sale' value='${escapeHtml(getSettingValue("ui.scenario.sale", "Продать зерно"))}' placeholder='Название сценария продажи' />
+            <input class='ds-input' id='cfg-scenario-buy' value='${escapeHtml(getSettingValue("ui.scenario.buy", "Купить зерно"))}' placeholder='Название сценария покупки' />
+            <input class='ds-input' id='cfg-scenario-log' value='${escapeHtml(getSettingValue("ui.scenario.logistics", "Рассчитать логистику"))}' placeholder='Название сценария логистики' />
+            <input class='ds-input' id='cfg-scenario-availability' value='${escapeHtml(getSettingValue("ui.scenario.availability", "Уточнить наличие"))}' placeholder='Название сценария наличия' />
+            <input class='ds-input' id='cfg-scenario-consult' value='${escapeHtml(getSettingValue("ui.scenario.consultation", "Консультация"))}' placeholder='Название сценария консультации' />
+          </div>
+        </div>
+
+        <div class='detail-box'>
+          <h4>Примеры сообщений</h4>
+          <textarea class='ds-textarea' id='cfg-prompt-sale'>${escapeHtml(getSettingValue("ui.prompt.sale", "Продажа пшеницы 3 класс, 400 тонн, Краснодарский край, контакт +7..."))}</textarea>
+          <textarea class='ds-textarea' id='cfg-prompt-buy'>${escapeHtml(getSettingValue("ui.prompt.buy", "Покупка ячменя 250 тонн, Ростовская область, сроки 10 дней."))}</textarea>
+          <textarea class='ds-textarea' id='cfg-prompt-log'>${escapeHtml(getSettingValue("ui.prompt.logistics", "Логистика из Краснодара в Новороссийск, 300 тонн, нужен расчет."))}</textarea>
+        </div>
+
+        <div class='detail-box'>
+          <h4>Последовательность сбора полей</h4>
+          <div class='muted'>Формат: список полей через запятую.</div>
+          <input class='ds-input' id='cfg-seq-sale' value='${escapeHtml(getSettingValue("intake.sequence.sale", "commodity_id,volume_value,source_region_id,contact_name_or_company,contact_phone_or_telegram_or_email"))}' />
+          <input class='ds-input' id='cfg-seq-buy' value='${escapeHtml(getSettingValue("intake.sequence.buy", "commodity_id,requested_volume_value,destination_region_id_or_port,contact_name_or_company,contact_phone_or_telegram_or_email"))}' />
+          <input class='ds-input' id='cfg-seq-log' value='${escapeHtml(getSettingValue("intake.sequence.logistics", "transport_mode_id,route_from,route_to,volume_value,contact_name_or_company,contact_phone_or_telegram_or_email"))}' />
+        </div>
+
+        <div class='detail-box'>
+          <h4>Правила маршрутизации</h4>
+          <input class='ds-input' id='cfg-route-high-volume' value='${escapeHtml(getSettingValue("routing.rule.high_volume", "volume>=1000 -> priority=high"))}' />
+          <input class='ds-input' id='cfg-route-export' value='${escapeHtml(getSettingValue("routing.rule.export", "export_request -> department=export"))}' />
+          <input class='ds-input' id='cfg-route-hot' value='${escapeHtml(getSettingValue("routing.rule.hot", "urgency=high -> manager_queue=priority"))}' />
+        </div>
+
+        <div class='ds-row'>
+          <button class='ds-btn' id='save-assistant-config'>Сохранить настройки</button>
+        </div>
+        <div id='assistant-config-msg' class='ds-msg'></div>
+      `
+
+      document.getElementById("save-assistant-config").onclick = async () => {
+        const entries = [
+          ["ui.scenario.sale", document.getElementById("cfg-scenario-sale").value, "ui", "Сценарий: продажа"],
+          ["ui.scenario.buy", document.getElementById("cfg-scenario-buy").value, "ui", "Сценарий: покупка"],
+          ["ui.scenario.logistics", document.getElementById("cfg-scenario-log").value, "ui", "Сценарий: логистика"],
+          ["ui.scenario.availability", document.getElementById("cfg-scenario-availability").value, "ui", "Сценарий: наличие"],
+          ["ui.scenario.consultation", document.getElementById("cfg-scenario-consult").value, "ui", "Сценарий: консультация"],
+          ["ui.prompt.sale", document.getElementById("cfg-prompt-sale").value, "ui", "Пример запроса: продажа"],
+          ["ui.prompt.buy", document.getElementById("cfg-prompt-buy").value, "ui", "Пример запроса: покупка"],
+          ["ui.prompt.logistics", document.getElementById("cfg-prompt-log").value, "ui", "Пример запроса: логистика"],
+          ["intake.sequence.sale", document.getElementById("cfg-seq-sale").value, "intake", "Порядок полей: продажа"],
+          ["intake.sequence.buy", document.getElementById("cfg-seq-buy").value, "intake", "Порядок полей: покупка"],
+          ["intake.sequence.logistics", document.getElementById("cfg-seq-log").value, "intake", "Порядок полей: логистика"],
+          ["routing.rule.high_volume", document.getElementById("cfg-route-high-volume").value, "routing", "Правило high volume"],
+          ["routing.rule.export", document.getElementById("cfg-route-export").value, "routing", "Правило экспорта"],
+          ["routing.rule.hot", document.getElementById("cfg-route-hot").value, "routing", "Правило приоритета"],
+        ]
+
+        const msg = document.getElementById("assistant-config-msg")
+        msg.textContent = ""
+        try {
+          for (const [key, value, group, desc] of entries) {
+            await saveSetting(key, String(value || ""), group, desc)
+          }
+          msg.className = "ds-msg ok"
+          msg.textContent = "Настройки сохранены"
+          await loadAll()
+          setActiveSection("assistant-config")
+        } catch (error) {
+          msg.className = "ds-msg err"
+          msg.textContent = `Ошибка сохранения: ${error.message || error}`
+        }
+      }
+    }
+
+    function renderUsers() {
+      const root = document.getElementById("section-users")
+      const rows = appState.users || []
+      root.innerHTML = `
+        <h2 style='margin:0 0 8px'>Пользователи</h2>
+        <div class='ds-table-wrap'><table class='ds-table'><thead><tr><th>ID</th><th>Логин</th><th>ФИО</th><th>Роль</th><th>Активен</th></tr></thead><tbody>
+          ${rows.map(row => `<tr><td>${escapeHtml(row.id)}</td><td>${escapeHtml(row.login)}</td><td>${escapeHtml(row.full_name || "")}</td><td>${escapeHtml(row.role_code || "")}</td><td>${row.is_active ? "Да" : "Нет"}</td></tr>`).join("") || "<tr><td colspan='5'>Нет данных</td></tr>"}
+        </tbody></table></div>
+      `
+    }
+
+    function renderSessions() {
+      const root = document.getElementById("section-sessions")
+      const rows = appState.sessions || []
+      root.innerHTML = `
+        <h2 style='margin:0 0 8px'>Чат-сессии</h2>
+        <div class='ds-table-wrap'><table class='ds-table'><thead><tr><th>ID</th><th>Состояние</th><th>Тип запроса ID</th><th>Лид ID</th><th>Обновлено</th><th>Действие</th></tr></thead><tbody>
+          ${rows.map(row => `<tr><td>${escapeHtml(row.id)}</td><td>${escapeHtml(row.current_state_code || "")}</td><td>${escapeHtml(row.request_type_id || "")}</td><td>${escapeHtml(row.lead_id || "")}</td><td>${escapeHtml(row.updated_at || "")}</td><td><button class='ds-btn ghost' data-open-lead='${row.lead_id || ""}'>Открыть заявку</button></td></tr>`).join("") || "<tr><td colspan='6'>Нет данных</td></tr>"}
+        </tbody></table></div>
+      `
+
+      root.querySelectorAll("button[data-open-lead]").forEach(btn => {
         btn.onclick = async () => {
-          const id = Number(btn.dataset.openSession)
-          const detail = await api(`/api/v1/admin/chat-sessions/${id}`)
-
-          const messages = (detail.messages || []).map(msg =>
-            `<tr><td>${escapeHtml(msg.created_at || "")}</td><td>${escapeHtml(msg.direction || "")}</td><td>${escapeHtml(msg.text || "")}</td></tr>`
-          ).join("")
-
-          const facts = (detail.facts || []).map(fact =>
-            `<tr><td>${escapeHtml(fact.fact_key || "")}</td><td>${escapeHtml(fact.fact_value_text || "")}</td><td>${escapeHtml(fact.confidence || "")}</td></tr>`
-          ).join("")
-
-          const missing = (detail.missing_fields || []).map(item =>
-            `<tr><td>${escapeHtml(item.field_code || "")}</td><td>${item.is_collected ? "Да" : "Нет"}</td><td>${escapeHtml(item.priority_order || "")}</td></tr>`
-          ).join("")
-
-          const checkpoints = (detail.checkpoints || []).map(cp =>
-            `<tr><td>${escapeHtml(cp.created_at || "")}</td><td>${escapeHtml(cp.checkpoint_code || "")}</td><td>${escapeHtml(cp.checkpoint_status || "")}</td><td>${escapeHtml(cp.note || "")}</td></tr>`
-          ).join("")
-
-          document.getElementById("chat-session-detail").innerHTML = `
-            <div class='pill'>Сессия ${escapeHtml(detail.session?.id || id)} · Лид ${escapeHtml(detail.lead?.id || "—")}</div>
-
-            <h4>Сообщения</h4>
-            <div class='table-wrap'><table><thead><tr><th>Время</th><th>Сторона</th><th>Текст</th></tr></thead><tbody>${messages || "<tr><td colspan='3'>Нет сообщений</td></tr>"}</tbody></table></div>
-
-            <h4>Извлеченные факты</h4>
-            <div class='table-wrap'><table><thead><tr><th>Поле</th><th>Значение</th><th>Уверенность</th></tr></thead><tbody>${facts || "<tr><td colspan='3'>Нет фактов</td></tr>"}</tbody></table></div>
-
-            <h4>Недостающие поля</h4>
-            <div class='table-wrap'><table><thead><tr><th>Поле</th><th>Собрано</th><th>Приоритет</th></tr></thead><tbody>${missing || "<tr><td colspan='3'>Нет данных</td></tr>"}</tbody></table></div>
-
-            <h4>Контрольные точки</h4>
-            <div class='table-wrap'><table><thead><tr><th>Время</th><th>Код</th><th>Статус</th><th>Комментарий</th></tr></thead><tbody>${checkpoints || "<tr><td colspan='4'>Нет данных</td></tr>"}</tbody></table></div>
-          `
+          const leadId = Number(btn.dataset.openLead)
+          if (!leadId) return
+          appState.selectedLeadId = leadId
+          await loadWorkspace(leadId)
+          setActiveSection("workspace")
         }
       })
     }
 
-    function renderAllCrudTabs() {
-      renderCrudTab("counterparties", "Контрагенты", state.counterparties, {
-        endpoint: "/api/v1/admin/counterparties",
-        columns: [
-          { key: "id", label: "ID", readonly: true },
-          { key: "counterparty_type_id", label: "Тип ID", type: "number" },
-          { key: "company_name", label: "Компания" },
-          { key: "contact_person", label: "Контакт" },
-          { key: "phone", label: "Телефон" },
-          { key: "email", label: "Email" },
-          { key: "telegram", label: "Telegram" },
-          { key: "updated_at", label: "Обновлено", readonly: true },
-        ],
-        create: [
-          { key: "counterparty_type_id", type: "number", defaultValue: 1 },
-          { key: "company_name", defaultValue: "" },
-          { key: "contact_person", defaultValue: "" },
-          { key: "phone", defaultValue: "" },
-          { key: "email", defaultValue: "" },
-          { key: "telegram", defaultValue: "" },
-        ],
-      })
-
-      renderCrudTab("nomenclature", "Номенклатура", state.commodities, {
-        endpoint: "/api/v1/catalog/commodities",
-        columns: [
-          { key: "id", label: "ID", readonly: true },
-          { key: "code", label: "Код" },
-          { key: "name", label: "Название" },
-          { key: "full_name", label: "Полное название" },
-          { key: "commodity_group", label: "Группа" },
-          { key: "unit_of_measure_default", label: "Ед. изм." },
-          { key: "sort_order", label: "Сортировка", type: "number" },
-          { key: "is_active", label: "Активна", type: "boolean" },
-        ],
-        create: [
-          { key: "code", defaultValue: "" },
-          { key: "name", defaultValue: "" },
-          { key: "full_name", defaultValue: "" },
-          { key: "commodity_group", defaultValue: "grain" },
-          { key: "unit_of_measure_default", defaultValue: "тонна" },
-          { key: "sort_order", type: "number", defaultValue: 100 },
-          { key: "is_active", type: "boolean", defaultValue: true },
-        ],
-      })
-
-      const qualityRows = (state.qualityTemplates || []).map(row => ({
-        ...row,
-        lines_count: Array.isArray(row.lines) ? row.lines.length : 0,
-        lines_preview: Array.isArray(row.lines)
-          ? row.lines.map(line => `${line.parameter_code || "param"} ${line.operator || ""} ${line.target_value || ""} ${line.unit || ""}`.trim()).join("; ")
-          : "",
-      }))
-      renderCrudTab("quality", "Шаблоны качества", qualityRows, {
-        endpoint: "/api/v1/catalog/quality-templates",
-        columns: [
-          { key: "id", label: "ID", readonly: true },
-          { key: "code", label: "Код" },
-          { key: "name", label: "Название" },
-          { key: "commodity_id", label: "Товар ID", type: "number" },
-          { key: "description", label: "Описание" },
-          { key: "is_active", label: "Активен", type: "boolean" },
-          { key: "lines_count", label: "Параметров", readonly: true },
-          { key: "lines_preview", label: "Параметры (только чтение)", readonly: true },
-        ],
-        create: [
-          { key: "code", defaultValue: "" },
-          { key: "name", defaultValue: "" },
-          { key: "commodity_id", type: "number", defaultValue: 1 },
-          { key: "description", defaultValue: "" },
-          { key: "is_active", type: "boolean", defaultValue: true },
-        ],
-        createDefaults: { lines: [] },
-      })
-
-      renderCrudTab("price-policies", "Ценовые политики", state.pricePolicies, {
-        endpoint: "/api/v1/catalog/price-policies",
-        columns: [
-          { key: "id", label: "ID", readonly: true },
-          { key: "code", label: "Код" },
-          { key: "name", label: "Название" },
-          { key: "commodity_id", label: "Товар ID", type: "number" },
-          { key: "delivery_basis_id", label: "Базис ID", type: "number" },
-          { key: "region_id", label: "Регион ID", type: "number" },
-          { key: "currency_code", label: "Валюта" },
-          { key: "price_formula_text", label: "Формула" },
-          { key: "is_active", label: "Активна", type: "boolean" },
-        ],
-        create: [
-          { key: "code", defaultValue: "" },
-          { key: "name", defaultValue: "" },
-          { key: "commodity_id", type: "number", defaultValue: 1 },
-          { key: "delivery_basis_id", type: "number", defaultValue: 1 },
-          { key: "region_id", type: "number", defaultValue: 1 },
-          { key: "currency_code", defaultValue: "RUB" },
-          { key: "price_formula_text", defaultValue: "" },
-          { key: "is_active", type: "boolean", defaultValue: true },
-        ],
-      })
-
-      renderCrudTab("lots", "Лоты и наличие", state.lots, {
-        endpoint: "/api/v1/catalog/lots",
-        columns: [
-          { key: "id", label: "ID", readonly: true },
-          { key: "commodity_id", label: "Товар ID", type: "number" },
-          { key: "location_region_id", label: "Регион ID", type: "number" },
-          { key: "volume_available", label: "Доступный объем", type: "number" },
-          { key: "unit", label: "Ед. изм." },
-          { key: "availability_status", label: "Статус" },
-          { key: "owner_label", label: "Владелец" },
-          { key: "transport_access_text", label: "Логистика" },
-          { key: "is_active", label: "Активен", type: "boolean" },
-        ],
-        create: [
-          { key: "commodity_id", type: "number", defaultValue: 1 },
-          { key: "location_region_id", type: "number", defaultValue: 1 },
-          { key: "volume_available", type: "number", defaultValue: 0 },
-          { key: "unit", defaultValue: "тонна" },
-          { key: "availability_status", defaultValue: "open" },
-          { key: "owner_label", defaultValue: "" },
-          { key: "transport_access_text", defaultValue: "" },
-          { key: "is_active", type: "boolean", defaultValue: true },
-        ],
-      })
-
-      renderCrudTab("regions", "Регионы и порты", state.regions, {
-        endpoint: "/api/v1/catalog/regions",
-        columns: [
-          { key: "id", label: "ID", readonly: true },
-          { key: "code", label: "Код" },
-          { key: "country", label: "Страна" },
-          { key: "region_name", label: "Регион" },
-          { key: "city_name", label: "Город" },
-          { key: "port_name", label: "Порт" },
-          { key: "is_active", label: "Активен", type: "boolean" },
-        ],
-        create: [
-          { key: "code", defaultValue: "" },
-          { key: "country", defaultValue: "Россия" },
-          { key: "region_name", defaultValue: "" },
-          { key: "city_name", defaultValue: "" },
-          { key: "port_name", defaultValue: "" },
-          { key: "is_active", type: "boolean", defaultValue: true },
-        ],
-      })
-
-      renderCrudTab("transport", "Виды транспорта", state.transportModes, {
-        endpoint: "/api/v1/catalog/transport-modes",
-        columns: [
-          { key: "id", label: "ID", readonly: true },
-          { key: "code", label: "Код" },
-          { key: "name", label: "Название" },
-          { key: "description", label: "Описание" },
-          { key: "is_active", label: "Активен", type: "boolean" },
-        ],
-        create: [
-          { key: "code", defaultValue: "" },
-          { key: "name", defaultValue: "" },
-          { key: "description", defaultValue: "" },
-          { key: "is_active", type: "boolean", defaultValue: true },
-        ],
-      })
-
-      renderCrudTab("delivery-basis", "Базисы поставки", state.deliveryBasis, {
-        endpoint: "/api/v1/catalog/delivery-basis",
-        columns: [
-          { key: "id", label: "ID", readonly: true },
-          { key: "code", label: "Код" },
-          { key: "name", label: "Название" },
-          { key: "description", label: "Описание" },
-          { key: "is_active", label: "Активен", type: "boolean" },
-        ],
-        create: [
-          { key: "code", defaultValue: "" },
-          { key: "name", defaultValue: "" },
-          { key: "description", defaultValue: "" },
-          { key: "is_active", type: "boolean", defaultValue: true },
-        ],
-      })
-
-      renderCrudTab("knowledge", "База знаний", state.knowledge, {
-        endpoint: "/api/v1/admin/knowledge",
-        columns: [
-          { key: "id", label: "ID", readonly: true },
-          { key: "code", label: "Код" },
-          { key: "title", label: "Заголовок" },
-          { key: "article_group", label: "Группа" },
-          { key: "short_answer", label: "Короткий ответ" },
-          { key: "content_markdown", label: "Текст", type: "textarea" },
-          { key: "is_active", label: "Активна", type: "boolean" },
-        ],
-        create: [
-          { key: "code", defaultValue: "" },
-          { key: "title", defaultValue: "" },
-          { key: "article_group", defaultValue: "faq" },
-          { key: "short_answer", defaultValue: "" },
-          { key: "content_markdown", type: "textarea", defaultValue: "" },
-          { key: "is_active", type: "boolean", defaultValue: true },
-        ],
-      })
-
-      renderCrudTab("tasks", "Задачи", state.tasks, {
-        endpoint: "/api/v1/admin/tasks",
-        columns: [
-          { key: "id", label: "ID", readonly: true },
-          { key: "lead_id", label: "Лид ID", type: "number" },
-          { key: "task_type", label: "Тип" },
-          { key: "title", label: "Заголовок" },
-          { key: "description", label: "Описание", type: "textarea" },
-          { key: "status", label: "Статус" },
-          { key: "assigned_user_id", label: "Назначен ID", type: "number" },
-        ],
-        create: [
-          { key: "lead_id", type: "number", defaultValue: 1 },
-          { key: "task_type", defaultValue: "follow_up" },
-          { key: "title", defaultValue: "" },
-          { key: "description", type: "textarea", defaultValue: "" },
-          { key: "status", defaultValue: "open" },
-          { key: "assigned_user_id", type: "number", defaultValue: "" },
-        ],
-      })
-
-      renderCrudTab("users", "Пользователи", state.users, {
-        endpoint: "/api/v1/admin/users",
-        columns: [
-          { key: "id", label: "ID", readonly: true },
-          { key: "login", label: "Логин" },
-          { key: "full_name", label: "ФИО" },
-          { key: "role_code", label: "Роль" },
-          { key: "department_id", label: "Отдел ID", type: "number" },
-          { key: "is_active", label: "Активен", type: "boolean" },
-        ],
-        create: [
-          { key: "login", defaultValue: "" },
-          { key: "password", defaultValue: "" },
-          { key: "full_name", defaultValue: "" },
-          { key: "role_code", defaultValue: "manager" },
-          { key: "department_id", type: "number", defaultValue: "" },
-          { key: "is_active", type: "boolean", defaultValue: true },
-        ],
-      })
-
-      renderCrudTab("settings", "Настройки", state.settings, {
-        endpoint: "/api/v1/admin/settings",
-        columns: [
-          { key: "id", label: "ID", readonly: true },
-          { key: "setting_group", label: "Группа" },
-          { key: "setting_key", label: "Ключ", locked: true },
-          { key: "setting_value", label: "Значение" },
-          { key: "description", label: "Описание" },
-          { key: "is_secret", label: "Секрет", type: "boolean", readonly: true },
-        ],
-      })
-
-      renderChatSessions()
-    }
-
     async function loadAll() {
-      const [stats, leads, pipelineResp, counterparties, commodities, qualityTemplates, pricePolicies, lots, regions, transportModes, deliveryBasis, knowledge, sessions, tasks, users, settings] = await Promise.all([
+      const [stats, leads, pipeline, users, sessions, counterparties, commodities, regions, transportModes, deliveryBasis, qualityTemplates, pricePolicies, lots, knowledge, settings] = await Promise.all([
         api("/api/v1/admin/stats"),
         api("/api/v1/leads"),
         api("/api/v1/admin/pipeline"),
+        api("/api/v1/admin/users"),
+        api("/api/v1/admin/chat-sessions"),
         api("/api/v1/admin/counterparties"),
         api("/api/v1/catalog/commodities"),
-        api("/api/v1/catalog/quality-templates"),
-        api("/api/v1/catalog/price-policies"),
-        api("/api/v1/catalog/lots"),
         api("/api/v1/catalog/regions"),
         api("/api/v1/catalog/transport-modes"),
         api("/api/v1/catalog/delivery-basis"),
+        api("/api/v1/catalog/quality-templates"),
+        api("/api/v1/catalog/price-policies"),
+        api("/api/v1/catalog/lots"),
         api("/api/v1/admin/knowledge"),
-        api("/api/v1/admin/chat-sessions"),
-        api("/api/v1/admin/tasks"),
-        api("/api/v1/admin/users"),
         api("/api/v1/admin/settings"),
       ])
 
-      state.stats = stats || {}
-      state.leads = leads || []
-      state.pipeline = pipelineResp?.items || []
-      state.counterparties = counterparties || []
-      state.commodities = commodities || []
-      state.qualityTemplates = qualityTemplates || []
-      state.pricePolicies = pricePolicies || []
-      state.lots = lots || []
-      state.regions = regions || []
-      state.transportModes = transportModes || []
-      state.deliveryBasis = deliveryBasis || []
-      state.knowledge = knowledge || []
-      state.sessions = sessions || []
-      state.tasks = tasks || []
-      state.users = users || []
-      state.settings = settings || []
+      appState.stats = stats || {}
+      appState.leads = leads || []
+      appState.pipeline = pipeline?.items || []
+      appState.users = users || []
+      appState.sessions = sessions || []
+      appState.counterparties = counterparties || []
+      appState.commodities = commodities || []
+      appState.regions = regions || []
+      appState.transportModes = transportModes || []
+      appState.deliveryBasis = deliveryBasis || []
+      appState.qualityTemplates = qualityTemplates || []
+      appState.pricePolicies = pricePolicies || []
+      appState.lots = lots || []
+      appState.knowledge = knowledge || []
+      appState.settings = settings || []
 
       renderDashboard()
-      renderLeads()
-      renderPipeline()
-      renderAllCrudTabs()
+      renderRegistry()
+      renderWorkspace()
+      renderReference()
+      renderAssistantConfig()
+      renderUsers()
+      renderSessions()
     }
 
     document.getElementById("login-btn").onclick = async () => {
       const msg = document.getElementById("login-msg")
       msg.textContent = ""
       try {
-        const payload = await api("/api/v1/admin/login", {
+        const response = await api("/api/v1/admin/login", {
           method: "POST",
           body: JSON.stringify({
             username: document.getElementById("login").value,
@@ -1132,15 +1248,14 @@
           }),
         })
 
-        token = payload.token
-        localStorage.setItem("agrolead_admin_token", token)
-
+        appState.token = response.token
+        localStorage.setItem("agrolead_admin_token", appState.token)
         document.getElementById("login-card").classList.add("hidden")
-        document.getElementById("panel").classList.remove("hidden")
-        renderTabs()
+        document.getElementById("admin-app").classList.remove("hidden")
+        renderNav()
         await loadAll()
       } catch (error) {
-        msg.className = "msg err"
+        msg.className = "ds-msg err"
         msg.textContent = `Ошибка входа: ${error.message || error}`
       }
     }
@@ -1148,15 +1263,15 @@
     ;(async () => {
       const saved = localStorage.getItem("agrolead_admin_token")
       if (!saved) return
-      token = saved
+      appState.token = saved
       try {
         await api("/api/v1/admin/stats")
         document.getElementById("login-card").classList.add("hidden")
-        document.getElementById("panel").classList.remove("hidden")
-        renderTabs()
+        document.getElementById("admin-app").classList.remove("hidden")
+        renderNav()
         await loadAll()
       } catch {
-        token = ""
+        appState.token = ""
         localStorage.removeItem("agrolead_admin_token")
       }
     })()
