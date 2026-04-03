@@ -184,16 +184,22 @@ request_json() {
   local body="$3"
   local extra_header_name="${4:-}"
   local extra_header_value="${5:-}"
+  local insecure="${6:-0}"
+  local curl_opts=(-sS -o "$LAST_RESPONSE_FILE" -w "%{http_code}")
+
+  if [[ "$insecure" == "1" ]]; then
+    curl_opts=(-k "${curl_opts[@]}")
+  fi
 
   LAST_REQUEST_DESC="$description"
   LAST_REQUEST_BODY="$body"
   if [[ -n "$extra_header_name" ]]; then
-    LAST_HTTP_CODE="$(curl -sS -o "$LAST_RESPONSE_FILE" -w "%{http_code}" \
+    LAST_HTTP_CODE="$(curl "${curl_opts[@]}" \
       -H "Content-Type: application/json" \
       -H "$extra_header_name: $extra_header_value" \
       -d "$body" "$url" || true)"
   else
-    LAST_HTTP_CODE="$(curl -sS -o "$LAST_RESPONSE_FILE" -w "%{http_code}" \
+    LAST_HTTP_CODE="$(curl "${curl_opts[@]}" \
       -H "Content-Type: application/json" \
       -d "$body" "$url" || true)"
   fi
@@ -204,13 +210,19 @@ request_get() {
   local url="$2"
   local extra_header_name="${3:-}"
   local extra_header_value="${4:-}"
+  local insecure="${5:-0}"
+  local curl_opts=(-sS -o "$LAST_RESPONSE_FILE" -w "%{http_code}")
+
+  if [[ "$insecure" == "1" ]]; then
+    curl_opts=(-k "${curl_opts[@]}")
+  fi
 
   LAST_REQUEST_DESC="$description"
   LAST_REQUEST_BODY="(GET)"
   if [[ -n "$extra_header_name" ]]; then
-    LAST_HTTP_CODE="$(curl -sS -o "$LAST_RESPONSE_FILE" -w "%{http_code}" -H "$extra_header_name: $extra_header_value" "$url" || true)"
+    LAST_HTTP_CODE="$(curl "${curl_opts[@]}" -H "$extra_header_name: $extra_header_value" "$url" || true)"
   else
-    LAST_HTTP_CODE="$(curl -sS -o "$LAST_RESPONSE_FILE" -w "%{http_code}" "$url" || true)"
+    LAST_HTTP_CODE="$(curl "${curl_opts[@]}" "$url" || true)"
   fi
 }
 
@@ -349,7 +361,7 @@ HTTP_CODE_HTTPS="$(curl -k -sS -o /dev/null -w "%{http_code}" "$WEB_BASE_HTTPS/"
 ok "Web UI redirect + HTTPS ok"
 
 step "Smoke: webui design-system asset"
-request_get "GET /assets/design-system.css" "$WEB_BASE_HTTPS/assets/design-system.css"
+request_get "GET /assets/design-system.css" "$WEB_BASE_HTTPS/assets/design-system.css" "" "" "1"
 [[ "$LAST_HTTP_CODE" == "200" ]] || die "design-system.css недоступен"
 CSS_CONTENT="$(cat "$LAST_RESPONSE_FILE")"
 "$PYTHON_BIN" - "$CSS_CONTENT" <<'PY'
