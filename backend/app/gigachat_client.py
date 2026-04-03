@@ -37,6 +37,10 @@ class GigaChatClient:
         self.verify_ssl = _env_bool("GIGACHAT_VERIFY_SSL", True)
         self.ca_file = os.getenv("GIGACHAT_CA_FILE", "").strip()
         self.insecure_ssl_fallback = _env_bool("GIGACHAT_INSECURE_SSL_FALLBACK", True)
+        self.token_refresh_margin_seconds = max(
+            30,
+            min(int(os.getenv("GIGACHAT_TOKEN_REFRESH_MARGIN_SECONDS", "120")), 600),
+        )
 
         timeout_seconds = max(1.0, min(float(timeout_seconds), 5.0))
         timeout = httpx.Timeout(timeout_seconds, connect=min(timeout_seconds, 3.0))
@@ -77,29 +81,43 @@ class GigaChatClient:
     def _token_valid(self) -> bool:
         if not self._access_token:
             return False
-        return datetime.now(timezone.utc) + timedelta(seconds=30) < self._expires_at
+        return datetime.now(timezone.utc) + timedelta(seconds=self.token_refresh_margin_seconds) < self._expires_at
 
     def _resolve_expiry(self, payload: dict[str, Any]) -> datetime:
         now = datetime.now(timezone.utc)
+        hard_cap = now + timedelta(minutes=30)
+        resolved: datetime | None = None
 
         expires_in = payload.get("expires_in")
         if isinstance(expires_in, (int, float)) and expires_in > 0:
-            return now + timedelta(seconds=float(expires_in))
+            resolved = now + timedelta(seconds=float(expires_in))
 
         expires_at = payload.get("expires_at")
-        if isinstance(expires_at, (int, float)) and expires_at > 0:
-            if expires_at > 1_000_000_000_000:
-                return datetime.fromtimestamp(expires_at / 1000, tz=timezone.utc)
-            return datetime.fromtimestamp(expires_at, tz=timezone.utc)
+        if resolved is None:
+            if isinstance(expires_at, (int, float)) and expires_at > 0:
+                if expires_at > 1_000_000_000_000:
+                    resolved = datetime.fromtimestamp(expires_at / 1000, tz=timezone.utc)
+                else:
+                    resolved = datetime.fromtimestamp(expires_at, tz=timezone.utc)
+            elif isinstance(expires_at, str) and expires_at:
+                try:
+                    fixed = expires_at.replace("Z", "+00:00")
+                    resolved = datetime.fromisoformat(fixed).astimezone(timezone.utc)
+                except ValueError:
+                    resolved = None
 
-        if isinstance(expires_at, str) and expires_at:
-            try:
-                fixed = expires_at.replace("Z", "+00:00")
-                return datetime.fromisoformat(fixed).astimezone(timezone.utc)
-            except ValueError:
-                pass
+        if resolved is None:
+            resolved = hard_cap
 
-        return now + timedelta(minutes=30)
+        # У токена GigaChat фактический TTL ~30 минут, не держим дольше.
+        if resolved > hard_cap:
+            resolved = hard_cap
+
+        min_valid_until = now + timedelta(seconds=30)
+        if resolved < min_valid_until:
+            resolved = min_valid_until
+
+        return resolved
 
     async def _refresh_token(self) -> str:
         if not self.auth_key:

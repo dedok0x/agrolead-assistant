@@ -1,6 +1,6 @@
 import hashlib
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from sqlmodel import Session, select
 
@@ -29,6 +29,10 @@ from .models import (
 
 def _hash_password(raw: str) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 def _upsert_by_code(session: Session, model, code: str, payload: dict) -> None:
@@ -65,7 +69,7 @@ def _ensure_reference_catalogs(session: Session) -> None:
                 "unit_of_measure_default": "тонна",
                 "is_active": True,
                 "sort_order": sort_order,
-                "updated_at": datetime.utcnow(),
+                "updated_at": _now(),
             },
         )
 
@@ -287,7 +291,7 @@ def _ensure_admin_user(session: Session) -> None:
         existing.full_name = "Системный администратор"
         existing.role_code = "admin"
         existing.is_active = True
-        existing.updated_at = datetime.utcnow()
+        existing.updated_at = _now()
         session.add(existing)
         return
 
@@ -410,8 +414,8 @@ def _ensure_price_policies(session: Session) -> None:
             pricing_rule_text="Индикатив рассчитывается от базиса, качества и логистического плеча. Фиксация через менеджера.",
             manager_note="Для экспортных партий учитывать окно погрузки и судовую линию.",
             is_active=True,
-            valid_from=datetime.utcnow(),
-            valid_to=datetime.utcnow() + timedelta(days=365),
+            valid_from=_now(),
+            valid_to=_now() + timedelta(days=365),
         )
     )
 
@@ -517,7 +521,7 @@ def _ensure_knowledge(session: Session) -> None:
                 short_answer=short_answer,
                 is_active=True,
                 sort_order=sort_order,
-                updated_at=datetime.utcnow(),
+                updated_at=_now(),
             )
         )
 

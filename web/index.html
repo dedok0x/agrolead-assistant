@@ -3,153 +3,728 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Петрохлеб-Кубань — ассистент заявок</title>
+  <title>Петрохлеб-Кубань — корпоративный B2B ассистент</title>
   <style>
-    :root { --bg:#f5f7f3; --card:#fff; --ink:#1f2a22; --line:#d7dfd2; --brand:#2f5c30; }
-    * { box-sizing:border-box; }
-    body { margin:0; font-family:"Segoe UI", Tahoma, sans-serif; background:var(--bg); color:var(--ink); }
-    .wrap { max-width:1280px; margin:0 auto; padding:14px; }
-    .top { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; margin-bottom:10px; }
-    .title { font-size:22px; font-weight:700; }
-    .sub { color:#5f6b62; font-size:13px; margin-top:4px; }
-    .layout { display:grid; grid-template-columns:320px 1fr; gap:10px; }
-    .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px; }
-    .chips { display:flex; gap:6px; flex-wrap:wrap; }
-    .chip { border:1px solid #c4d0be; background:#eef4ea; border-radius:999px; padding:6px 10px; cursor:pointer; font-size:12px; }
-    .stream { border:1px solid #e2e8de; border-radius:10px; min-height:56vh; max-height:56vh; overflow:auto; padding:10px; background:#fcfdfb; }
-    .msg { max-width:86%; padding:9px 11px; border-radius:9px; margin-bottom:8px; white-space:pre-wrap; font-size:14px; line-height:1.45; }
-    .msg.in { margin-left:auto; background:#eaf1e5; border:1px solid #d1ddc9; }
-    .msg.out { margin-right:auto; background:#fff; border:1px solid #dee5da; }
-    .composer { display:grid; grid-template-columns:1fr auto auto; gap:8px; margin-top:8px; }
-    textarea { width:100%; min-height:82px; border:1px solid #cfd8c9; border-radius:8px; padding:8px; font:inherit; }
-    button { border:1px solid var(--brand); background:var(--brand); color:#fff; border-radius:8px; padding:0 12px; cursor:pointer; }
-    button.ghost { background:#fff; color:var(--brand); }
-    .status { color:#5f6b62; font-size:12px; margin-bottom:8px; }
-    @media (max-width: 980px) { .layout { grid-template-columns:1fr; } }
+    @import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Merriweather:wght@700;900&display=swap");
+
+    :root {
+      --bg: #f4f7fb;
+      --surface: #ffffff;
+      --surface-soft: #f8fafd;
+      --brand-900: #123a63;
+      --brand-800: #1e4e79;
+      --brand-700: #2f6fa3;
+      --gold-700: #c79a3b;
+      --gold-500: #d9b56b;
+      --text: #2b2f33;
+      --muted: #4f5a67;
+      --line: #d9dee5;
+      --ok: #2e7d58;
+      --danger: #b23c36;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      color: var(--text);
+      background:
+        radial-gradient(1200px 520px at 10% -10%, #e8eef6 0%, transparent 70%),
+        radial-gradient(1100px 500px at 90% 0%, #edf3fa 0%, transparent 68%),
+        var(--bg);
+      font-family: "IBM Plex Sans", "Trebuchet MS", Verdana, sans-serif;
+      line-height: 1.45;
+    }
+
+    .shell {
+      max-width: 1320px;
+      margin: 0 auto;
+      padding: 18px 16px 28px;
+    }
+
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 12px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--brand-900);
+      font-weight: 700;
+      letter-spacing: 0.2px;
+    }
+
+    .brand-mark {
+      width: 34px;
+      height: 34px;
+      border-radius: 8px;
+      background: linear-gradient(145deg, var(--brand-900), var(--brand-700));
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.3);
+      position: relative;
+    }
+
+    .brand-mark::after {
+      content: "";
+      position: absolute;
+      inset: 8px;
+      border-radius: 5px;
+      border: 2px solid rgba(217, 181, 107, 0.9);
+    }
+
+    .hero {
+      position: relative;
+      overflow: hidden;
+      border-radius: 16px;
+      margin-bottom: 14px;
+      min-height: 270px;
+      border: 1px solid #cdd7e2;
+      background:
+        linear-gradient(112deg, rgba(18, 58, 99, 0.92) 0%, rgba(30, 78, 121, 0.82) 55%, rgba(47, 111, 163, 0.74) 100%),
+        url("https://images.unsplash.com/photo-1625246333195-78d9c38ad449?auto=format&fit=crop&w=1920&q=80") center/cover;
+      color: #fff;
+      display: grid;
+      grid-template-columns: 1.35fr 1fr;
+      gap: 20px;
+      padding: 24px;
+    }
+
+    .hero h1 {
+      margin: 0 0 10px;
+      font-family: "Merriweather", "Times New Roman", serif;
+      font-size: 35px;
+      line-height: 1.2;
+      letter-spacing: 0.2px;
+      max-width: 760px;
+    }
+
+    .hero p {
+      margin: 0;
+      color: #e6edf6;
+      max-width: 760px;
+      font-size: 15px;
+    }
+
+    .hero-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+      margin-top: 14px;
+    }
+
+    .hero-tag {
+      border: 1px solid rgba(217, 181, 107, 0.6);
+      color: #ffefcc;
+      background: rgba(16, 36, 58, 0.35);
+      border-radius: 999px;
+      font-size: 12px;
+      padding: 5px 10px;
+    }
+
+    .hero-kpis {
+      align-self: end;
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+    }
+
+    .kpi {
+      border: 1px solid rgba(217, 181, 107, 0.42);
+      border-radius: 12px;
+      background: rgba(8, 26, 45, 0.42);
+      backdrop-filter: blur(2px);
+      padding: 10px;
+    }
+
+    .kpi b {
+      display: block;
+      font-size: 21px;
+      margin-bottom: 2px;
+      color: #ffe5a7;
+      font-family: "Merriweather", "Times New Roman", serif;
+    }
+
+    .kpi span {
+      font-size: 12px;
+      color: #e3edf8;
+    }
+
+    .workspace {
+      display: grid;
+      grid-template-columns: 360px 1fr;
+      gap: 14px;
+      align-items: start;
+    }
+
+    .panel,
+    .chatbox {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      box-shadow: 0 14px 30px rgba(14, 31, 49, 0.08);
+    }
+
+    .panel {
+      padding: 14px;
+    }
+
+    .panel h3 {
+      margin: 0 0 8px;
+      color: var(--brand-900);
+      font-size: 17px;
+    }
+
+    .muted {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+      margin-top: 8px;
+      margin-bottom: 14px;
+    }
+
+    .chip {
+      border: 1px solid #c3cfdd;
+      border-radius: 999px;
+      padding: 7px 11px;
+      font-size: 12px;
+      cursor: pointer;
+      color: var(--brand-900);
+      background: linear-gradient(180deg, #f9fbff 0%, #edf4fb 100%);
+      transition: all 0.2s ease;
+    }
+
+    .chip:hover {
+      border-color: #9eb4cc;
+      background: #eaf2fc;
+    }
+
+    .photo-grid {
+      margin-top: 6px;
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+    }
+
+    .photo {
+      min-height: 96px;
+      border-radius: 10px;
+      border: 1px solid #d3dbe5;
+      background-size: cover;
+      background-position: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .photo::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(0deg, rgba(16, 28, 43, 0.58), rgba(16, 28, 43, 0.05));
+    }
+
+    .photo span {
+      position: absolute;
+      left: 8px;
+      bottom: 8px;
+      font-size: 12px;
+      color: #f5fbff;
+      z-index: 1;
+    }
+
+    .chatbox {
+      padding: 12px;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      gap: 10px;
+      min-height: 620px;
+    }
+
+    .chat-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 8px;
+    }
+
+    .chat-title {
+      margin: 0;
+      font-size: 17px;
+      color: var(--brand-900);
+      font-weight: 700;
+    }
+
+    .status {
+      font-size: 12px;
+      color: var(--muted);
+      background: #f4f7fb;
+      border: 1px solid #d8e0eb;
+      border-radius: 999px;
+      padding: 5px 10px;
+      white-space: nowrap;
+    }
+
+    .status.bad {
+      color: var(--danger);
+      border-color: #e7c2bf;
+      background: #fff3f2;
+    }
+
+    .status.busy {
+      color: #8a6a22;
+      border-color: #e8d6ad;
+      background: #fff8e8;
+    }
+
+    .stream {
+      background: linear-gradient(180deg, #fbfdff 0%, #f7faff 100%);
+      border: 1px solid #dde5ef;
+      border-radius: 12px;
+      padding: 12px;
+      overflow: auto;
+      min-height: 380px;
+      max-height: calc(100vh - 420px);
+    }
+
+    .msg {
+      width: fit-content;
+      max-width: min(86%, 760px);
+      margin-bottom: 10px;
+      border-radius: 12px;
+      padding: 10px 12px;
+      white-space: pre-wrap;
+      font-size: 14px;
+      line-height: 1.5;
+      border: 1px solid transparent;
+      animation: reveal 180ms ease-out;
+    }
+
+    .msg.in {
+      margin-left: auto;
+      background: #e8eff7;
+      border-color: #c8d5e4;
+      color: #1f3b58;
+    }
+
+    .msg.out {
+      margin-right: auto;
+      background: #ffffff;
+      border-color: #d7dfe9;
+    }
+
+    .msg.out.loading {
+      color: #6f7b88;
+      min-width: 164px;
+    }
+
+    .loading-row {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .loading-dots {
+      display: inline-flex;
+      gap: 4px;
+    }
+
+    .loading-dots span {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--brand-700);
+      opacity: 0.25;
+      animation: dot 1s infinite;
+    }
+
+    .loading-dots span:nth-child(2) { animation-delay: 0.16s; }
+    .loading-dots span:nth-child(3) { animation-delay: 0.32s; }
+
+    .composer {
+      display: grid;
+      grid-template-columns: 1fr auto auto;
+      gap: 8px;
+      align-items: stretch;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 88px;
+      max-height: 180px;
+      resize: vertical;
+      border-radius: 10px;
+      border: 1px solid #ccd7e4;
+      padding: 10px;
+      font: inherit;
+      color: var(--text);
+      background: #fff;
+      outline: none;
+    }
+
+    textarea:focus {
+      border-color: #8eaccc;
+      box-shadow: 0 0 0 3px rgba(47, 111, 163, 0.15);
+    }
+
+    button {
+      border: 1px solid var(--brand-900);
+      border-radius: 10px;
+      padding: 0 14px;
+      font: inherit;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      background: linear-gradient(180deg, var(--brand-800) 0%, var(--brand-900) 100%);
+      color: #fff;
+    }
+
+    button:hover {
+      filter: brightness(1.05);
+    }
+
+    button:disabled {
+      opacity: 0.7;
+      cursor: not-allowed;
+    }
+
+    .ghost {
+      background: #fff;
+      color: var(--brand-900);
+      border-color: #becbd9;
+    }
+
+    @keyframes dot {
+      0%, 80%, 100% { opacity: 0.22; transform: translateY(0); }
+      40% { opacity: 1; transform: translateY(-3px); }
+    }
+
+    @keyframes reveal {
+      from { opacity: 0; transform: translateY(4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @media (max-width: 1100px) {
+      .hero {
+        grid-template-columns: 1fr;
+        min-height: 0;
+      }
+      .hero h1 { font-size: 29px; }
+      .workspace { grid-template-columns: 1fr; }
+      .chatbox { min-height: 560px; }
+    }
+
+    @media (max-width: 760px) {
+      .shell { padding: 10px; }
+      .topbar { flex-direction: column; align-items: flex-start; gap: 6px; }
+      .hero { padding: 16px; border-radius: 12px; }
+      .hero h1 { font-size: 24px; }
+      .hero p { font-size: 14px; }
+      .hero-kpis { grid-template-columns: 1fr 1fr; }
+      .panel,
+      .chatbox { border-radius: 12px; }
+      .photo-grid { grid-template-columns: 1fr 1fr; }
+      .composer { grid-template-columns: 1fr 1fr; }
+      .composer textarea { grid-column: 1 / -1; }
+      .stream { max-height: 56vh; }
+      .msg { max-width: 94%; }
+    }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <div class="top">
-      <div class="title">Петрохлеб-Кубань</div>
-      <div class="sub">B2B ассистент: закупка, продажа, логистика, хранение, экспорт</div>
+  <div class="shell">
+    <div class="topbar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span>ПЕТРОХЛЕБ-КУБАНЬ · B2B ЗЕРНОВОЙ ТРЕЙДИНГ И ЛОГИСТИКА</span>
+      </div>
+      <div>Экспорт, внутрироссийские поставки, портовая и железнодорожная логистика</div>
     </div>
 
-    <div class="layout">
-      <aside class="card">
-        <h3 style="margin-top:0">О компании</h3>
-        <div id="company" style="font-size:13px;color:#49564d"></div>
-        <h4>Быстрые темы</h4>
+    <section class="hero">
+      <div>
+        <h1>Надежный контур для закупки, продажи и логистики зерновых партий</h1>
+        <p>Цифровой ассистент фиксирует параметры заявки, структурирует коммерческие данные и сразу передает квалифицированный лид в операционный контур.</p>
+        <div class="hero-tags">
+          <span class="hero-tag">Закупка у поставщиков</span>
+          <span class="hero-tag">Продажа покупателям</span>
+          <span class="hero-tag">Ж/д и авто логистика</span>
+          <span class="hero-tag">Экспортные отгрузки</span>
+        </div>
+      </div>
+      <div class="hero-kpis">
+        <div class="kpi"><b>24/7</b><span>Прием заявок и первичная квалификация</span></div>
+        <div class="kpi"><b>SQL</b><span>Структурированное хранение диалогов и лидов</span></div>
+        <div class="kpi"><b>RU</b><span>Деловой русскоязычный интерфейс</span></div>
+        <div class="kpi"><b>Fast</b><span>Оперативная передача менеджеру</span></div>
+      </div>
+    </section>
+
+    <main class="workspace">
+      <aside class="panel">
+        <h3>Профиль компании</h3>
+        <div id="company" class="muted">Загрузка данных...</div>
+
+        <h3>Темы запроса</h3>
         <div class="chips" id="request-types"></div>
-        <h4>Культуры</h4>
+
+        <h3>Культуры</h3>
         <div class="chips" id="commodities"></div>
+
+        <div class="photo-grid">
+          <div class="photo" style="background-image:url('https://images.unsplash.com/photo-1437252611977-07f74518abd7?auto=format&fit=crop&w=900&q=80')"><span>Полевой блок</span></div>
+          <div class="photo" style="background-image:url('https://images.unsplash.com/photo-1559027615-cd4628902d4a?auto=format&fit=crop&w=900&q=80')"><span>Элеватор</span></div>
+          <div class="photo" style="background-image:url('https://images.unsplash.com/photo-1489515217757-5fd1be406fef?auto=format&fit=crop&w=900&q=80')"><span>Вагонные партии</span></div>
+          <div class="photo" style="background-image:url('https://images.unsplash.com/photo-1578574577315-3fbeb0cecdc2?auto=format&fit=crop&w=900&q=80')"><span>Порт и флот</span></div>
+        </div>
       </aside>
 
-      <section class="card">
-        <div class="status" id="status">Готов к диалогу</div>
-        <div class="stream" id="stream"></div>
+      <section class="chatbox">
+        <div class="chat-head">
+          <h2 class="chat-title">Корпоративный ассистент по сделкам</h2>
+          <div class="status" id="status">Готов к диалогу</div>
+        </div>
+
+        <div class="stream" id="stream" aria-live="polite"></div>
+
         <div class="composer">
-          <textarea id="text" placeholder="Опишите задачу: что продаете/покупаете, объем, регион, логистику, сроки и контакт"></textarea>
+          <textarea id="text" placeholder="Опишите запрос: культура, объем, регион, маршрут, базис поставки, сроки и контакт"></textarea>
           <button id="send">Отправить</button>
           <button id="clear" class="ghost">Очистить</button>
         </div>
       </section>
-    </div>
+    </main>
   </div>
 
   <script>
     let sessionId = null
-    const stream = document.getElementById("stream")
-    const statusEl = document.getElementById("status")
+    let busy = false
 
-    function add(text, direction) {
-      const el = document.createElement("div")
-      el.className = `msg ${direction}`
-      el.textContent = text
-      stream.appendChild(el)
-      stream.scrollTop = stream.scrollHeight
+    const streamEl = document.getElementById("stream")
+    const statusEl = document.getElementById("status")
+    const textEl = document.getElementById("text")
+    const sendBtn = document.getElementById("send")
+    const clearBtn = document.getElementById("clear")
+
+    function setStatus(text, mode = "normal") {
+      statusEl.textContent = text
+      statusEl.classList.remove("bad", "busy")
+      if (mode === "bad") statusEl.classList.add("bad")
+      if (mode === "busy") statusEl.classList.add("busy")
     }
 
-    function setStatus(text, bad = false) {
-      statusEl.textContent = text
-      statusEl.style.color = bad ? "#b01919" : "#5f6b62"
+    function setBusy(flag) {
+      busy = flag
+      sendBtn.disabled = flag
+      clearBtn.disabled = flag
+      textEl.disabled = flag
+    }
+
+    function scrollToBottom() {
+      streamEl.scrollTop = streamEl.scrollHeight
+    }
+
+    function createMessage(direction, text = "", loading = false) {
+      const box = document.createElement("article")
+      box.className = `msg ${direction}${loading ? " loading" : ""}`
+
+      const content = document.createElement("div")
+      if (loading) {
+        content.className = "loading-row"
+        content.innerHTML = "<span>Формируем ответ</span><span class='loading-dots'><span></span><span></span><span></span></span>"
+      } else {
+        content.textContent = text
+      }
+
+      box.appendChild(content)
+      streamEl.appendChild(box)
+      scrollToBottom()
+      return { box, content }
+    }
+
+    async function typeText(contentEl, text, delayMs = 11) {
+      contentEl.textContent = ""
+      for (const ch of text) {
+        contentEl.textContent += ch
+        scrollToBottom()
+        await new Promise(resolve => setTimeout(resolve, delayMs))
+      }
+    }
+
+    function parseNdjsonChunk(buffer, onLine) {
+      let idx = buffer.indexOf("\n")
+      while (idx >= 0) {
+        const line = buffer.slice(0, idx).trim()
+        buffer = buffer.slice(idx + 1)
+        if (line) onLine(line)
+        idx = buffer.indexOf("\n")
+      }
+      return buffer
     }
 
     async function bootstrap() {
       try {
         const res = await fetch("/api/public/bootstrap")
         const data = await res.json()
-        document.getElementById("company").textContent = `${data.company?.name || ""}. ${data.company?.services || ""}`
+        document.getElementById("company").textContent = `${data.company?.name || "Петрохлеб-Кубань"}. ${data.company?.services || "Закупка, продажа, логистика и экспорт зерновых."}`
 
-        const reqWrap = document.getElementById("request-types")
+        const requestWrap = document.getElementById("request-types")
         ;(data.request_types || []).forEach(item => {
-          const b = document.createElement("button")
-          b.className = "chip"
-          b.textContent = item.name
-          b.onclick = () => {
-            document.getElementById("text").value = `Нужна консультация: ${item.name}`
-            document.getElementById("text").focus()
+          const btn = document.createElement("button")
+          btn.className = "chip"
+          btn.textContent = item.name
+          btn.onclick = () => {
+            textEl.value = `Нужна консультация по направлению: ${item.name}. Объем 300 тонн, регион Краснодар.`
+            textEl.focus()
           }
-          reqWrap.appendChild(b)
+          requestWrap.appendChild(btn)
         })
 
-        const comWrap = document.getElementById("commodities")
+        const commoditiesWrap = document.getElementById("commodities")
         ;(data.commodities || []).forEach(item => {
-          const b = document.createElement("button")
-          b.className = "chip"
-          b.textContent = item.name
-          b.onclick = () => {
-            document.getElementById("text").value = `Интересует ${item.name}, объем 200 тонн, регион Краснодар.`
-            document.getElementById("text").focus()
+          const btn = document.createElement("button")
+          btn.className = "chip"
+          btn.textContent = item.name
+          btn.onclick = () => {
+            textEl.value = `Интересует ${item.name}, объем 200 тонн, Краснодар, контакт +79000000000.`
+            textEl.focus()
           }
-          comWrap.appendChild(b)
+          commoditiesWrap.appendChild(btn)
         })
       } catch {
-        document.getElementById("company").textContent = "Справка временно недоступна."
+        document.getElementById("company").textContent = "Данные компании временно недоступны."
       }
     }
 
-    async function send() {
-      const textEl = document.getElementById("text")
+    async function sendMessage() {
+      if (busy) return
+
       const text = textEl.value.trim()
       if (!text) return
-      add(text, "in")
+
+      createMessage("in", text)
       textEl.value = ""
-      setStatus("Обработка сообщения...")
+      setBusy(true)
+      setStatus("Ожидание ответа сервера", "busy")
+
+      const loadingMsg = createMessage("out", "", true)
+      let responseMeta = {}
+      let fullReply = ""
+      let started = false
 
       try {
-        const res = await fetch("/api/v1/chat", {
+        const res = await fetch("/api/chat/stream", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text, session_id: sessionId, client_id: "web-user", source_channel: "web_widget" }),
+          body: JSON.stringify({
+            text,
+            session_id: sessionId,
+            client_id: "web-user",
+            source_channel: "web_widget",
+          }),
         })
-        const payload = await res.json()
-        if (!res.ok) throw new Error(payload.detail || `HTTP ${res.status}`)
-        sessionId = payload.session_id || sessionId
-        add(payload.text || "Ответ пуст", "out")
-        setStatus(`Готово · ${payload.provider || "engine"} · ${payload.status || "draft"}`)
-      } catch (e) {
-        add(`Ошибка: ${e.message || e}`, "out")
-        setStatus("Сбой запроса", true)
+
+        if (!res.ok) {
+          const body = await res.text()
+          throw new Error(body || `HTTP ${res.status}`)
+        }
+
+        if (!res.body) {
+          throw new Error("Пустой поток ответа")
+        }
+
+        const reader = res.body.getReader()
+        const decoder = new TextDecoder("utf-8")
+        let buffer = ""
+
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          buffer += decoder.decode(value, { stream: true })
+          buffer = parseNdjsonChunk(buffer, line => {
+            const event = JSON.parse(line)
+
+            if (event.done) {
+              responseMeta = event
+              if (typeof event.token === "string" && event.token.length > fullReply.length) {
+                fullReply = event.token
+                if (!started) {
+                  loadingMsg.box.classList.remove("loading")
+                  loadingMsg.content.textContent = fullReply
+                  started = true
+                }
+              }
+              return
+            }
+
+            const token = typeof event.token === "string" ? event.token : ""
+            if (!token) return
+
+            if (!started) {
+              loadingMsg.box.classList.remove("loading")
+              loadingMsg.content.textContent = ""
+              started = true
+            }
+
+            fullReply += token
+            loadingMsg.content.textContent = fullReply
+            scrollToBottom()
+          })
+        }
+
+        if (!started) {
+          loadingMsg.box.classList.remove("loading")
+          const finalText = fullReply || responseMeta.token || "Ответ получен, но текст пуст."
+          await typeText(loadingMsg.content, finalText)
+          fullReply = finalText
+        }
+
+        sessionId = responseMeta.session_id || sessionId
+        const provider = responseMeta.provider || "engine"
+        const status = responseMeta.status || "draft"
+        setStatus(`Готово · ${provider} · ${status}`)
+      } catch (error) {
+        loadingMsg.box.classList.remove("loading")
+        loadingMsg.content.textContent = `Ошибка: ${error.message || error}`
+        setStatus("Сбой обработки запроса", "bad")
+      } finally {
+        setBusy(false)
+        textEl.focus()
       }
     }
 
-    document.getElementById("send").onclick = send
-    document.getElementById("clear").onclick = () => {
+    sendBtn.onclick = sendMessage
+
+    clearBtn.onclick = () => {
       sessionId = null
-      stream.innerHTML = ""
+      streamEl.innerHTML = ""
       setStatus("Диалог очищен")
+      textEl.focus()
     }
-    document.getElementById("text").addEventListener("keydown", e => {
-      if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault()
-        send()
+
+    textEl.addEventListener("keydown", event => {
+      if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault()
+        sendMessage()
       }
     })
 
     ;(async () => {
       await bootstrap()
-      add("Добрый день. Зафиксирую заявку по зерну и логистике, чтобы менеджер быстро вышел с условиями.", "out")
+      createMessage("out", "Добрый день. Зафиксирую параметры сделки по зерну и логистике, чтобы менеджер вышел с коммерческим предложением.")
     })()
   </script>
 </body>

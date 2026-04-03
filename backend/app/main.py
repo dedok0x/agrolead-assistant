@@ -1,8 +1,9 @@
+import asyncio
 import hashlib
 import json
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
@@ -87,7 +88,7 @@ class ChatDryRunIn(BaseModel):
 
 
 def _now() -> datetime:
-    return datetime.utcnow()
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 def _hash_password(raw: str) -> str:
@@ -706,8 +707,25 @@ async def chat_compat(payload: ChatIn, session: Session = Depends(get_session)) 
 async def chat_stream(payload: ChatIn, session: Session = Depends(get_session)) -> StreamingResponse:
     result = await _process_chat(session, payload)
 
-    def generator():
-        yield json.dumps({"session_id": result["session_id"], "token": result["text"], "done": True}) + "\n"
+    async def generator():
+        text = result.get("text", "") or ""
+        for ch in text:
+            yield json.dumps({"session_id": result["session_id"], "token": ch, "done": False}, ensure_ascii=False) + "\n"
+            await asyncio.sleep(0)
+
+        yield json.dumps(
+            {
+                "session_id": result["session_id"],
+                "lead_id": result.get("lead_id"),
+                "request_type": result.get("request_type"),
+                "status": result.get("status"),
+                "provider": result.get("provider"),
+                "model": result.get("model"),
+                "token": text,
+                "done": True,
+            },
+            ensure_ascii=False,
+        ) + "\n"
 
     return StreamingResponse(generator(), media_type="application/x-ndjson")
 
@@ -740,6 +758,9 @@ async def chat_dry_run(payload: ChatDryRunIn, session: Session = Depends(get_ses
             next_question=question,
             last_assistant_messages=[],
         )
+        if reply.provider == "service-unavailable":
+            detail = llm_service.last_error or "LLM unavailable"
+            raise HTTPException(status_code=503, detail=detail)
     except LLMUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 

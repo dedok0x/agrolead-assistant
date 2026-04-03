@@ -100,9 +100,21 @@ def detect_request_type(text: str) -> str:
             if word in normalized:
                 scores[request_code] += 1
 
+    has_route = bool(re.search(r"\bиз\s+[а-яa-z0-9\-\s]{2,60}\s+в\s+[а-яa-z0-9\-\s]{2,60}", normalized))
+    has_transport_marker = any(
+        marker in normalized
+        for marker in ["авто", "машин", "фура", "вагон", "ж/д", "жд", "баржа", "судно", "логист", "перевоз", "доставка"]
+    )
+
     # экспорт важнее простой логистики
     if scores["export_request"] > 0:
         return "export_request"
+
+    # логистика должна перебивать общий "нужна/нужно" из покупки
+    if scores["logistics_request"] > 0 and (has_route or has_transport_marker):
+        return "logistics_request"
+    if has_route and has_transport_marker:
+        return "logistics_request"
 
     best = max(scores.items(), key=lambda item: item[1])
     if best[1] == 0:
