@@ -3,253 +3,163 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Петрохлеб-Кубань — корпоративный B2B ассистент</title>
+  <title>Петрохлеб-Кубань — чат ассистента</title>
   <style>
-    @import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Merriweather:wght@700;900&display=swap");
+    @import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap");
 
     :root {
-      --bg: #f4f7fb;
-      --surface: #ffffff;
-      --surface-soft: #f8fafd;
-      --brand-900: #123a63;
-      --brand-800: #1e4e79;
-      --brand-700: #2f6fa3;
-      --gold-700: #c79a3b;
-      --gold-500: #d9b56b;
-      --text: #2b2f33;
-      --muted: #4f5a67;
-      --line: #d9dee5;
-      --ok: #2e7d58;
-      --danger: #b23c36;
+      --bg: #0f1620;
+      --bg-soft: #141f2a;
+      --panel: #182634;
+      --panel-2: #1c2f41;
+      --line: #2a3a4a;
+      --text: #e6edf5;
+      --muted: #9fb2c6;
+      --brand: #6ca6d9;
+      --accent: #d7b76a;
+      --ok: #79c695;
+      --danger: #ef8a84;
+      --bubble-in: #23384b;
+      --bubble-out: #1a2b3a;
     }
 
-    * {
-      box-sizing: border-box;
-    }
+    * { box-sizing: border-box; }
 
     body {
       margin: 0;
+      min-height: 100vh;
       color: var(--text);
       background:
-        radial-gradient(1200px 520px at 10% -10%, #e8eef6 0%, transparent 70%),
-        radial-gradient(1100px 500px at 90% 0%, #edf3fa 0%, transparent 68%),
+        radial-gradient(860px 460px at -10% -10%, #23364a 0%, transparent 70%),
+        radial-gradient(860px 460px at 120% 0%, #1e3245 0%, transparent 70%),
         var(--bg);
-      font-family: "IBM Plex Sans", "Trebuchet MS", Verdana, sans-serif;
-      line-height: 1.45;
+      font-family: "Manrope", "IBM Plex Sans", sans-serif;
     }
 
     .shell {
-      max-width: 1320px;
+      max-width: 1240px;
       margin: 0 auto;
-      padding: 18px 16px 28px;
+      padding: 16px;
     }
 
-    .topbar {
+    .top {
       display: flex;
       justify-content: space-between;
       align-items: center;
       gap: 12px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: linear-gradient(180deg, #172331 0%, #13202c 100%);
       margin-bottom: 12px;
-      color: var(--muted);
-      font-size: 13px;
     }
 
     .brand {
       display: flex;
       align-items: center;
       gap: 10px;
-      color: var(--brand-900);
       font-weight: 700;
       letter-spacing: 0.2px;
     }
 
-    .brand-mark {
-      width: 34px;
-      height: 34px;
+    .mark {
+      width: 30px;
+      height: 30px;
       border-radius: 8px;
-      background: linear-gradient(145deg, var(--brand-900), var(--brand-700));
-      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.3);
+      background: linear-gradient(145deg, #24435e, #1a3248);
+      border: 1px solid #41607a;
       position: relative;
     }
 
-    .brand-mark::after {
+    .mark::after {
       content: "";
       position: absolute;
-      inset: 8px;
-      border-radius: 5px;
-      border: 2px solid rgba(217, 181, 107, 0.9);
+      left: 8px;
+      top: 8px;
+      width: 12px;
+      height: 12px;
+      border: 2px solid var(--accent);
+      border-radius: 4px;
     }
 
-    .hero {
-      position: relative;
-      overflow: hidden;
-      border-radius: 16px;
-      margin-bottom: 14px;
-      min-height: 270px;
-      border: 1px solid #cdd7e2;
-      background:
-        linear-gradient(112deg, rgba(18, 58, 99, 0.92) 0%, rgba(30, 78, 121, 0.82) 55%, rgba(47, 111, 163, 0.74) 100%),
-        url("https://images.unsplash.com/photo-1625246333195-78d9c38ad449?auto=format&fit=crop&w=1920&q=80") center/cover;
-      color: #fff;
+    .top-sub {
+      color: var(--muted);
+      font-size: 13px;
+      text-align: right;
+    }
+
+    .layout {
       display: grid;
-      grid-template-columns: 1.35fr 1fr;
-      gap: 20px;
-      padding: 24px;
+      grid-template-columns: 320px 1fr;
+      gap: 12px;
     }
 
-    .hero h1 {
-      margin: 0 0 10px;
-      font-family: "Merriweather", "Times New Roman", serif;
-      font-size: 35px;
-      line-height: 1.2;
-      letter-spacing: 0.2px;
-      max-width: 760px;
-    }
-
-    .hero p {
-      margin: 0;
-      color: #e6edf6;
-      max-width: 760px;
-      font-size: 15px;
-    }
-
-    .hero-tags {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 7px;
-      margin-top: 14px;
-    }
-
-    .hero-tag {
-      border: 1px solid rgba(217, 181, 107, 0.6);
-      color: #ffefcc;
-      background: rgba(16, 36, 58, 0.35);
-      border-radius: 999px;
-      font-size: 12px;
-      padding: 5px 10px;
-    }
-
-    .hero-kpis {
-      align-self: end;
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 10px;
-    }
-
-    .kpi {
-      border: 1px solid rgba(217, 181, 107, 0.42);
-      border-radius: 12px;
-      background: rgba(8, 26, 45, 0.42);
-      backdrop-filter: blur(2px);
-      padding: 10px;
-    }
-
-    .kpi b {
-      display: block;
-      font-size: 21px;
-      margin-bottom: 2px;
-      color: #ffe5a7;
-      font-family: "Merriweather", "Times New Roman", serif;
-    }
-
-    .kpi span {
-      font-size: 12px;
-      color: #e3edf8;
-    }
-
-    .workspace {
-      display: grid;
-      grid-template-columns: 360px 1fr;
-      gap: 14px;
-      align-items: start;
-    }
-
-    .panel,
-    .chatbox {
-      background: var(--surface);
+    .card {
       border: 1px solid var(--line);
       border-radius: 14px;
-      box-shadow: 0 14px 30px rgba(14, 31, 49, 0.08);
+      background: linear-gradient(180deg, var(--panel) 0%, var(--panel-2) 100%);
     }
 
-    .panel {
+    .info {
       padding: 14px;
     }
 
-    .panel h3 {
+    .info h2 {
       margin: 0 0 8px;
-      color: var(--brand-900);
-      font-size: 17px;
+      font-size: 20px;
+      color: #f2f6fb;
     }
 
-    .muted {
+    .info p {
+      margin: 0 0 12px;
       color: var(--muted);
+      font-size: 14px;
+    }
+
+    .list {
+      margin: 0;
+      padding-left: 18px;
+      color: #d3deea;
+      font-size: 14px;
+    }
+
+    .list li { margin-bottom: 7px; }
+
+    .chips-title {
+      margin: 14px 0 8px;
       font-size: 13px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
     }
 
     .chips {
       display: flex;
       flex-wrap: wrap;
       gap: 7px;
-      margin-top: 8px;
-      margin-bottom: 14px;
     }
 
     .chip {
-      border: 1px solid #c3cfdd;
+      border: 1px solid #37506a;
       border-radius: 999px;
-      padding: 7px 11px;
+      padding: 6px 11px;
       font-size: 12px;
+      color: #dbe8f5;
+      background: #22384b;
       cursor: pointer;
-      color: var(--brand-900);
-      background: linear-gradient(180deg, #f9fbff 0%, #edf4fb 100%);
-      transition: all 0.2s ease;
     }
 
     .chip:hover {
-      border-color: #9eb4cc;
-      background: #eaf2fc;
+      border-color: #4a6a88;
+      background: #28445b;
     }
 
-    .photo-grid {
-      margin-top: 6px;
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 8px;
-    }
-
-    .photo {
-      min-height: 96px;
-      border-radius: 10px;
-      border: 1px solid #d3dbe5;
-      background-size: cover;
-      background-position: center;
-      position: relative;
-      overflow: hidden;
-    }
-
-    .photo::after {
-      content: "";
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(0deg, rgba(16, 28, 43, 0.58), rgba(16, 28, 43, 0.05));
-    }
-
-    .photo span {
-      position: absolute;
-      left: 8px;
-      bottom: 8px;
-      font-size: 12px;
-      color: #f5fbff;
-      z-index: 1;
-    }
-
-    .chatbox {
-      padding: 12px;
+    .chat {
       display: grid;
       grid-template-rows: auto 1fr auto;
       gap: 10px;
-      min-height: 620px;
+      min-height: 72vh;
+      padding: 12px;
     }
 
     .chat-head {
@@ -261,247 +171,201 @@
       padding-bottom: 8px;
     }
 
-    .chat-title {
+    .chat-head h3 {
       margin: 0;
-      font-size: 17px;
-      color: var(--brand-900);
+      font-size: 18px;
       font-weight: 700;
     }
 
     .status {
       font-size: 12px;
       color: var(--muted);
-      background: #f4f7fb;
-      border: 1px solid #d8e0eb;
+      border: 1px solid #3a4f63;
       border-radius: 999px;
-      padding: 5px 10px;
-      white-space: nowrap;
+      padding: 4px 10px;
+      background: #1a2a39;
+    }
+
+    .status.busy {
+      color: #efd79e;
+      border-color: #6b5a34;
+      background: #2b2519;
     }
 
     .status.bad {
       color: var(--danger);
-      border-color: #e7c2bf;
-      background: #fff3f2;
-    }
-
-    .status.busy {
-      color: #8a6a22;
-      border-color: #e8d6ad;
-      background: #fff8e8;
+      border-color: #6a3b3d;
+      background: #2f1e23;
     }
 
     .stream {
-      background: linear-gradient(180deg, #fbfdff 0%, #f7faff 100%);
-      border: 1px solid #dde5ef;
+      border: 1px solid #314456;
       border-radius: 12px;
+      background: linear-gradient(180deg, #131e29 0%, #12202b 100%);
       padding: 12px;
       overflow: auto;
-      min-height: 380px;
-      max-height: calc(100vh - 420px);
+      min-height: 300px;
+      max-height: calc(100vh - 300px);
     }
 
     .msg {
-      width: fit-content;
-      max-width: min(86%, 760px);
-      margin-bottom: 10px;
-      border-radius: 12px;
+      max-width: min(88%, 760px);
       padding: 10px 12px;
+      border-radius: 12px;
+      margin-bottom: 10px;
       white-space: pre-wrap;
-      font-size: 14px;
       line-height: 1.5;
+      font-size: 14px;
       border: 1px solid transparent;
-      animation: reveal 180ms ease-out;
     }
 
     .msg.in {
       margin-left: auto;
-      background: #e8eff7;
-      border-color: #c8d5e4;
-      color: #1f3b58;
+      background: var(--bubble-in);
+      border-color: #3c5972;
+      color: #ebf3fb;
     }
 
     .msg.out {
       margin-right: auto;
-      background: #ffffff;
-      border-color: #d7dfe9;
+      background: var(--bubble-out);
+      border-color: #314657;
+      color: #dce8f4;
     }
 
-    .msg.out.loading {
-      color: #6f7b88;
-      min-width: 164px;
+    .msg.loading {
+      min-width: 150px;
+      color: var(--muted);
     }
 
-    .loading-row {
+    .loading {
       display: inline-flex;
       align-items: center;
       gap: 8px;
     }
 
-    .loading-dots {
+    .dots {
       display: inline-flex;
       gap: 4px;
     }
 
-    .loading-dots span {
+    .dots span {
       width: 6px;
       height: 6px;
       border-radius: 50%;
-      background: var(--brand-700);
-      opacity: 0.25;
+      background: var(--accent);
+      opacity: 0.3;
       animation: dot 1s infinite;
     }
 
-    .loading-dots span:nth-child(2) { animation-delay: 0.16s; }
-    .loading-dots span:nth-child(3) { animation-delay: 0.32s; }
+    .dots span:nth-child(2) { animation-delay: 0.15s; }
+    .dots span:nth-child(3) { animation-delay: 0.3s; }
 
     .composer {
       display: grid;
       grid-template-columns: 1fr auto auto;
       gap: 8px;
-      align-items: stretch;
     }
 
     textarea {
       width: 100%;
-      min-height: 88px;
-      max-height: 180px;
-      resize: vertical;
+      min-height: 90px;
+      border: 1px solid #3a4f63;
       border-radius: 10px;
-      border: 1px solid #ccd7e4;
       padding: 10px;
       font: inherit;
-      color: var(--text);
-      background: #fff;
-      outline: none;
+      color: #e7f0fa;
+      background: #132332;
+      resize: vertical;
     }
 
     textarea:focus {
-      border-color: #8eaccc;
-      box-shadow: 0 0 0 3px rgba(47, 111, 163, 0.15);
+      outline: none;
+      border-color: #5f84a6;
+      box-shadow: 0 0 0 3px rgba(107, 160, 208, 0.2);
     }
 
     button {
-      border: 1px solid var(--brand-900);
+      border: 1px solid #4f7597;
       border-radius: 10px;
       padding: 0 14px;
       font: inherit;
       font-weight: 600;
+      color: #e9f2fb;
+      background: linear-gradient(180deg, #2b4861, #20384d);
       cursor: pointer;
-      transition: all 0.2s ease;
-      background: linear-gradient(180deg, var(--brand-800) 0%, var(--brand-900) 100%);
-      color: #fff;
     }
 
-    button:hover {
-      filter: brightness(1.05);
+    button.ghost {
+      background: #1a2c3d;
+      border-color: #3e5770;
+      color: #cddcec;
     }
 
     button:disabled {
-      opacity: 0.7;
+      opacity: 0.65;
       cursor: not-allowed;
     }
 
-    .ghost {
-      background: #fff;
-      color: var(--brand-900);
-      border-color: #becbd9;
-    }
-
     @keyframes dot {
-      0%, 80%, 100% { opacity: 0.22; transform: translateY(0); }
+      0%, 80%, 100% { opacity: 0.25; transform: translateY(0); }
       40% { opacity: 1; transform: translateY(-3px); }
     }
 
-    @keyframes reveal {
-      from { opacity: 0; transform: translateY(4px); }
-      to { opacity: 1; transform: translateY(0); }
+    @media (max-width: 980px) {
+      .layout { grid-template-columns: 1fr; }
+      .chat { min-height: 66vh; }
     }
 
-    @media (max-width: 1100px) {
-      .hero {
-        grid-template-columns: 1fr;
-        min-height: 0;
-      }
-      .hero h1 { font-size: 29px; }
-      .workspace { grid-template-columns: 1fr; }
-      .chatbox { min-height: 560px; }
-    }
-
-    @media (max-width: 760px) {
+    @media (max-width: 700px) {
       .shell { padding: 10px; }
-      .topbar { flex-direction: column; align-items: flex-start; gap: 6px; }
-      .hero { padding: 16px; border-radius: 12px; }
-      .hero h1 { font-size: 24px; }
-      .hero p { font-size: 14px; }
-      .hero-kpis { grid-template-columns: 1fr 1fr; }
-      .panel,
-      .chatbox { border-radius: 12px; }
-      .photo-grid { grid-template-columns: 1fr 1fr; }
+      .top {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+      .top-sub { text-align: left; }
       .composer { grid-template-columns: 1fr 1fr; }
       .composer textarea { grid-column: 1 / -1; }
       .stream { max-height: 56vh; }
-      .msg { max-width: 94%; }
+      .msg { max-width: 95%; }
     }
   </style>
 </head>
 <body>
   <div class="shell">
-    <div class="topbar">
-      <div class="brand">
-        <span class="brand-mark" aria-hidden="true"></span>
-        <span>ПЕТРОХЛЕБ-КУБАНЬ · B2B ЗЕРНОВОЙ ТРЕЙДИНГ И ЛОГИСТИКА</span>
-      </div>
-      <div>Экспорт, внутрироссийские поставки, портовая и железнодорожная логистика</div>
-    </div>
+    <header class="top">
+      <div class="brand"><span class="mark"></span>ПЕТРОХЛЕБ-КУБАНЬ · ЧАТ АССИСТЕНТА</div>
+      <div class="top-sub">Оформление заявок на покупку, продажу, логистику и консультацию</div>
+    </header>
 
-    <section class="hero">
-      <div>
-        <h1>Надежный контур для закупки, продажи и логистики зерновых партий</h1>
-        <p>Цифровой ассистент фиксирует параметры заявки, структурирует коммерческие данные и сразу передает квалифицированный лид в операционный контур.</p>
-        <div class="hero-tags">
-          <span class="hero-tag">Закупка у поставщиков</span>
-          <span class="hero-tag">Продажа покупателям</span>
-          <span class="hero-tag">Ж/д и авто логистика</span>
-          <span class="hero-tag">Экспортные отгрузки</span>
-        </div>
-      </div>
-      <div class="hero-kpis">
-        <div class="kpi"><b>24/7</b><span>Прием заявок и первичная квалификация</span></div>
-        <div class="kpi"><b>SQL</b><span>Структурированное хранение диалогов и лидов</span></div>
-        <div class="kpi"><b>RU</b><span>Деловой русскоязычный интерфейс</span></div>
-        <div class="kpi"><b>Fast</b><span>Оперативная передача менеджеру</span></div>
-      </div>
-    </section>
+    <main class="layout">
+      <aside class="card info">
+        <h2>Быстрое оформление запроса</h2>
+        <p>Напишите задачу в свободной форме. Ассистент уточнит только нужные детали и передаст заявку менеджеру.</p>
 
-    <main class="workspace">
-      <aside class="panel">
-        <h3>Профиль компании</h3>
-        <div id="company" class="muted">Загрузка данных...</div>
+        <ul class="list">
+          <li>Укажите тип заявки: продажа, покупка, логистика или консультация.</li>
+          <li>Добавьте товар/груз, объем, регион или маршрут.</li>
+          <li>Оставьте контакт и как к вам обращаться.</li>
+        </ul>
 
-        <h3>Темы запроса</h3>
+        <div class="chips-title">Темы</div>
         <div class="chips" id="request-types"></div>
 
-        <h3>Культуры</h3>
+        <div class="chips-title">Культуры</div>
         <div class="chips" id="commodities"></div>
-
-        <div class="photo-grid">
-          <div class="photo" style="background-image:url('https://images.unsplash.com/photo-1437252611977-07f74518abd7?auto=format&fit=crop&w=900&q=80')"><span>Полевой блок</span></div>
-          <div class="photo" style="background-image:url('https://images.unsplash.com/photo-1559027615-cd4628902d4a?auto=format&fit=crop&w=900&q=80')"><span>Элеватор</span></div>
-          <div class="photo" style="background-image:url('https://images.unsplash.com/photo-1489515217757-5fd1be406fef?auto=format&fit=crop&w=900&q=80')"><span>Вагонные партии</span></div>
-          <div class="photo" style="background-image:url('https://images.unsplash.com/photo-1578574577315-3fbeb0cecdc2?auto=format&fit=crop&w=900&q=80')"><span>Порт и флот</span></div>
-        </div>
       </aside>
 
-      <section class="chatbox">
+      <section class="card chat">
         <div class="chat-head">
-          <h2 class="chat-title">Корпоративный ассистент по сделкам</h2>
-          <div class="status" id="status">Готов к диалогу</div>
+          <h3>Диалог с ассистентом</h3>
+          <div class="status" id="status">Готов к работе</div>
         </div>
 
-        <div class="stream" id="stream" aria-live="polite"></div>
+        <div class="stream" id="stream"></div>
 
         <div class="composer">
-          <textarea id="text" placeholder="Опишите запрос: культура, объем, регион, маршрут, базис поставки, сроки и контакт"></textarea>
+          <textarea id="text" placeholder="Например: Продажа пшеницы 3 класс, 420 тонн, Краснодарский край, контакт +7..."></textarea>
           <button id="send">Отправить</button>
           <button id="clear" class="ghost">Очистить</button>
         </div>
@@ -521,9 +385,9 @@
 
     function setStatus(text, mode = "normal") {
       statusEl.textContent = text
-      statusEl.classList.remove("bad", "busy")
-      if (mode === "bad") statusEl.classList.add("bad")
+      statusEl.classList.remove("busy", "bad")
       if (mode === "busy") statusEl.classList.add("busy")
+      if (mode === "bad") statusEl.classList.add("bad")
     }
 
     function setBusy(flag) {
@@ -533,43 +397,34 @@
       textEl.disabled = flag
     }
 
-    function scrollToBottom() {
+    function scrollDown() {
       streamEl.scrollTop = streamEl.scrollHeight
     }
 
-    function createMessage(direction, text = "", loading = false) {
-      const box = document.createElement("article")
-      box.className = `msg ${direction}${loading ? " loading" : ""}`
-
+    function addMessage(direction, text = "", isLoading = false) {
+      const wrapper = document.createElement("div")
+      wrapper.className = `msg ${direction}${isLoading ? " loading" : ""}`
       const content = document.createElement("div")
-      if (loading) {
-        content.className = "loading-row"
-        content.innerHTML = "<span>Формируем ответ</span><span class='loading-dots'><span></span><span></span><span></span></span>"
+
+      if (isLoading) {
+        content.className = "loading"
+        content.innerHTML = "<span>Ассистент печатает</span><span class='dots'><span></span><span></span><span></span></span>"
       } else {
         content.textContent = text
       }
 
-      box.appendChild(content)
-      streamEl.appendChild(box)
-      scrollToBottom()
-      return { box, content }
-    }
-
-    async function typeText(contentEl, text, delayMs = 11) {
-      contentEl.textContent = ""
-      for (const ch of text) {
-        contentEl.textContent += ch
-        scrollToBottom()
-        await new Promise(resolve => setTimeout(resolve, delayMs))
-      }
+      wrapper.appendChild(content)
+      streamEl.appendChild(wrapper)
+      scrollDown()
+      return { wrapper, content }
     }
 
     function parseNdjsonChunk(buffer, onLine) {
       let idx = buffer.indexOf("\n")
       while (idx >= 0) {
-        const line = buffer.slice(0, idx).trim()
+        const raw = buffer.slice(0, idx).trim()
         buffer = buffer.slice(idx + 1)
-        if (line) onLine(line)
+        if (raw) onLine(raw)
         idx = buffer.indexOf("\n")
       }
       return buffer
@@ -579,54 +434,53 @@
       try {
         const res = await fetch("/api/public/bootstrap")
         const data = await res.json()
-        document.getElementById("company").textContent = `${data.company?.name || "Петрохлеб-Кубань"}. ${data.company?.services || "Закупка, продажа, логистика и экспорт зерновых."}`
 
-        const requestWrap = document.getElementById("request-types")
+        const requestTypes = document.getElementById("request-types")
         ;(data.request_types || []).forEach(item => {
           const btn = document.createElement("button")
           btn.className = "chip"
           btn.textContent = item.name
           btn.onclick = () => {
-            textEl.value = `Нужна консультация по направлению: ${item.name}. Объем 300 тонн, регион Краснодар.`
+            textEl.value = `Тип заявки: ${item.name}. Объем 300 тонн, регион Краснодар.`
             textEl.focus()
           }
-          requestWrap.appendChild(btn)
+          requestTypes.appendChild(btn)
         })
 
-        const commoditiesWrap = document.getElementById("commodities")
+        const commodities = document.getElementById("commodities")
         ;(data.commodities || []).forEach(item => {
           const btn = document.createElement("button")
           btn.className = "chip"
           btn.textContent = item.name
           btn.onclick = () => {
-            textEl.value = `Интересует ${item.name}, объем 200 тонн, Краснодар, контакт +79000000000.`
+            textEl.value = `Заявка по ${item.name}, объем 200 тонн, укажите вариант покупки/продажи.`
             textEl.focus()
           }
-          commoditiesWrap.appendChild(btn)
+          commodities.appendChild(btn)
         })
       } catch {
-        document.getElementById("company").textContent = "Данные компании временно недоступны."
+        // UI работает и без bootstrap
       }
     }
 
     async function sendMessage() {
       if (busy) return
-
       const text = textEl.value.trim()
       if (!text) return
 
-      createMessage("in", text)
+      addMessage("in", text)
       textEl.value = ""
       setBusy(true)
-      setStatus("Ожидание ответа сервера", "busy")
+      setStatus("Ожидание ответа", "busy")
 
-      const loadingMsg = createMessage("out", "", true)
-      let responseMeta = {}
-      let fullReply = ""
+      const assistantMsg = addMessage("out", "", true)
+      let buffer = ""
+      let fullText = ""
       let started = false
+      let finalEvent = {}
 
       try {
-        const res = await fetch("/api/chat/stream", {
+        const response = await fetch("/api/chat/stream", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -637,35 +491,28 @@
           }),
         })
 
-        if (!res.ok) {
-          const body = await res.text()
-          throw new Error(body || `HTTP ${res.status}`)
+        if (!response.ok) {
+          const errorText = await response.text()
+          throw new Error(errorText || `HTTP ${response.status}`)
+        }
+        if (!response.body) {
+          throw new Error("Сервер вернул пустой поток")
         }
 
-        if (!res.body) {
-          throw new Error("Пустой поток ответа")
-        }
-
-        const reader = res.body.getReader()
+        const reader = response.body.getReader()
         const decoder = new TextDecoder("utf-8")
-        let buffer = ""
 
         while (true) {
-          const { done, value } = await reader.read()
+          const { value, done } = await reader.read()
           if (done) break
+
           buffer += decoder.decode(value, { stream: true })
           buffer = parseNdjsonChunk(buffer, line => {
             const event = JSON.parse(line)
-
             if (event.done) {
-              responseMeta = event
-              if (typeof event.token === "string" && event.token.length > fullReply.length) {
-                fullReply = event.token
-                if (!started) {
-                  loadingMsg.box.classList.remove("loading")
-                  loadingMsg.content.textContent = fullReply
-                  started = true
-                }
+              finalEvent = event
+              if (!fullText && typeof event.token === "string") {
+                fullText = event.token
               }
               return
             }
@@ -674,32 +521,28 @@
             if (!token) return
 
             if (!started) {
-              loadingMsg.box.classList.remove("loading")
-              loadingMsg.content.textContent = ""
+              assistantMsg.wrapper.classList.remove("loading")
+              assistantMsg.content.textContent = ""
               started = true
             }
 
-            fullReply += token
-            loadingMsg.content.textContent = fullReply
-            scrollToBottom()
+            fullText += token
+            assistantMsg.content.textContent = fullText
+            scrollDown()
           })
         }
 
         if (!started) {
-          loadingMsg.box.classList.remove("loading")
-          const finalText = fullReply || responseMeta.token || "Ответ получен, но текст пуст."
-          await typeText(loadingMsg.content, finalText)
-          fullReply = finalText
+          assistantMsg.wrapper.classList.remove("loading")
+          assistantMsg.content.textContent = fullText || "Ответ получен."
         }
 
-        sessionId = responseMeta.session_id || sessionId
-        const provider = responseMeta.provider || "engine"
-        const status = responseMeta.status || "draft"
-        setStatus(`Готово · ${provider} · ${status}`)
+        sessionId = finalEvent.session_id || sessionId
+        setStatus("Ответ получен")
       } catch (error) {
-        loadingMsg.box.classList.remove("loading")
-        loadingMsg.content.textContent = `Ошибка: ${error.message || error}`
-        setStatus("Сбой обработки запроса", "bad")
+        assistantMsg.wrapper.classList.remove("loading")
+        assistantMsg.content.textContent = `Ошибка: ${error.message || error}`
+        setStatus("Ошибка запроса", "bad")
       } finally {
         setBusy(false)
         textEl.focus()
@@ -707,7 +550,6 @@
     }
 
     sendBtn.onclick = sendMessage
-
     clearBtn.onclick = () => {
       sessionId = null
       streamEl.innerHTML = ""
@@ -724,7 +566,7 @@
 
     ;(async () => {
       await bootstrap()
-      createMessage("out", "Добрый день. Зафиксирую параметры сделки по зерну и логистике, чтобы менеджер вышел с коммерческим предложением.")
+      addMessage("out", "Здравствуйте. Опишите задачу, а я помогу быстро оформить заявку для менеджера.")
     })()
   </script>
 </body>

@@ -21,7 +21,7 @@ if str(BACKEND_ROOT) not in sys.path:
 from fastapi.testclient import TestClient
 
 from app.main import app, llm_service
-from app.sales_logic import detect_request_type, extract_facts
+from app.sales_logic import detect_request_type, extract_facts, parse_contact_name_or_company
 
 
 class IntegrationDialogueCases(unittest.TestCase):
@@ -51,6 +51,11 @@ class IntegrationDialogueCases(unittest.TestCase):
         self.assertEqual(detect_request_type("Нужна покупка пшеницы 3 класс"), "sale_to_buyer")
         self.assertEqual(detect_request_type("Нужны вагоны из Краснодара в Новороссийск"), "logistics_request")
         self.assertEqual(detect_request_type("Нужен экспорт через порт Новороссийск"), "export_request")
+        self.assertEqual(detect_request_type("Пшеница 200 тонн, Краснодар"), "general_company_request")
+
+    def test_contact_name_filtering(self):
+        self.assertEqual(parse_contact_name_or_company("Нужна логистика авто из Краснодара в Новороссийск"), "")
+        self.assertTrue(parse_contact_name_or_company("ООО АгроПлюс, контакт +79001112233"))
 
     def test_fact_extraction_basic(self):
         commodity_map = {"пшеница": 1}
@@ -62,6 +67,14 @@ class IntegrationDialogueCases(unittest.TestCase):
         self.assertIn("contact_phone_or_telegram_or_email", facts)
 
     def test_supplier_and_buyer_and_logistics_flows_create_leads(self):
+        # ambiguous -> assistant should keep general type and clarify
+        r0 = self.client.post(
+            "/api/v1/chat",
+            json={"text": "Пшеница 200 тонн, Краснодар", "client_id": "gen-1"},
+        )
+        self.assertEqual(r0.status_code, 200)
+        self.assertEqual(r0.json().get("request_type"), "general_company_request")
+
         # supplier
         r1 = self.client.post(
             "/api/v1/chat",

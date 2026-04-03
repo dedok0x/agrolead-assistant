@@ -53,11 +53,16 @@ REQUIRED_FIELDS_BY_REQUEST = {
         "contact_name_or_company",
         "contact_phone_or_telegram_or_email",
     ],
-    "general_company_request": ["contact_phone_or_telegram_or_email"],
+    "general_company_request": [
+        "request_type_hint",
+        "contact_name_or_company",
+        "contact_phone_or_telegram_or_email",
+    ],
 }
 
 
 FIELD_QUESTION = {
+    "request_type_hint": "Уточните тип заявки: продажа, покупка, логистика, хранение, экспорт или просто консультация?",
     "commodity_id": "Какую культуру фиксируем в заявке?",
     "volume_value": "Какой ориентир по объему в тоннах?",
     "volume_unit": "Подтвердите единицу объема: тонны или другая?",
@@ -118,10 +123,37 @@ def detect_request_type(text: str) -> str:
 
     best = max(scores.items(), key=lambda item: item[1])
     if best[1] == 0:
-        if normalized.endswith("?") or "кто вы" in normalized or "чем занимает" in normalized:
-            return "general_company_request"
-        return "sale_to_buyer"
+        return "general_company_request"
+
+    generic_buy_marker = any(word in normalized for word in ["нужна", "нужно", "интересует"])
+    explicit_trade_marker = any(word in normalized for word in ["купить", "покупка", "продать", "продажа", "закупка", "поставщик"])
+    if best[0] == "sale_to_buyer" and best[1] == 1 and generic_buy_marker and not explicit_trade_marker:
+        return "general_company_request"
+
+    if scores["purchase_from_supplier"] > 0 and scores["sale_to_buyer"] > 0 and abs(scores["purchase_from_supplier"] - scores["sale_to_buyer"]) <= 1:
+        return "general_company_request"
+
     return best[0]
+
+
+def parse_request_type_hint(text: str) -> str:
+    normalized = normalize_text(text)
+    if not normalized:
+        return ""
+
+    if any(word in normalized for word in ["логист", "перевоз", "доставка", "маршрут", "вагон", "авто", "ж/д", "жд"]):
+        return "logistics_request"
+    if any(word in normalized for word in ["хранен", "склад", "элеватор", "перевалк"]):
+        return "storage_request"
+    if any(word in normalized for word in ["экспорт", "fob", "cfr", "порт", "вэд"]):
+        return "export_request"
+    if any(word in normalized for word in ["прода", "реализ", "поставщик", "закупите у нас"]):
+        return "purchase_from_supplier"
+    if any(word in normalized for word in ["купить", "покупка", "приобрести", "нужна закупка"]):
+        return "sale_to_buyer"
+    if any(word in normalized for word in ["кто вы", "какие услуги", "консультац", "информ", "узнать"]):
+        return "general_company_request"
+    return ""
 
 
 def parse_contact(text: str) -> str:
@@ -160,11 +192,65 @@ def parse_route(text: str) -> tuple[str, str]:
 
 def parse_contact_name_or_company(text: str) -> str:
     normalized = normalize_text(text)
-    match = re.search(r"(?:компания|ооо|ип|фермер|я)\s*[:\-]?\s*([а-яa-z0-9\s\-\"«»]{2,80})", normalized)
-    if match:
-        return match.group(1).strip(" .,")
-    if len(normalized.split(" ")) <= 4 and not any(ch.isdigit() for ch in normalized):
-        return text.strip()
+    if not normalized:
+        return ""
+
+    noise_tokens = [
+        "нужн",
+        "куп",
+        "прод",
+        "логист",
+        "достав",
+        "маршрут",
+        "тонн",
+        "цена",
+        "зерн",
+        "пшениц",
+        "ячмен",
+        "кукуруз",
+        "контакт",
+        "заявк",
+    ]
+
+    def _sanitize(value: str) -> str:
+        cleaned = re.sub(r"\s+", " ", value.strip(" .,:;"))
+        cleaned = cleaned.replace("«", '"').replace("»", '"')
+        return cleaned
+
+    def _is_noise(value: str) -> bool:
+        low = value.lower()
+        if len(low) < 2 or len(low) > 90:
+            return True
+        if "@" in low or re.search(r"(?:\+7|8)\d{9,}", low):
+            return True
+        if any(token in low for token in noise_tokens):
+            return True
+        return False
+
+    company_match = re.search(
+        r"\b((?:ооо|ао|пао|зао|оао|ип|кфх)\s+[а-яa-z0-9\-\"«»\s]{2,80})",
+        normalized,
+    )
+    if company_match:
+        candidate = _sanitize(company_match.group(1))
+        if not _is_noise(candidate):
+            return candidate
+
+    company_word_match = re.search(r"(?:компания|организация)\s*[:\-]?\s*([а-яa-z0-9\-\"«»\s]{2,80})", normalized)
+    if company_word_match:
+        candidate = _sanitize(company_word_match.group(1))
+        if not _is_noise(candidate):
+            return candidate
+
+    person_match = re.search(
+        r"(?:меня зовут|контакт(?:ное лицо)?|обращаться к|на имя)\s*[:\-]?\s*([а-яa-z][а-яa-z\-]{1,30}(?:\s+[а-яa-z][а-яa-z\-]{1,30}){0,2})",
+        normalized,
+    )
+    if person_match:
+        candidate = _sanitize(person_match.group(1))
+        if not _is_noise(candidate):
+            return candidate
+
     return ""
 
 
@@ -259,6 +345,10 @@ def extract_facts(
     if contact:
         facts["contact_phone_or_telegram_or_email"] = FactValue(text=contact, confidence=0.98)
 
+    request_type_hint = parse_request_type_hint(text)
+    if request_type_hint:
+        facts["request_type_hint"] = FactValue(text=request_type_hint, confidence=0.9)
+
     company_or_name = parse_contact_name_or_company(text)
     if company_or_name:
         facts["contact_name_or_company"] = FactValue(text=company_or_name, confidence=0.70)
@@ -337,6 +427,7 @@ def minimum_viable_application(request_type_code: str, fact_keys: set[str], has_
 def human_field_name(field_code: str) -> str:
     names = {
         "commodity_id": "культура",
+        "request_type_hint": "тип заявки",
         "volume_value": "объем",
         "volume_unit": "единица объема",
         "source_region_id": "регион отгрузки",

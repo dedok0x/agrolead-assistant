@@ -127,6 +127,21 @@ def _source_code_from_channel(channel: str) -> str:
     return "web_widget"
 
 
+def _is_faq_like(text: str) -> bool:
+    normalized = (text or "").strip().lower()
+    return any(
+        marker in normalized
+        for marker in [
+            "кто вы",
+            "чем занимает",
+            "какие услуги",
+            "контакты",
+            "где находитесь",
+            "реквизиты",
+        ]
+    )
+
+
 def _get_ref_by_code(session: Session, model, code: str):
     return session.exec(select(model).where(model.code == code)).first()
 
@@ -317,16 +332,98 @@ def _summary_lines(facts: dict[str, ChatExtractedFact]) -> list[str]:
     return rows[:8]
 
 
+def _counterparty_type_code_by_request(request_code: str) -> str:
+    mapping = {
+        "purchase_from_supplier": "supplier",
+        "sale_to_buyer": "buyer",
+        "logistics_request": "carrier",
+        "storage_request": "terminal",
+        "export_request": "buyer",
+    }
+    return mapping.get(request_code, "buyer")
+
+
+def _is_company_label(label: str) -> bool:
+    normalized = (label or "").strip().lower()
+    if not normalized:
+        return False
+    if any(normalized.startswith(prefix) for prefix in ["ооо", "ао", "пао", "зао", "оао", "ип", "кфх"]):
+        return True
+    return any(marker in normalized for marker in ["компания", "холдинг", "трейд", "агро", "зерно", "логист"])
+
+
+def _sync_counterparty_from_contact(
+    session: Session,
+    lead: CrmLead,
+    request_code: str,
+    contact_row: CrmLeadContactSnapshot,
+) -> None:
+    phone = (contact_row.phone or "").strip()
+    email = (contact_row.email or "").strip().lower()
+    telegram = (contact_row.telegram or "").strip().lower()
+    company_name = (contact_row.company_name or "").strip()
+    contact_name = (contact_row.contact_name or "").strip()
+
+    if not (phone or email or telegram):
+        return
+    if not (company_name or contact_name):
+        return
+
+    rows = session.exec(select(CrmCounterparty)).all()
+    existing = None
+    for row in rows:
+        if phone and (row.phone or "").strip() == phone:
+            existing = row
+            break
+        if email and (row.email or "").strip().lower() == email:
+            existing = row
+            break
+        if telegram and (row.telegram or "").strip().lower() == telegram:
+            existing = row
+            break
+        if company_name and (row.company_name or "").strip().lower() == company_name.lower():
+            existing = row
+            break
+
+    if existing is None:
+        type_code = _counterparty_type_code_by_request(request_code)
+        type_row = _get_ref_by_code(session, RefCounterpartyType, type_code)
+        if not type_row:
+            type_row = session.exec(select(RefCounterpartyType)).first()
+        if not type_row:
+            return
+
+        existing = CrmCounterparty(counterparty_type_id=_require_id(type_row.id, "counterparty type"))
+
+    if company_name:
+        existing.company_name = company_name
+    if contact_name:
+        existing.contact_person = contact_name
+    if phone:
+        existing.phone = phone
+    if email:
+        existing.email = email
+    if telegram:
+        existing.telegram = telegram
+    existing.updated_at = _now()
+
+    session.add(existing)
+    session.flush()
+    if existing.id:
+        lead.counterparty_id = existing.id
+
+
 def _sync_lead_tables(session: Session, chat: ChatSession, request_code: str, source_id: int) -> CrmLead:
     chat_id = _require_id(chat.id, "chat session")
     lead = session.get(CrmLead, chat.lead_id) if chat.lead_id else None
+    request_type = _get_ref_by_code(session, RefRequestType, request_code)
+    if not request_type:
+        request_type = _get_ref_by_code(session, RefRequestType, "general_company_request")
+    if not request_type:
+        raise HTTPException(status_code=500, detail="Request type not configured")
+    request_type_id = _require_id(request_type.id, "request type")
+
     if not lead:
-        request_type = _get_ref_by_code(session, RefRequestType, request_code)
-        if not request_type:
-            request_type = _get_ref_by_code(session, RefRequestType, "general_company_request")
-        if not request_type:
-            raise HTTPException(status_code=500, detail="Request type not configured")
-        request_type_id = _require_id(request_type.id, "request type")
         lead = CrmLead(
             request_type_id=request_type_id,
             source_id=source_id,
@@ -342,6 +439,13 @@ def _sync_lead_tables(session: Session, chat: ChatSession, request_code: str, so
         session.refresh(lead)
         chat.lead_id = _require_id(lead.id, "lead")
         chat.request_type_id = request_type_id
+        session.add(chat)
+        session.commit()
+    elif lead.request_type_id != request_type_id:
+        lead.request_type_id = request_type_id
+        lead.updated_at = _now()
+        chat.request_type_id = request_type_id
+        session.add(lead)
         session.add(chat)
         session.commit()
 
@@ -419,9 +523,17 @@ def _sync_lead_tables(session: Session, chat: ChatSession, request_code: str, so
             contact_row.phone = contact
     who = _fact_text("contact_name_or_company")
     if who:
-        contact_row.company_name = who
-        contact_row.contact_name = who
+        if _is_company_label(who):
+            contact_row.company_name = who
+            if not contact_row.contact_name:
+                contact_row.contact_name = ""
+        else:
+            contact_row.contact_name = who
+            if not contact_row.company_name:
+                contact_row.company_name = ""
     session.add(contact_row)
+
+    _sync_counterparty_from_contact(session, lead, request_code, contact_row)
 
     fact_keys = set(facts.keys())
     has_contact = bool(_fact_text("contact_phone_or_telegram_or_email"))
@@ -569,11 +681,18 @@ async def _process_chat(session: Session, payload: ChatIn) -> dict[str, Any]:
     lead_id = _require_id(lead.id, "lead")
     chat.lead_id = lead_id
 
-    _ensure_missing_fields(session, chat, request_type.code, lead_id)
-
     commodity_map, region_map = _resolve_maps(session)
     extracted = extract_facts(text=text, commodity_by_name=commodity_map, region_by_name=region_map)
     _resolve_code_facts(session, extracted)
+
+    request_hint = extracted.get("request_type_hint")
+    if request_type.code == "general_company_request" and request_hint and request_hint.text:
+        hinted = _get_ref_by_code(session, RefRequestType, request_hint.text)
+        if hinted:
+            request_type = hinted
+            chat.request_type_id = _require_id(request_type.id, "request type")
+
+    _ensure_missing_fields(session, chat, request_type.code, lead_id)
 
     for key, value in extracted.items():
         _upsert_fact(
@@ -603,7 +722,7 @@ async def _process_chat(session: Session, payload: ChatIn) -> dict[str, Any]:
         stage = "qualified"
     elif lead.status_code == "partially_qualified":
         stage = "partially_qualified"
-    elif request_type.code == "general_company_request":
+    elif request_type.code == "general_company_request" and _is_faq_like(text):
         stage = "faq"
     elif not fact_keys:
         stage = "new"
