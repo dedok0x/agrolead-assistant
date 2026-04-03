@@ -348,6 +348,28 @@ HTTP_CODE_HTTPS="$(curl -k -sS -o /dev/null -w "%{http_code}" "$WEB_BASE_HTTPS/"
 [[ "$HTTP_CODE_HTTPS" == "200" ]] || die "HTTPS webui недоступен"
 ok "Web UI redirect + HTTPS ok"
 
+step "Smoke: runtime code freshness"
+docker compose -f "$COMPOSE_FILE" exec -T api python - <<'PY'
+import inspect
+
+from app.main import _now, chat_dry_run
+from app.sales_logic import detect_request_type
+
+now_src = inspect.getsource(_now)
+if "datetime.now(timezone.utc)" not in now_src:
+    raise SystemExit("api container использует устаревший app.main (_now) — ожидается timezone-aware реализация")
+
+dry_run_src = inspect.getsource(chat_dry_run)
+if "service-unavailable" not in dry_run_src:
+    raise SystemExit("api container использует устаревший chat_dry_run — нет 503 fallback guard")
+
+if detect_request_type("Нужна логистика авто из Краснодара в Новороссийск 300 тонн") != "logistics_request":
+    raise SystemExit("api container использует устаревший detect_request_type для логистики")
+
+print("runtime code ok")
+PY
+ok "Runtime code freshness ok"
+
 step "Автотесты backend"
 docker compose -f "$COMPOSE_FILE" exec -T api python -m unittest -v tests/test_chat_stream.py tests/test_integration_dialogue.py
 ok "Автотесты пройдены"
