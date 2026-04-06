@@ -4,7 +4,7 @@ import sys
 import unittest
 from unittest.mock import AsyncMock
 
-DB_FILE = pathlib.Path("./test_integration_dialogue_v5.db").resolve()
+DB_FILE = pathlib.Path("./test_integration_dialogue_v6.db").resolve()
 if DB_FILE.exists():
     DB_FILE.unlink()
 
@@ -185,6 +185,87 @@ class IntegrationDialogueCases(unittest.TestCase):
         )
         self.assertEqual(assign.status_code, 200)
         self.assertTrue(assign.json().get("ok"))
+
+    def test_admin_users_mask_password_hash(self):
+        token = self._admin_token()
+        users = self.client.get("/api/v1/admin/users", headers={"x-admin-token": token})
+        self.assertEqual(users.status_code, 200)
+        payload = users.json()
+        self.assertTrue(payload)
+        self.assertNotIn("password_hash", payload[0])
+
+    def test_admin_login_returns_rotating_session_tokens(self):
+        login1 = self.client.post(
+            "/api/v1/admin/login",
+            json={"username": os.getenv("ADMIN_USER", "admin"), "password": os.getenv("ADMIN_PASS", "315920")},
+        )
+        self.assertEqual(login1.status_code, 200)
+
+        login2 = self.client.post(
+            "/api/v1/admin/login",
+            json={"username": os.getenv("ADMIN_USER", "admin"), "password": os.getenv("ADMIN_PASS", "315920")},
+        )
+        self.assertEqual(login2.status_code, 200)
+        self.assertNotEqual(login1.json().get("token"), login2.json().get("token"))
+
+    def test_session_owner_mismatch_returns_403(self):
+        first = self.client.post(
+            "/api/v1/chat",
+            json={"text": "Продажа пшеницы 100 тонн, Краснодар", "client_id": "owner-1"},
+        )
+        self.assertEqual(first.status_code, 200)
+        session_id = first.json().get("session_id")
+        self.assertTrue(session_id)
+
+        hijack = self.client.post(
+            "/api/v1/chat",
+            json={"text": "Попытка продолжить чужую сессию", "client_id": "owner-2", "session_id": session_id},
+        )
+        self.assertEqual(hijack.status_code, 403)
+
+    def test_guardrails_replies_have_variation(self):
+        replies = []
+        for _ in range(3):
+            response = self.client.post("/api/v1/chat", json={"text": "иди на хуй", "client_id": "tox-var"})
+            self.assertEqual(response.status_code, 200)
+            replies.append(response.json().get("text", ""))
+        self.assertGreaterEqual(len(set(replies)), 2)
+
+    def test_catalog_payload_alignment_for_quality_and_price(self):
+        token = self._admin_token()
+
+        quality = self.client.post(
+            "/api/v1/catalog/quality-templates",
+            headers={"x-admin-token": token},
+            json={
+                "code": "compat_quality",
+                "name": "Совместимый шаблон",
+                "commodity_id": 1,
+                "description": "legacy payload",
+                "is_active": True,
+                "lines": [{"parameter_code": "protein", "operator": ">=", "target_value": "12.5", "unit": "%"}],
+            },
+        )
+        self.assertEqual(quality.status_code, 200)
+        quality_payload = quality.json()
+        self.assertEqual(quality_payload.get("template_code"), "compat_quality")
+        self.assertTrue(isinstance(quality_payload.get("lines"), list))
+
+        policy = self.client.post(
+            "/api/v1/catalog/price-policies",
+            headers={"x-admin-token": token},
+            json={
+                "code": "compat_policy",
+                "name": "Совместимая политика",
+                "commodity_id": 1,
+                "region_id": 1,
+                "currency_code": "RUB",
+                "price_formula_text": "base + logistics",
+                "is_active": True,
+            },
+        )
+        self.assertEqual(policy.status_code, 200)
+        self.assertIn("pricing_rule_text", policy.json())
 
 
 if __name__ == "__main__":

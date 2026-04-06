@@ -17,6 +17,13 @@ class SalesAssistantAgent:
         self.llm_service = llm_service
         self.prompt_builder = StagePromptBuilder()
 
+    def _temperature_for_stage(self, stage: str) -> float:
+        if stage in {"new", "draft", "qualified", "handoff"}:
+            return 0.45
+        if stage in {"partially_qualified", "value_hypothesis", "objection_handling", "proposal_draft"}:
+            return 0.62
+        return 0.55
+
     def _clean_reply(self, text: str, next_question: str, last_assistant_messages: list[str]) -> str:
         cleaned = (text or "").strip()
         if not cleaned:
@@ -54,6 +61,9 @@ class SalesAssistantAgent:
         summary_lines: list[str],
         next_question: str,
         last_assistant_messages: list[str],
+        rag_lines: list[str] | None = None,
+        offer_lines: list[str] | None = None,
+        negotiation_stage: str = "qualification",
     ) -> AgentReply:
         system_prompt = self.prompt_builder.system_prompt(stage)
         user_prompt = self.prompt_builder.user_prompt(
@@ -62,6 +72,10 @@ class SalesAssistantAgent:
             summary_lines=summary_lines,
             next_question=next_question,
             last_replies=last_assistant_messages,
+            rag_lines=rag_lines or [],
+            offer_lines=offer_lines or [],
+            negotiation_stage=negotiation_stage,
+            stage=stage,
         )
 
         try:
@@ -69,7 +83,7 @@ class SalesAssistantAgent:
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
                 reason=f"reply_{stage}",
-                temperature=0.55,
+                temperature=self._temperature_for_stage(stage),
                 max_tokens=260,
             )
             safe_text = self._clean_reply(text, next_question=next_question, last_assistant_messages=last_assistant_messages)

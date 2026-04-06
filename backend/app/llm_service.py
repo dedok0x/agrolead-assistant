@@ -19,14 +19,15 @@ def _contains_cyrillic(text: str) -> bool:
 
 class LLMService:
     def __init__(self) -> None:
-        self.preferred_provider = "gigachat"
+        self.preferred_provider = os.getenv("LLM_PROVIDER", "gigachat").strip().lower() or "gigachat"
         self.timeout_seconds = max(1.0, min(float(os.getenv("LLM_REQUEST_TIMEOUT_SECONDS", "5")), 5.0))
         self.max_retries = max(0, min(int(os.getenv("LLM_MAX_RETRIES", "1")), 2))
         self.enable_rewrite = os.getenv("LLM_REWRITE_ENABLED", "1").strip().lower() not in {"0", "false", "no", "off"}
+        self.max_parallel_inference = max(1, min(int(os.getenv("LLM_MAX_PARALLEL_INFERENCE", "4")), 16))
 
         self.gigachat_client = GigaChatClient(timeout_seconds=self.timeout_seconds)
         self.gigachat_model = self.gigachat_client.model
-        self._inference_lock = asyncio.Lock()
+        self._inference_semaphore = asyncio.Semaphore(self.max_parallel_inference)
 
         self.usage: dict[str, int] = {"gigachat": 0, "errors": 0}
         self.last_provider = "none"
@@ -98,12 +99,16 @@ class LLMService:
         temperature: float = 0.55,
         max_tokens: int = 320,
     ) -> tuple[str, str, str]:
+        if self.preferred_provider != "gigachat":
+            self._mark("errors", "none", reason, error=f"Unsupported provider: {self.preferred_provider}")
+            raise LLMUnavailableError(f"Unsupported provider: {self.preferred_provider}")
+
         if not self.gigachat_client.configured:
             self._mark("errors", "none", reason, error="GigaChat is not configured")
             raise LLMUnavailableError("GigaChat is not configured")
 
         try:
-            async with self._inference_lock:
+            async with self._inference_semaphore:
                 return await self._complete_gigachat(
                     system_prompt=system_prompt,
                     user_prompt=user_prompt,
@@ -140,6 +145,7 @@ class LLMService:
             "fallback_provider": None,
             "timeout_seconds": self.timeout_seconds,
             "max_retries": self.max_retries,
+            "max_parallel_inference": self.max_parallel_inference,
             "gigachat_enabled": self.gigachat_client.configured,
             "models": {
                 "gigachat": self.gigachat_model,

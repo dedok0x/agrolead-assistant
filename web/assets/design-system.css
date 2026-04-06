@@ -326,6 +326,10 @@ a {
   min-width: 760px;
 }
 
+.ds-table.compact {
+  min-width: 0;
+}
+
 .ds-table th,
 .ds-table td {
   padding: 9px;
@@ -333,6 +337,8 @@ a {
   font-size: 13px;
   text-align: left;
   vertical-align: top;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .ds-table th {

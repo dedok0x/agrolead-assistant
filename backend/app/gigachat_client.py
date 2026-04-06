@@ -36,7 +36,7 @@ class GigaChatClient:
         self.model = os.getenv("GIGACHAT_MODEL", "GigaChat-2").strip()
         self.verify_ssl = _env_bool("GIGACHAT_VERIFY_SSL", True)
         self.ca_file = os.getenv("GIGACHAT_CA_FILE", "").strip()
-        self.insecure_ssl_fallback = _env_bool("GIGACHAT_INSECURE_SSL_FALLBACK", True)
+        self.insecure_ssl_fallback = _env_bool("GIGACHAT_INSECURE_SSL_FALLBACK", False)
         self.token_refresh_margin_seconds = max(
             30,
             min(int(os.getenv("GIGACHAT_TOKEN_REFRESH_MARGIN_SECONDS", "120")), 600),

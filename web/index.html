@@ -167,6 +167,33 @@
       margin-bottom: 4px;
     }
 
+    .chat-brief {
+      margin-top: 14px;
+      border: 1px solid var(--ds-border);
+      border-radius: 14px;
+      padding: 12px;
+      background: #fff;
+      font-size: 13px;
+      color: #3f4d46;
+    }
+
+    .chat-brief b {
+      display: block;
+      color: var(--ds-text);
+      margin-bottom: 6px;
+    }
+
+    .brief-list {
+      margin: 0;
+      padding-left: 18px;
+      min-height: 18px;
+    }
+
+    .brief-next {
+      margin-top: 8px;
+      color: #55645c;
+    }
+
     .state-chip {
       border: 1px solid var(--ds-border);
       border-radius: 999px;
@@ -290,41 +317,57 @@
         </div>
 
         <div style="margin-top:16px" class="ds-msg warn">Скажите простыми словами: что хотите купить, продать или куда нужна перевозка.</div>
+
+        <div class="chat-brief" id="chat-brief">
+          <b>Что уже зафиксировано</b>
+          <ul id="brief-list" class="brief-list">
+            <li>Пока нет подтвержденных параметров.</li>
+          </ul>
+          <div id="brief-next" class="brief-next">Следующий шаг: уточнить базовые параметры заявки.</div>
+        </div>
       </aside>
     </main>
   </div>
 
   <script>
-    const SCENARIOS = [
+    let SCENARIOS = [
       {
         code: "purchase_from_supplier",
-        title: "Продать зерно",
-        subtitle: "Передать предложение по продаже партии",
-        prompt: "Хочу продать зерно",
+        title: "Продать партию зерна",
+        subtitle: "Фиксация параметров партии и условий отгрузки",
+        prompt: "Продажа пшеницы 3 класс, 400 тонн, Краснодарский край, базис EXW, контакт +7...",
+        titleSettingKey: "ui.scenario.sale",
+        promptSettingKey: "ui.prompt.sale",
       },
       {
         code: "sale_to_buyer",
         title: "Купить зерно",
-        subtitle: "Сформировать запрос на закупку",
-        prompt: "Хочу купить зерно",
+        subtitle: "Закупка под спецификацию качества и сроки",
+        prompt: "Покупка ячменя, 250 тонн, Ростовская область, доставка в течение 10 дней, контакт +7...",
+        titleSettingKey: "ui.scenario.buy",
+        promptSettingKey: "ui.prompt.buy",
       },
       {
         code: "logistics_request",
-        title: "Рассчитать логистику",
-        subtitle: "Маршрут и транспорт для перевозки",
-        prompt: "Нужна перевозка груза",
+        title: "Логистика и маршрут",
+        subtitle: "Расчет плеча, транспорта и сроков перевозки",
+        prompt: "Логистика из Краснодара в Новороссийск, 300 тонн, авто/жд, нужен расчет сроков и плеча.",
+        titleSettingKey: "ui.scenario.logistics",
+        promptSettingKey: "ui.prompt.logistics",
       },
       {
         code: "availability",
         title: "Уточнить наличие",
         subtitle: "Проверка доступности партии",
         prompt: "Что есть в наличии",
+        titleSettingKey: "ui.scenario.availability",
       },
       {
         code: "consultation",
         title: "Консультация",
         subtitle: "Вопрос по услугам и условиям",
         prompt: "Нужна консультация",
+        titleSettingKey: "ui.scenario.consultation",
       },
     ]
 
@@ -337,6 +380,8 @@
     const clearBtn = document.getElementById("clear-btn")
     const stateChip = document.getElementById("state-chip")
     const emptyNode = document.getElementById("chat-empty")
+    const briefList = document.getElementById("brief-list")
+    const briefNext = document.getElementById("brief-next")
 
     function setState(code, text) {
       stateChip.className = `state-chip ${code}`
@@ -358,6 +403,16 @@
 
     function scrollBottom() {
       streamNode.scrollTop = streamNode.scrollHeight
+    }
+
+    function renderBrief(capturedFields = [], nextAction = "") {
+      const lines = Array.isArray(capturedFields) ? capturedFields.filter(Boolean) : []
+      if (!lines.length) {
+        briefList.innerHTML = "<li>Пока нет подтвержденных параметров.</li>"
+      } else {
+        briefList.innerHTML = lines.map(item => `<li>${item}</li>`).join("")
+      }
+      briefNext.textContent = `Следующий шаг: ${nextAction || "уточнить базовые параметры заявки."}`
     }
 
     function addMessage(direction, text = "", loading = false) {
@@ -389,6 +444,27 @@
         idx = buffer.indexOf("\n")
       }
       return buffer
+    }
+
+    async function loadBootstrapConfig() {
+      try {
+        const response = await fetch("/api/public/bootstrap")
+        if (!response.ok) return
+        const data = await response.json()
+        const settings = data?.settings || {}
+
+        SCENARIOS = SCENARIOS.map(item => {
+          const title = item.titleSettingKey ? settings[item.titleSettingKey] : ""
+          const prompt = item.promptSettingKey ? settings[item.promptSettingKey] : ""
+          return {
+            ...item,
+            title: title || item.title,
+            prompt: prompt || item.prompt,
+          }
+        })
+      } catch {
+        // keep defaults
+      }
     }
 
     function renderScenarios() {
@@ -485,6 +561,7 @@
         }
 
         sessionId = finalEvent.session_id || sessionId
+        renderBrief(finalEvent.captured_fields || [], finalEvent.next_action || "")
 
         const status = String(finalEvent.status || "")
         if (status === "qualified" || status === "handed_to_manager") {
@@ -512,6 +589,7 @@
       streamNode.innerHTML = ""
       emptyNode.classList.remove("hidden")
       streamNode.appendChild(emptyNode)
+      renderBrief([], "уточнить базовые параметры заявки.")
       setState("idle", "Готов к диалогу")
       inputNode.focus()
     }
@@ -523,7 +601,10 @@
       }
     })
 
-    renderScenarios()
+    ;(async () => {
+      await loadBootstrapConfig()
+      renderScenarios()
+    })()
   </script>
 </body>
 </html>

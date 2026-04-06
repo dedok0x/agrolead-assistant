@@ -1,8 +1,8 @@
 import asyncio
-import hashlib
 import json
 import logging
 import os
+from datetime import timedelta
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -14,8 +14,10 @@ from sqlmodel import Session, select
 from .agent import SalesAssistantAgent
 from .db import engine, get_session, init_db
 from .guardrails import evaluate_guardrails
+from .guardrail_response_policy import render_guardrail_reply
 from .llm_service import LLMService, LLMUnavailableError
 from .models import (
+    AdminSession,
     AdminSetting,
     AdminUser,
     CatalogPricePolicy,
@@ -41,10 +43,13 @@ from .models import (
     RefLeadSource,
     RefManagerRole,
     RefPipelineStage,
+    RefQualityParameter,
     RefRegion,
     RefRequestType,
     RefTransportMode,
 )
+from .negotiation import build_offer_hypothesis, resolve_negotiation_stage
+from .rag_service import render_rag_lines, retrieve_knowledge_context
 from .sales_logic import (
     detect_request_type,
     extract_facts,
@@ -54,19 +59,39 @@ from .sales_logic import (
     next_question_for,
     required_fields,
 )
+from .security import generate_session_token, hash_password, hash_session_token, verify_password
 from .seed import seed_defaults
 
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 LOGGER = logging.getLogger("agrolead.api")
 
-app = FastAPI(title="AgroLead Assistant API", version="5.0.0")
+app = FastAPI(title="AgroLead Assistant API", version="6.0.0")
 
 ADMIN_USER = os.getenv("ADMIN_USER", "admin")
 ADMIN_PASS = os.getenv("ADMIN_PASS", "315920")
-ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "agrolead-admin-token")
+ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "")
+ALLOW_STATIC_ADMIN_TOKEN = os.getenv("ALLOW_STATIC_ADMIN_TOKEN", "0").strip().lower() not in {"0", "false", "no", "off"}
+ADMIN_SESSION_TTL_MINUTES = max(10, min(int(os.getenv("ADMIN_SESSION_TTL_MINUTES", "720")), 60 * 24 * 30))
 
 llm_service = LLMService()
 agent = SalesAssistantAgent(llm_service=llm_service)
+
+COMMODITY_NAME_SYNONYMS = {
+    "пшениц": "пшеница",
+    "фураж": "пшеница",
+    "ячмен": "ячмень",
+    "кукуруз": "кукуруза",
+    "подсолнеч": "подсолнечник",
+    "семечк": "подсолнечник",
+}
+
+REGION_NAME_SYNONYMS = {
+    "крд": "краснодар",
+    "краснодарский край": "краснодар",
+    "ростов": "ростов-на-дону",
+    "ростовская область": "ростов-на-дону",
+    "новорос": "новороссийск",
+}
 
 
 class LoginIn(BaseModel):
@@ -81,18 +106,16 @@ class ChatIn(BaseModel):
     source_channel: str = "web_widget"
     external_user_id: Optional[str] = None
     external_chat_id: Optional[str] = None
+    debug: bool = False
 
 
 class ChatDryRunIn(BaseModel):
     text: str
+    debug: bool = False
 
 
 def _now() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
-
-
-def _hash_password(raw: str) -> str:
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
 def _require_id(value: Optional[int], entity: str) -> int:
@@ -111,9 +134,56 @@ def _mask_settings(items: list[AdminSetting]) -> list[dict[str, Any]]:
     return out
 
 
-def require_admin(x_admin_token: Optional[str] = Header(default=None)) -> None:
-    if x_admin_token != ADMIN_TOKEN:
+def _create_admin_session(
+    session: Session,
+    user_id: Optional[int],
+    user_agent: str = "",
+    remote_addr: str = "",
+) -> str:
+    token = generate_session_token()
+    row = AdminSession(
+        user_id=user_id,
+        token_hash=hash_session_token(token),
+        expires_at=_now() + timedelta(minutes=ADMIN_SESSION_TTL_MINUTES),
+        user_agent=(user_agent or "")[:255],
+        remote_addr=(remote_addr or "")[:128],
+    )
+    session.add(row)
+    session.commit()
+    return token
+
+
+def require_admin(
+    x_admin_token: Optional[str] = Header(default=None),
+    session: Session = Depends(get_session),
+) -> Optional[AdminUser]:
+    token = (x_admin_token or "").strip()
+    if not token:
         raise HTTPException(status_code=401, detail="Unauthorized")
+
+    if ALLOW_STATIC_ADMIN_TOKEN and ADMIN_TOKEN and token == ADMIN_TOKEN:
+        return None
+
+    now = _now()
+    token_hash = hash_session_token(token)
+    admin_session = session.exec(select(AdminSession).where(AdminSession.token_hash == token_hash)).first()
+    if not admin_session:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    if admin_session.revoked_at is not None or admin_session.expires_at <= now:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    user = session.get(AdminUser, admin_session.user_id) if admin_session.user_id else None
+    if admin_session.user_id and (not user or not user.is_active):
+        admin_session.revoked_at = now
+        session.add(admin_session)
+        session.commit()
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    admin_session.last_seen_at = now
+    session.add(admin_session)
+    session.commit()
+    return user
 
 
 def _source_code_from_channel(channel: str) -> str:
@@ -174,6 +244,17 @@ def _get_or_create_chat_session(session: Session, payload: ChatIn) -> ChatSessio
     if payload.session_id:
         existing = session.get(ChatSession, payload.session_id)
         if existing:
+            expected_user = (payload.external_user_id or payload.client_id or "").strip()
+            if expected_user and existing.external_user_id and expected_user != existing.external_user_id:
+                raise HTTPException(status_code=403, detail="Session owner mismatch")
+
+            source_row = session.get(RefLeadSource, existing.source_id) if existing.source_id else None
+            expected_source = _source_code_from_channel(payload.source_channel)
+            if source_row and source_row.code != expected_source:
+                raise HTTPException(status_code=403, detail="Session channel mismatch")
+
+            if not existing.external_user_id and expected_user:
+                existing.external_user_id = expected_user
             existing.updated_at = _now()
             session.add(existing)
             session.commit()
@@ -330,6 +411,32 @@ def _summary_lines(facts: dict[str, ChatExtractedFact]) -> list[str]:
         rows.append(f"{human_field_name(key)}: {item.fact_value_text}")
     rows.sort()
     return rows[:8]
+
+
+def _fact_is_collected(item: Optional[ChatExtractedFact], min_confidence: float = 0.68) -> bool:
+    if not item:
+        return False
+    if item.confidence < min_confidence:
+        return False
+    if item.fact_value_numeric is not None:
+        return True
+    return bool((item.fact_value_text or "").strip())
+
+
+def _collected_required_fields(required: list[str], facts: dict[str, ChatExtractedFact]) -> set[str]:
+    collected: set[str] = set()
+    for field in required:
+        if _fact_is_collected(facts.get(field)):
+            collected.add(field)
+    return collected
+
+
+def _fact_text_map(facts: dict[str, ChatExtractedFact]) -> dict[str, str]:
+    payload: dict[str, str] = {}
+    for key, row in facts.items():
+        if row.fact_value_text:
+            payload[key] = row.fact_value_text
+    return payload
 
 
 def _counterparty_type_code_by_request(request_code: str) -> str:
@@ -535,12 +642,12 @@ def _sync_lead_tables(session: Session, chat: ChatSession, request_code: str, so
 
     _sync_counterparty_from_contact(session, lead, request_code, contact_row)
 
-    fact_keys = set(facts.keys())
-    has_contact = bool(_fact_text("contact_phone_or_telegram_or_email"))
+    fact_keys = {key for key, item in facts.items() if _fact_is_collected(item, min_confidence=0.6)}
+    has_contact = _fact_is_collected(facts.get("contact_phone_or_telegram_or_email"), min_confidence=0.8)
     min_viable = minimum_viable_application(request_code, fact_keys=fact_keys, has_contact=has_contact)
 
     required = required_fields(request_code)
-    collected = {key for key in fact_keys if key in required}
+    collected = _collected_required_fields(required, facts)
     is_qualified = len(required) > 0 and all(field in collected for field in required)
 
     lead.summary = _compact_summary(facts)
@@ -591,19 +698,29 @@ def _resolve_maps(session: Session) -> tuple[dict[str, int], dict[str, int]]:
     for row in commodities:
         commodity_id = _require_id(row.id, "commodity")
         commodity_map[row.name.lower()] = commodity_id
+        commodity_map[row.code.lower()] = commodity_id
         if row.full_name:
             commodity_map[row.full_name.lower()] = commodity_id
+
+    for alias, canonical in COMMODITY_NAME_SYNONYMS.items():
+        if canonical in commodity_map:
+            commodity_map.setdefault(alias, commodity_map[canonical])
 
     regions = session.exec(select(RefRegion).where(RefRegion.is_active == True)).all()
     region_map: dict[str, int] = {}
     for row in regions:
         region_id = _require_id(row.id, "region")
+        region_map[row.code.lower()] = region_id
         if row.region_name:
             region_map[row.region_name.lower()] = region_id
         if row.city_name:
             region_map[row.city_name.lower()] = region_id
         if row.port_name:
             region_map[row.port_name.lower()] = region_id
+
+    for alias, canonical in REGION_NAME_SYNONYMS.items():
+        if canonical in region_map:
+            region_map.setdefault(alias, region_map[canonical])
     return commodity_map, region_map
 
 
@@ -636,21 +753,26 @@ async def _process_chat(session: Session, payload: ChatIn) -> dict[str, Any]:
 
     guard = evaluate_guardrails(text)
     if not guard.allowed:
+        previous_out = sorted(
+            session.exec(select(ChatMessage).where(ChatMessage.session_id == chat_id, ChatMessage.direction == "out")).all(),
+            key=lambda x: x.created_at,
+        )
+        last_guard_replies = [row.text for row in previous_out[-3:]]
+        reply = render_guardrail_reply(guard, user_text=text, last_assistant_messages=last_guard_replies)
         if guard.stop_dialogue:
             chat.current_state_code = "blocked"
             session.add(chat)
-            _record_checkpoint(session, chat, "guardrails", "blocked", guard.reason)
+            _record_checkpoint(session, chat, "guardrails", "blocked", f"{guard.reason}:{guard.decision_code}")
             session.commit()
-        reply = guard.answer
         bot_message = _save_message(
             session,
             chat_id,
             direction="out",
             text=reply,
             blocked=True,
-            block_reason=guard.reason,
+            block_reason=f"{guard.reason}:{guard.decision_code}",
             provider="guardrails",
-            model="rule-based",
+            model="policy-v2",
         )
         chat.last_bot_message_at = bot_message.created_at
         session.add(chat)
@@ -660,8 +782,13 @@ async def _process_chat(session: Session, payload: ChatIn) -> dict[str, Any]:
             "lead_id": chat.lead_id,
             "text": reply,
             "provider": "guardrails",
-            "model": "rule-based",
+            "model": "policy-v2",
             "state": chat.current_state_code,
+            "guardrail": {
+                "decision_code": guard.decision_code,
+                "severity": guard.severity,
+                "policy_tags": list(guard.policy_tags),
+            },
             "done": True,
         }
 
@@ -711,7 +838,7 @@ async def _process_chat(session: Session, payload: ChatIn) -> dict[str, Any]:
     lead = _sync_lead_tables(session, chat, request_code=request_type.code, source_id=source_id)
     lead_id = _require_id(lead.id, "lead")
     facts = _facts_map(session, chat_id)
-    fact_keys = set(facts.keys())
+    fact_keys = {key for key, item in facts.items() if _fact_is_collected(item, min_confidence=0.68)}
     _update_missing_fields(session, chat, fact_keys)
 
     required = required_fields(request_type.code)
@@ -734,6 +861,52 @@ async def _process_chat(session: Session, payload: ChatIn) -> dict[str, Any]:
         next_question = next_question_for(missing) if missing else "Уточните приоритетный параметр сделки."
         _record_checkpoint(session, chat, "qualification", "in_progress", f"missing={missing or 'none'}")
 
+    commodity_id: Optional[int] = None
+    commodity_fact = facts.get("commodity_id")
+    if commodity_fact and commodity_fact.fact_value_numeric is not None:
+        commodity_id = int(commodity_fact.fact_value_numeric)
+    elif commodity_fact and commodity_fact.fact_value_text.isdigit():
+        commodity_id = int(commodity_fact.fact_value_text)
+
+    has_price_policy = False
+    for policy in session.exec(select(CatalogPricePolicy).where(CatalogPricePolicy.is_active == True)).all():
+        if commodity_id and policy.commodity_id and policy.commodity_id != commodity_id:
+            continue
+        if chat.request_type_id and policy.request_type_id and policy.request_type_id != chat.request_type_id:
+            continue
+        has_price_policy = True
+        break
+
+    has_stock_hint = False
+    if commodity_id:
+        stock_rows = session.exec(
+            select(CatalogStockPlaceholder).where(
+                CatalogStockPlaceholder.is_active == True,
+                CatalogStockPlaceholder.commodity_id == commodity_id,
+            )
+        ).all()
+        has_stock_hint = bool(stock_rows)
+
+    fact_texts = _fact_text_map(facts)
+    offer_lines = build_offer_hypothesis(
+        request_type.code,
+        fact_texts,
+        has_price_policy=has_price_policy,
+        has_stock_hint=has_stock_hint,
+        missing_field=missing,
+    )
+
+    rag_chunks = retrieve_knowledge_context(
+        session,
+        query_text=f"{text}\n" + "\n".join(_summary_lines(facts)),
+        request_type_id=chat.request_type_id,
+        commodity_id=commodity_id,
+        article_group="faq" if stage == "faq" else None,
+        top_k=4,
+    )
+    rag_lines = render_rag_lines(rag_chunks)
+    negotiation_stage = resolve_negotiation_stage(stage, lead.status_code, text, missing)
+
     # последние ответы ассистента для anti-repeat
     out_rows = sorted(
         session.exec(select(ChatMessage).where(ChatMessage.session_id == chat_id, ChatMessage.direction == "out")).all(),
@@ -748,6 +921,9 @@ async def _process_chat(session: Session, payload: ChatIn) -> dict[str, Any]:
         summary_lines=_summary_lines(facts),
         next_question=next_question,
         last_assistant_messages=last_assistant,
+        rag_lines=rag_lines,
+        offer_lines=offer_lines,
+        negotiation_stage=negotiation_stage,
     )
 
     bot_message = _save_message(
@@ -765,7 +941,7 @@ async def _process_chat(session: Session, payload: ChatIn) -> dict[str, Any]:
     session.add(chat)
     session.commit()
 
-    return {
+    result: dict[str, Any] = {
         "session_id": chat_id,
         "lead_id": lead_id,
         "request_type": request_type.code,
@@ -774,8 +950,19 @@ async def _process_chat(session: Session, payload: ChatIn) -> dict[str, Any]:
         "provider": reply.provider,
         "model": reply.model,
         "text": reply.text,
+        "captured_fields": _summary_lines(facts),
+        "next_action": lead.next_action,
+        "negotiation_stage": negotiation_stage,
         "done": True,
     }
+    if payload.debug:
+        result["debug"] = {
+            "rag_article_ids": [item.article_id for item in rag_chunks],
+            "negotiation_stage": negotiation_stage,
+            "offer_lines": offer_lines,
+            "guardrail": {"decision_code": guard.decision_code, "severity": guard.severity},
+        }
+    return result
 
 
 @app.on_event("startup")
@@ -802,13 +989,13 @@ def health(session: Session = Depends(get_session)) -> dict[str, Any]:
     return {
         "status": "ok" if db_ok else "error",
         "time": _now().isoformat(),
-        "agent_engine": "sales-lead-orchestrator-v5",
+        "agent_engine": "sales-lead-orchestrator-v6",
         "db_ok": db_ok,
     }
 
 
 @app.get("/api/llm/status")
-def llm_status() -> dict[str, Any]:
+def llm_status(_: None = Depends(require_admin)) -> dict[str, Any]:
     return llm_service.status()
 
 
@@ -840,6 +1027,9 @@ async def chat_stream(payload: ChatIn, session: Session = Depends(get_session)) 
                 "status": result.get("status"),
                 "provider": result.get("provider"),
                 "model": result.get("model"),
+                "captured_fields": result.get("captured_fields") or [],
+                "next_action": result.get("next_action") or "",
+                "negotiation_stage": result.get("negotiation_stage") or "qualification",
                 "token": text,
                 "done": True,
             },
@@ -857,7 +1047,17 @@ async def chat_dry_run(payload: ChatDryRunIn, session: Session = Depends(get_ses
 
     guard = evaluate_guardrails(text)
     if not guard.allowed:
-        return {"done": True, "provider": "guardrails", "model": "rule-based", "text": guard.answer}
+        return {
+            "done": True,
+            "provider": "guardrails",
+            "model": "policy-v2",
+            "text": render_guardrail_reply(guard, user_text=text, last_assistant_messages=[]),
+            "guardrail": {
+                "decision_code": guard.decision_code,
+                "severity": guard.severity,
+                "policy_tags": list(guard.policy_tags),
+            },
+        }
 
     try:
         request_code = detect_request_type(text)
@@ -866,16 +1066,56 @@ async def chat_dry_run(payload: ChatDryRunIn, session: Session = Depends(get_ses
         facts = extract_facts(text, commodity_map, region_map)
         _resolve_code_facts(session, facts)
         required = required_fields(request_code)
-        missing = next_missing_field(required, set(facts.keys()))
+        collected = {key for key, value in facts.items() if value.confidence >= 0.68 and (value.text or value.numeric is not None)}
+        missing = next_missing_field(required, collected)
         question = next_question_for(missing) if missing else "Если готовы, фиксирую заявку и передаю менеджеру."
         summary = [f"{human_field_name(k)}: {v.text}" for k, v in facts.items() if v.text][:8]
+
+        commodity_id: Optional[int] = None
+        commodity_fact = facts.get("commodity_id")
+        if commodity_fact and commodity_fact.numeric is not None:
+            commodity_id = int(commodity_fact.numeric)
+
+        has_price_policy = bool(
+            session.exec(select(CatalogPricePolicy).where(CatalogPricePolicy.is_active == True)).all()
+        )
+        has_stock_hint = bool(
+            commodity_id
+            and session.exec(
+                select(CatalogStockPlaceholder).where(
+                    CatalogStockPlaceholder.is_active == True,
+                    CatalogStockPlaceholder.commodity_id == commodity_id,
+                )
+            ).all()
+        )
+
+        rag_chunks = retrieve_knowledge_context(
+            session,
+            query_text=text,
+            request_type_id=request.id if request and request.id else None,
+            commodity_id=commodity_id,
+            article_group="faq" if _is_faq_like(text) else None,
+            top_k=4,
+        )
+        offer_lines = build_offer_hypothesis(
+            request_code,
+            {k: v.text for k, v in facts.items() if v.text},
+            has_price_policy=has_price_policy,
+            has_stock_hint=has_stock_hint,
+            missing_field=missing,
+        )
+        stage = "faq" if _is_faq_like(text) else "draft"
+        negotiation_stage = resolve_negotiation_stage(stage, "draft", text, missing)
         reply = await agent.reply(
-            stage="draft",
+            stage=stage,
             request_type_name=request.name if request else request_code,
             user_text=text,
             summary_lines=summary,
             next_question=question,
             last_assistant_messages=[],
+            rag_lines=render_rag_lines(rag_chunks),
+            offer_lines=offer_lines,
+            negotiation_stage=negotiation_stage,
         )
         if reply.provider == "service-unavailable":
             detail = llm_service.last_error or "LLM unavailable"
@@ -883,7 +1123,15 @@ async def chat_dry_run(payload: ChatDryRunIn, session: Session = Depends(get_ses
     except LLMUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
-    return {"done": True, "provider": reply.provider, "model": reply.model, "text": reply.text}
+    result: dict[str, Any] = {"done": True, "provider": reply.provider, "model": reply.model, "text": reply.text}
+    if payload.debug:
+        result["debug"] = {
+            "request_type": request_code,
+            "rag_article_ids": [item.article_id for item in rag_chunks],
+            "offer_lines": offer_lines,
+            "negotiation_stage": negotiation_stage,
+        }
+    return result
 
 
 @app.get("/api/public/bootstrap")
@@ -891,25 +1139,79 @@ def bootstrap(session: Session = Depends(get_session)) -> dict[str, Any]:
     company = session.exec(select(CompanyProfile)).first()
     commodities = session.exec(select(RefCommodity).where(RefCommodity.is_active == True)).all()
     request_types = session.exec(select(RefRequestType).where(RefRequestType.is_active == True)).all()
+    settings_rows = session.exec(select(AdminSetting).where(AdminSetting.is_secret == False)).all()
+    public_settings: dict[str, str] = {}
+    for item in settings_rows:
+        if item.setting_key.startswith("ui.") or item.setting_key.startswith("intake.") or item.setting_key.startswith("routing."):
+            public_settings[item.setting_key] = item.setting_value
+    llm = llm_service.status()
+    public_llm = {
+        "mode": llm.get("mode"),
+        "preferred_provider": llm.get("preferred_provider"),
+        "gigachat_enabled": llm.get("gigachat_enabled"),
+        "models": llm.get("models"),
+    }
     return {
         "company": company,
         "commodities": commodities,
         "request_types": request_types,
-        "llm": llm_service.status(),
+        "settings": public_settings,
+        "llm": public_llm,
     }
 
 
 @app.post("/api/admin/login")
 @app.post("/api/v1/admin/login")
-def admin_login(payload: LoginIn, session: Session = Depends(get_session)) -> dict[str, str]:
+def admin_login(
+    payload: LoginIn,
+    session: Session = Depends(get_session),
+    user_agent: Optional[str] = Header(default="", alias="User-Agent"),
+    x_forwarded_for: Optional[str] = Header(default="", alias="X-Forwarded-For"),
+) -> dict[str, str]:
     user = session.exec(select(AdminUser).where(AdminUser.login == payload.username, AdminUser.is_active == True)).first()
     fallback_ok = payload.username == ADMIN_USER and payload.password == ADMIN_PASS
+
     if user:
-        if user.password_hash != _hash_password(payload.password):
+        valid, needs_rehash = verify_password(payload.password, user.password_hash)
+        if not valid:
             raise HTTPException(status_code=401, detail="Bad credentials")
-    elif not fallback_ok:
-        raise HTTPException(status_code=401, detail="Bad credentials")
-    return {"token": ADMIN_TOKEN}
+        if needs_rehash:
+            user.password_hash = hash_password(payload.password)
+            user.updated_at = _now()
+            session.add(user)
+            session.commit()
+
+        token = _create_admin_session(
+            session,
+            user_id=user.id,
+            user_agent=user_agent or "",
+            remote_addr=(x_forwarded_for or "").split(",")[0].strip(),
+        )
+        return {"token": token}
+
+    if fallback_ok and ALLOW_STATIC_ADMIN_TOKEN and ADMIN_TOKEN:
+        return {"token": ADMIN_TOKEN}
+
+    raise HTTPException(status_code=401, detail="Bad credentials")
+
+
+@app.post("/api/v1/admin/logout")
+def admin_logout(
+    x_admin_token: Optional[str] = Header(default=None),
+    _: Optional[AdminUser] = Depends(require_admin),
+    session: Session = Depends(get_session),
+) -> dict[str, bool]:
+    token = (x_admin_token or "").strip()
+    if not token:
+        return {"ok": True}
+
+    row = session.exec(select(AdminSession).where(AdminSession.token_hash == hash_session_token(token))).first()
+    if row and row.revoked_at is None:
+        row.revoked_at = _now()
+        row.last_seen_at = _now()
+        session.add(row)
+        session.commit()
+    return {"ok": True}
 
 
 @app.get("/api/v1/admin/stats")
@@ -963,6 +1265,7 @@ def list_leads(
     hot_only: bool = False,
     limit: int = 200,
 ) -> list[dict[str, Any]]:
+    limit = max(1, min(limit, 1000))
     leads = session.exec(select(CrmLead)).all()
     request_type_by_id = {row.id: row.code for row in session.exec(select(RefRequestType)).all()}
 
@@ -1052,6 +1355,120 @@ def _crud_delete(session: Session, model, row_id: int) -> dict[str, bool]:
     return {"ok": True}
 
 
+def _to_float_or_none(value: Any) -> Optional[float]:
+    if value is None:
+        return None
+    text = str(value).strip().replace(",", ".")
+    if not text:
+        return None
+    try:
+        return float(text)
+    except ValueError:
+        return None
+
+
+def _normalize_quality_line_payload(session: Session, raw_line: dict[str, Any]) -> dict[str, Any]:
+    payload = dict(raw_line or {})
+    if "operator" in payload and "comparison_operator" not in payload:
+        payload["comparison_operator"] = payload.pop("operator")
+
+    if "parameter_code" in payload and "quality_parameter_id" not in payload:
+        row = _get_ref_by_code(session, RefQualityParameter, str(payload.pop("parameter_code")).strip().lower())
+        if row and row.id:
+            payload["quality_parameter_id"] = row.id
+
+    if "target_value" in payload:
+        parsed = _to_float_or_none(payload["target_value"])
+        if parsed is not None:
+            payload["target_value_numeric"] = parsed
+            payload.setdefault("target_value_text", str(payload["target_value"]))
+        else:
+            payload["target_value_text"] = str(payload["target_value"])
+        payload.pop("target_value", None)
+
+    allowed = {
+        "quality_parameter_id",
+        "comparison_operator",
+        "target_value_numeric",
+        "target_value_text",
+        "sort_order",
+    }
+    normalized: dict[str, Any] = {}
+    for key, value in payload.items():
+        if key in allowed:
+            normalized[key] = value
+    return normalized
+
+
+def _normalize_quality_template_payload(session: Session, raw_payload: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    payload = dict(raw_payload or {})
+    if "code" in payload and "template_code" not in payload:
+        payload["template_code"] = payload.pop("code")
+    if "name" in payload and "template_name" not in payload:
+        payload["template_name"] = payload.pop("name")
+
+    payload.pop("description", None)
+    lines_raw = payload.pop("lines", []) or []
+    lines = [_normalize_quality_line_payload(session, item) for item in lines_raw if isinstance(item, dict)]
+
+    allowed = {"commodity_id", "template_code", "template_name", "is_default", "is_active"}
+    normalized_payload: dict[str, Any] = {}
+    for key, value in payload.items():
+        if key in allowed:
+            normalized_payload[key] = value
+    return normalized_payload, lines
+
+
+def _normalize_price_policy_payload(session: Session, raw_payload: dict[str, Any]) -> dict[str, Any]:
+    payload = dict(raw_payload or {})
+    if "price_formula_text" in payload and "pricing_rule_text" not in payload:
+        payload["pricing_rule_text"] = payload.pop("price_formula_text")
+
+    if "region_id" in payload and "source_region_id" not in payload:
+        payload["source_region_id"] = payload.get("region_id")
+    payload.pop("region_id", None)
+
+    currency_code = str(payload.pop("currency_code", "")).strip()
+    if currency_code:
+        current_rule = str(payload.get("pricing_rule_text", "")).strip()
+        if current_rule:
+            payload["pricing_rule_text"] = f"[{currency_code}] {current_rule}"
+
+    request_type_code = str(payload.pop("request_type_code", "")).strip().lower()
+    if request_type_code and "request_type_id" not in payload:
+        row = _get_ref_by_code(session, RefRequestType, request_type_code)
+        if row and row.id:
+            payload["request_type_id"] = row.id
+
+    transport_mode_code = str(payload.pop("transport_mode_code", "")).strip().lower()
+    if transport_mode_code and "transport_mode_id" not in payload:
+        row = _get_ref_by_code(session, RefTransportMode, transport_mode_code)
+        if row and row.id:
+            payload["transport_mode_id"] = row.id
+
+    allowed = {
+        "code",
+        "name",
+        "commodity_id",
+        "request_type_id",
+        "source_region_id",
+        "destination_region_id",
+        "transport_mode_id",
+        "min_volume",
+        "max_volume",
+        "pricing_rule_text",
+        "manager_note",
+        "is_active",
+        "valid_from",
+        "valid_to",
+    }
+    normalized: dict[str, Any] = {}
+    for key, value in payload.items():
+        if key in allowed:
+            normalized[key] = value
+    return normalized
+
+
 @app.get("/api/v1/catalog/commodities")
 @app.get("/api/admin/products")
 def get_commodities(_: None = Depends(require_admin), session: Session = Depends(get_session)):
@@ -1122,58 +1539,101 @@ def update_delivery_basis(row_id: int, payload: dict[str, Any], _: None = Depend
 @app.get("/api/v1/catalog/quality-templates")
 def get_quality_templates(_: None = Depends(require_admin), session: Session = Depends(get_session)) -> list[dict[str, Any]]:
     templates = _crud_list(session, CatalogQualityTemplate)
+    parameter_by_id = {row.id: row.code for row in session.exec(select(RefQualityParameter)).all()}
     result = []
     for item in templates:
         payload = item.model_dump()
-        payload["lines"] = [
-            line.model_dump()
-            for line in session.exec(
-                select(CatalogQualityTemplateLine).where(CatalogQualityTemplateLine.quality_template_id == item.id)
-            ).all()
-        ]
+        payload["code"] = payload.get("template_code", "")
+        payload["name"] = payload.get("template_name", "")
+        lines = []
+        for line in session.exec(
+            select(CatalogQualityTemplateLine).where(CatalogQualityTemplateLine.quality_template_id == item.id)
+        ).all():
+            line_payload = line.model_dump()
+            line_payload["parameter_code"] = parameter_by_id.get(line.quality_parameter_id, "")
+            line_payload["operator"] = line.comparison_operator
+            line_payload["target_value"] = (
+                line.target_value_numeric if line.target_value_numeric is not None else line.target_value_text
+            )
+            lines.append(line_payload)
+        payload["lines"] = lines
         result.append(payload)
     return result
 
 
 @app.post("/api/v1/catalog/quality-templates")
 def create_quality_template(payload: dict[str, Any], _: None = Depends(require_admin), session: Session = Depends(get_session)):
-    lines = payload.pop("lines", [])
-    row = _crud_create(session, CatalogQualityTemplate, payload)
+    normalized, lines = _normalize_quality_template_payload(session, payload)
+    if "template_code" not in normalized or "template_name" not in normalized:
+        raise HTTPException(status_code=422, detail="template_code and template_name are required")
+    row = _crud_create(session, CatalogQualityTemplate, normalized)
     for line in lines:
+        if "quality_parameter_id" not in line:
+            continue
         line["quality_template_id"] = row.id
         _crud_create(session, CatalogQualityTemplateLine, line)
-    return row
+    return {
+        **row.model_dump(),
+        "lines": [
+            item.model_dump()
+            for item in session.exec(
+                select(CatalogQualityTemplateLine).where(CatalogQualityTemplateLine.quality_template_id == row.id)
+            ).all()
+        ],
+    }
 
 
 @app.put("/api/v1/catalog/quality-templates/{row_id}")
 def update_quality_template(row_id: int, payload: dict[str, Any], _: None = Depends(require_admin), session: Session = Depends(get_session)):
-    lines = payload.pop("lines", None)
-    row = _crud_update(session, CatalogQualityTemplate, row_id, payload)
-    if lines is not None:
+    lines_provided = "lines" in payload
+    normalized, lines = _normalize_quality_template_payload(session, payload)
+    row = _crud_update(session, CatalogQualityTemplate, row_id, normalized)
+    if lines_provided:
         for existing in session.exec(
             select(CatalogQualityTemplateLine).where(CatalogQualityTemplateLine.quality_template_id == row_id)
         ).all():
             session.delete(existing)
         session.commit()
         for line in lines:
+            if "quality_parameter_id" not in line:
+                continue
             line["quality_template_id"] = row_id
             _crud_create(session, CatalogQualityTemplateLine, line)
-    return row
+    return {
+        **row.model_dump(),
+        "lines": [
+            item.model_dump()
+            for item in session.exec(
+                select(CatalogQualityTemplateLine).where(CatalogQualityTemplateLine.quality_template_id == row_id)
+            ).all()
+        ],
+    }
 
 
 @app.get("/api/v1/catalog/price-policies")
 def get_price_policies(_: None = Depends(require_admin), session: Session = Depends(get_session)):
-    return _crud_list(session, CatalogPricePolicy)
+    rows = _crud_list(session, CatalogPricePolicy)
+    result = []
+    for row in rows:
+        payload = row.model_dump()
+        payload["region_id"] = payload.get("source_region_id")
+        payload["price_formula_text"] = payload.get("pricing_rule_text")
+        result.append(payload)
+    return result
 
 
 @app.post("/api/v1/catalog/price-policies")
 def create_price_policy(payload: dict[str, Any], _: None = Depends(require_admin), session: Session = Depends(get_session)):
-    return _crud_create(session, CatalogPricePolicy, payload)
+    normalized = _normalize_price_policy_payload(session, payload)
+    if not normalized.get("pricing_rule_text"):
+        normalized["pricing_rule_text"] = "условия расчета уточняются"
+    return _crud_create(session, CatalogPricePolicy, normalized)
 
 
 @app.put("/api/v1/catalog/price-policies/{row_id}")
 def update_price_policy(row_id: int, payload: dict[str, Any], _: None = Depends(require_admin), session: Session = Depends(get_session)):
-    return _crud_update(session, CatalogPricePolicy, row_id, payload)
+    normalized = _normalize_price_policy_payload(session, payload)
+    return _crud_update(session, CatalogPricePolicy, row_id, normalized)
 
 
 @app.get("/api/v1/catalog/lots")
@@ -1216,6 +1676,7 @@ def update_knowledge(row_id: int, payload: dict[str, Any], _: None = Depends(req
 
 @app.get("/api/v1/admin/chat-sessions")
 def get_chat_sessions(_: None = Depends(require_admin), session: Session = Depends(get_session), limit: int = 200):
+    limit = max(1, min(limit, 1000))
     rows = session.exec(select(ChatSession)).all()
     return sorted(rows, key=lambda x: x.updated_at, reverse=True)[:limit]
 
@@ -1276,20 +1737,26 @@ def update_task(row_id: int, payload: dict[str, Any], _: None = Depends(require_
 
 @app.get("/api/v1/admin/users")
 def get_users(_: None = Depends(require_admin), session: Session = Depends(get_session)):
-    return _crud_list(session, AdminUser)
+    rows = _crud_list(session, AdminUser)
+    result = []
+    for row in rows:
+        payload = row.model_dump()
+        payload.pop("password_hash", None)
+        result.append(payload)
+    return result
 
 
 @app.post("/api/v1/admin/users")
 def create_user(payload: dict[str, Any], _: None = Depends(require_admin), session: Session = Depends(get_session)):
     if "password_hash" not in payload and "password" in payload:
-        payload["password_hash"] = _hash_password(str(payload.pop("password")))
+        payload["password_hash"] = hash_password(str(payload.pop("password")))
     return _crud_create(session, AdminUser, payload)
 
 
 @app.put("/api/v1/admin/users/{row_id}")
 def update_user(row_id: int, payload: dict[str, Any], _: None = Depends(require_admin), session: Session = Depends(get_session)):
     if "password" in payload:
-        payload["password_hash"] = _hash_password(str(payload.pop("password")))
+        payload["password_hash"] = hash_password(str(payload.pop("password")))
     return _crud_update(session, AdminUser, row_id, payload)
 
 

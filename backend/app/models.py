@@ -364,6 +364,19 @@ class AdminUser(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=utcnow)
 
 
+class AdminSession(SQLModel, table=True):
+    __tablename__ = "admin_session"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: Optional[int] = Field(default=None, index=True)
+    token_hash: str = Field(index=True, unique=True)
+    expires_at: datetime = Field(index=True)
+    revoked_at: Optional[datetime] = Field(default=None, index=True)
+    created_at: datetime = Field(default_factory=utcnow)
+    last_seen_at: datetime = Field(default_factory=utcnow)
+    user_agent: str = ""
+    remote_addr: str = ""
+
+
 class AdminSetting(SQLModel, table=True):
     __tablename__ = "admin_setting"
     id: Optional[int] = Field(default=None, primary_key=True)

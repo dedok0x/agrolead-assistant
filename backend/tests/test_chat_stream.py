@@ -5,7 +5,7 @@ import sys
 import unittest
 from unittest.mock import AsyncMock
 
-DB_FILE = pathlib.Path("./test_chat_stream_v5.db").resolve()
+DB_FILE = pathlib.Path("./test_chat_stream_v6.db").resolve()
 if DB_FILE.exists():
     DB_FILE.unlink()
 
@@ -43,7 +43,7 @@ class ChatStreamCases(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(payload.get("status"), "ok")
-        self.assertEqual(payload.get("agent_engine"), "sales-lead-orchestrator-v5")
+        self.assertEqual(payload.get("agent_engine"), "sales-lead-orchestrator-v6")
 
     def test_chat_stream_returns_done(self):
         response = self.client.post(

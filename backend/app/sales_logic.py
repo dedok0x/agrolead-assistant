@@ -9,6 +9,28 @@ REQUEST_TYPE_KEYWORDS = {
     "export_request": ["экспорт", "fob", "cfr", "инкотермс", "вэд", "иностран"],
 }
 
+COMMODITY_ALIASES = {
+    "пшениц": "пшеница",
+    "фураж": "пшеница",
+    "ячмен": "ячмень",
+    "кукуруз": "кукуруза",
+    "подсолнеч": "подсолнечник",
+    "семечк": "подсолнечник",
+    "горох": "горох",
+    "нут": "нут",
+    "лен": "лен",
+    "кориандр": "кориандр",
+}
+
+REGION_ALIASES = {
+    "крд": "краснодар",
+    "краснодарский": "краснодар",
+    "ростовская": "ростов-на-дону",
+    "ростов": "ростов-на-дону",
+    "новорос": "новороссийск",
+    "таман": "тамань",
+}
+
 
 REQUIRED_FIELDS_BY_REQUEST = {
     "purchase_from_supplier": [
@@ -382,10 +404,22 @@ def extract_facts(
     facts: dict[str, FactValue] = {}
     normalized = normalize_text(text)
 
-    for name, commodity_id in commodity_by_name.items():
+    sorted_commodities = sorted(commodity_by_name.items(), key=lambda item: len(item[0]), reverse=True)
+    for name, commodity_id in sorted_commodities:
         if name in normalized:
             facts["commodity_id"] = FactValue(text=str(commodity_id), numeric=float(commodity_id), confidence=0.92)
             facts.setdefault("cargo_type_text", FactValue(text=name, confidence=0.70))
+            break
+
+    if "commodity_id" not in facts:
+        for alias, canonical in COMMODITY_ALIASES.items():
+            if alias not in normalized:
+                continue
+            commodity_id = commodity_by_name.get(canonical)
+            if commodity_id is None:
+                continue
+            facts["commodity_id"] = FactValue(text=str(commodity_id), numeric=float(commodity_id), confidence=0.86)
+            facts.setdefault("cargo_type_text", FactValue(text=canonical, confidence=0.72))
             break
 
     volume_value, volume_unit = parse_volume(text)
@@ -454,6 +488,16 @@ def extract_facts(
                 FactValue(text=str(region_id), numeric=float(region_id), confidence=0.8),
             )
             facts.setdefault("location_text", FactValue(text=region_name, confidence=0.7))
+
+    for alias, canonical in REGION_ALIASES.items():
+        if alias not in normalized:
+            continue
+        region_id = region_by_name.get(canonical)
+        if region_id is None:
+            continue
+        facts.setdefault("source_region_id", FactValue(text=str(region_id), numeric=float(region_id), confidence=0.8))
+        facts.setdefault("destination_region_id_or_port", FactValue(text=str(region_id), numeric=float(region_id), confidence=0.78))
+        facts.setdefault("location_text", FactValue(text=canonical, confidence=0.7))
 
     if "хран" in normalized or "склад" in normalized or "перевалк" in normalized:
         facts.setdefault("storage_period_text", FactValue(text="срок уточняется", confidence=0.55))

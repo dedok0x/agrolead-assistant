@@ -6,10 +6,11 @@ from dataclasses import dataclass
 @dataclass(slots=True)
 class GuardrailDecision:
     allowed: bool
-    answer: str
+    decision_code: str
+    severity: int
     reason: str
-    toxicity_level: int = 0
     stop_dialogue: bool = False
+    policy_tags: tuple[str, ...] = ()
 
 
 SEVERE_TOXIC_PATTERNS = [
@@ -56,41 +57,59 @@ def evaluate_guardrails(text: str) -> GuardrailDecision:
     normalized = _normalize(text)
 
     if not normalized:
-        return GuardrailDecision(allowed=False, answer="Напиши сообщение по делу: товар, класс, объем.", reason="empty_input")
+        return GuardrailDecision(
+            allowed=False,
+            decision_code="empty_input",
+            severity=1,
+            reason="empty_input",
+            stop_dialogue=False,
+            policy_tags=("input", "empty"),
+        )
 
     if _matches_any(SECURITY_BLOCK_PATTERNS, normalized):
         return GuardrailDecision(
             allowed=False,
-            answer="С такими запросами не работаю. Могу помочь только по зерну: товар, объем, логистика и заявка.",
+            decision_code="security_block",
+            severity=3,
             reason="security_block",
-            toxicity_level=0,
             stop_dialogue=True,
+            policy_tags=("security", "block"),
         )
 
     if _matches_any(SEVERE_TOXIC_PATTERNS, normalized):
         return GuardrailDecision(
             allowed=False,
-            answer="С таким тоном не работаю. Если нужен расчет по зерну, вернись с нормальным запросом.",
+            decision_code="toxic_hard_stop",
+            severity=3,
             reason="toxic_hard_stop",
-            toxicity_level=2,
             stop_dialogue=True,
+            policy_tags=("toxicity", "hard-stop"),
         )
 
     if _matches_any(MILD_TOXIC_PATTERNS, normalized):
         if strict_mode:
             return GuardrailDecision(
                 allowed=False,
-                answer="Давай спокойно и по делу: товар, класс, объем и куда везем.",
+                decision_code="toxic_soft_stop",
+                severity=2,
                 reason="toxic_soft_stop",
-                toxicity_level=1,
                 stop_dialogue=True,
+                policy_tags=("toxicity", "soft-stop"),
             )
         return GuardrailDecision(
             allowed=True,
-            answer="",
+            decision_code="toxic_warn_allowed",
+            severity=1,
             reason="toxic_warn_allowed",
-            toxicity_level=1,
             stop_dialogue=False,
+            policy_tags=("toxicity", "warn"),
         )
 
-    return GuardrailDecision(allowed=True, answer="", reason="ok", toxicity_level=0, stop_dialogue=False)
+    return GuardrailDecision(
+        allowed=True,
+        decision_code="ok",
+        severity=0,
+        reason="ok",
+        stop_dialogue=False,
+        policy_tags=("ok",),
+    )

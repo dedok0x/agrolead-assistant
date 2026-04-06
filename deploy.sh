@@ -262,7 +262,9 @@ upsert_env_var "GIGACHAT_AUTH_URL" "$(env_or_default "GIGACHAT_AUTH_URL" "https:
 upsert_env_var "GIGACHAT_API_BASE_URL" "$(env_or_default "GIGACHAT_API_BASE_URL" "https://gigachat.devices.sberbank.ru/api/v1")"
 upsert_env_var "GIGACHAT_MODEL" "$(env_or_default "GIGACHAT_MODEL" "GigaChat-2")"
 upsert_env_var "GIGACHAT_VERIFY_SSL" "$(env_or_default "GIGACHAT_VERIFY_SSL" "1")"
-upsert_env_var "GIGACHAT_INSECURE_SSL_FALLBACK" "$(env_or_default "GIGACHAT_INSECURE_SSL_FALLBACK" "1")"
+upsert_env_var "GIGACHAT_INSECURE_SSL_FALLBACK" "$(env_or_default "GIGACHAT_INSECURE_SSL_FALLBACK" "0")"
+upsert_env_var "ALLOW_STATIC_ADMIN_TOKEN" "$(env_or_default "ALLOW_STATIC_ADMIN_TOKEN" "0")"
+upsert_env_var "ADMIN_SESSION_TTL_MINUTES" "$(env_or_default "ADMIN_SESSION_TTL_MINUTES" "720")"
 
 if [[ -f "$ROOT_DIR/ssl/fullchain.pem" ]]; then
   upsert_env_var "GIGACHAT_CA_FILE" "/ssl/fullchain.pem"
@@ -277,7 +279,7 @@ step "Проверка SSL сертификатов webui"
 ok "SSL файлы webui найдены"
 
 step "Сборка и запуск контейнеров"
-docker compose -f "$COMPOSE_FILE" down -v --remove-orphans || true
+docker compose -f "$COMPOSE_FILE" down --remove-orphans || true
 docker compose -f "$COMPOSE_FILE" build --no-cache --pull
 docker compose -f "$COMPOSE_FILE" up -d --force-recreate --remove-orphans
 ok "Сервисы подняты"

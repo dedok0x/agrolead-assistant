@@ -67,7 +67,7 @@
 
     .workspace-grid {
       display: grid;
-      grid-template-columns: 1.1fr 1fr;
+      grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
       gap: var(--ds-space-3);
       align-items: start;
     }
@@ -104,6 +104,7 @@
       background: #fff;
       padding: var(--ds-space-3);
       margin-top: var(--ds-space-2);
+      min-width: 0;
     }
 
     .detail-box h4 {
@@ -266,6 +267,7 @@
       lots: [],
       knowledge: [],
       settings: [],
+      requestTypes: [],
       filters: {
         search: "",
         status: "",
@@ -296,6 +298,13 @@
     function fmt(value) {
       if (value === null || value === undefined) return ""
       return String(value)
+    }
+
+    function requestTypeLabel(code) {
+      const key = String(code || "").trim()
+      if (!key) return ""
+      const row = appState.requestTypes.find(item => item.code === key)
+      return row?.name || key
     }
 
     function parseDateSafe(value) {
@@ -339,10 +348,27 @@
       nav.innerHTML = `
         <h3>Разделы</h3>
         ${sections.map(item => `<button data-code='${item.code}'>${item.title}</button>`).join("")}
+        <hr style='border:none;border-top:1px solid #4f6a5d;margin:10px 0' />
+        <button id='logout-btn'>Выйти</button>
       `
       nav.querySelectorAll("button[data-code]").forEach(btn => {
         btn.onclick = () => setActiveSection(btn.dataset.code)
       })
+      const logoutBtn = document.getElementById("logout-btn")
+      if (logoutBtn) {
+        logoutBtn.onclick = async () => {
+          try {
+            await api("/api/v1/admin/logout", { method: "POST" })
+          } catch {
+            // ignore logout API errors
+          }
+          appState.token = ""
+          sessionStorage.removeItem("agrolead_admin_token")
+          localStorage.removeItem("agrolead_admin_token")
+          document.getElementById("admin-app").classList.add("hidden")
+          document.getElementById("login-card").classList.remove("hidden")
+        }
+      }
       setActiveSection(appState.activeSection)
     }
 
@@ -537,7 +563,7 @@
         ? Math.round(responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length)
         : 0
 
-      const rowsRequest = Object.entries(stats.by_request_type || {}).map(([code, count]) => `<tr><td>${escapeHtml(code)}</td><td>${escapeHtml(count)}</td></tr>`).join("")
+      const rowsRequest = Object.entries(stats.by_request_type || {}).map(([code, count]) => `<tr><td>${escapeHtml(requestTypeLabel(code))}</td><td>${escapeHtml(count)}</td></tr>`).join("")
       const rowsStage = Object.entries(stats.by_stage || {}).map(([code, count]) => `<tr><td>${escapeHtml(statusLabel[code] || code)}</td><td>${escapeHtml(count)}</td></tr>`).join("")
 
       document.getElementById("section-dashboard").innerHTML = `
@@ -552,11 +578,11 @@
         <div class="workspace-grid" style="margin-top:12px">
           <div class="detail-box">
             <h4>Статусы</h4>
-            <div class="ds-table-wrap"><table class="ds-table"><thead><tr><th>Статус</th><th>Кол-во</th></tr></thead><tbody>${rowsStage || "<tr><td colspan='2'>Нет данных</td></tr>"}</tbody></table></div>
+            <div class="ds-table-wrap"><table class="ds-table compact"><thead><tr><th>Статус</th><th>Кол-во</th></tr></thead><tbody>${rowsStage || "<tr><td colspan='2'>Нет данных</td></tr>"}</tbody></table></div>
           </div>
           <div class="detail-box">
             <h4>Типы запросов</h4>
-            <div class="ds-table-wrap"><table class="ds-table"><thead><tr><th>Тип</th><th>Кол-во</th></tr></thead><tbody>${rowsRequest || "<tr><td colspan='2'>Нет данных</td></tr>"}</tbody></table></div>
+            <div class="ds-table-wrap"><table class="ds-table compact"><thead><tr><th>Тип</th><th>Кол-во</th></tr></thead><tbody>${rowsRequest || "<tr><td colspan='2'>Нет данных</td></tr>"}</tbody></table></div>
           </div>
         </div>
       `
@@ -578,7 +604,7 @@
         return `
           <tr>
             <td>${escapeHtml(row.id)}</td>
-            <td>${escapeHtml(row.request_type_code || "")}</td>
+            <td>${escapeHtml(requestTypeLabel(row.request_type_code || ""))}</td>
             <td><span class='ds-badge ${statusClass[row.status_code] || ""}'>${escapeHtml(statusLabel[row.status_code] || row.status_code || "")}</span></td>
             <td>${escapeHtml(row.priority_code || "")}</td>
             <td>${escapeHtml(contact.company_name || contact.contact_name || "")}</td>
@@ -613,7 +639,7 @@
           </select>
           <select class='ds-select' id='f-request'>
             <option value=''>Все типы</option>
-            ${requestTypeOptions.map(code => `<option value='${code}' ${appState.filters.requestType === code ? "selected" : ""}>${escapeHtml(code)}</option>`).join("")}
+            ${requestTypeOptions.map(code => `<option value='${code}' ${appState.filters.requestType === code ? "selected" : ""}>${escapeHtml(requestTypeLabel(code))}</option>`).join("")}
           </select>
           <select class='ds-select' id='f-priority'>
             <option value=''>Любой приоритет</option>
@@ -1011,20 +1037,29 @@
       } else if (appState.referenceTab === "quality") {
         const rows = (appState.qualityTemplates || []).map(row => ({
           ...row,
-          lines_preview: Array.isArray(row.lines) ? row.lines.map(line => `${line.parameter_code || "param"} ${line.operator || ""} ${line.target_value || ""} ${line.unit || ""}`.trim()).join("; ") : "",
+          lines_preview: Array.isArray(row.lines)
+            ? row.lines
+                .map(line => {
+                  const parameter = line.parameter_code || line.quality_parameter_id || "param"
+                  const operator = line.operator || line.comparison_operator || ""
+                  const target = line.target_value ?? line.target_value_numeric ?? line.target_value_text ?? ""
+                  return `${parameter} ${operator} ${target}`.trim()
+                })
+                .join("; ")
+            : "",
         }))
         renderCrudTable(targetId, "Шаблоны качества", rows, {
           endpoint: "/api/v1/catalog/quality-templates",
           columns: [
             { key: "id", label: "ID", readonly: true },
-            { key: "code", label: "Код" },
-            { key: "name", label: "Название" },
+            { key: "template_code", label: "Код" },
+            { key: "template_name", label: "Название" },
             { key: "commodity_id", label: "Товар ID", type: "number" },
-            { key: "description", label: "Описание" },
+            { key: "is_default", label: "По умолчанию", type: "boolean" },
             { key: "is_active", label: "Активен", type: "boolean" },
             { key: "lines_preview", label: "Параметры", readonly: true },
           ],
-          create: ["code", "name", "commodity_id", "description", "is_active"],
+          create: ["template_code", "template_name", "commodity_id", "is_default", "is_active"],
           createDefaults: { lines: [] },
         })
       } else if (appState.referenceTab === "price") {
@@ -1035,12 +1070,30 @@
             { key: "code", label: "Код" },
             { key: "name", label: "Название" },
             { key: "commodity_id", label: "Товар ID", type: "number" },
-            { key: "region_id", label: "Регион ID", type: "number" },
-            { key: "currency_code", label: "Валюта" },
-            { key: "price_formula_text", label: "Формула" },
+            { key: "request_type_id", label: "Тип запроса ID", type: "number" },
+            { key: "source_region_id", label: "Регион отгрузки ID", type: "number" },
+            { key: "destination_region_id", label: "Регион назначения ID", type: "number" },
+            { key: "transport_mode_id", label: "Транспорт ID", type: "number" },
+            { key: "min_volume", label: "Мин объем", type: "number" },
+            { key: "max_volume", label: "Макс объем", type: "number" },
+            { key: "pricing_rule_text", label: "Правило расчета" },
+            { key: "manager_note", label: "Комментарий" },
             { key: "is_active", label: "Активна", type: "boolean" },
           ],
-          create: ["code", "name", "commodity_id", "region_id", "currency_code", "price_formula_text", "is_active"],
+          create: [
+            "code",
+            "name",
+            "commodity_id",
+            "request_type_id",
+            "source_region_id",
+            "destination_region_id",
+            "transport_mode_id",
+            "min_volume",
+            "max_volume",
+            "pricing_rule_text",
+            "manager_note",
+            "is_active",
+          ],
         })
       } else {
         renderCrudTable(targetId, "Лоты", appState.lots, {
@@ -1193,7 +1246,7 @@
     }
 
     async function loadAll() {
-      const [stats, leads, pipeline, users, sessions, counterparties, commodities, regions, transportModes, deliveryBasis, qualityTemplates, pricePolicies, lots, knowledge, settings] = await Promise.all([
+      const [stats, leads, pipeline, users, sessions, counterparties, commodities, regions, transportModes, deliveryBasis, qualityTemplates, pricePolicies, lots, knowledge, settings, requestTypes] = await Promise.all([
         api("/api/v1/admin/stats"),
         api("/api/v1/leads"),
         api("/api/v1/admin/pipeline"),
@@ -1209,6 +1262,7 @@
         api("/api/v1/catalog/lots"),
         api("/api/v1/admin/knowledge"),
         api("/api/v1/admin/settings"),
+        api("/api/v1/admin/reference/request-types"),
       ])
 
       appState.stats = stats || {}
@@ -1226,6 +1280,7 @@
       appState.lots = lots || []
       appState.knowledge = knowledge || []
       appState.settings = settings || []
+      appState.requestTypes = requestTypes || []
 
       renderDashboard()
       renderRegistry()
@@ -1249,7 +1304,8 @@
         })
 
         appState.token = response.token
-        localStorage.setItem("agrolead_admin_token", appState.token)
+        sessionStorage.setItem("agrolead_admin_token", appState.token)
+        localStorage.removeItem("agrolead_admin_token")
         document.getElementById("login-card").classList.add("hidden")
         document.getElementById("admin-app").classList.remove("hidden")
         renderNav()
@@ -1261,7 +1317,14 @@
     }
 
     ;(async () => {
-      const saved = localStorage.getItem("agrolead_admin_token")
+      let saved = sessionStorage.getItem("agrolead_admin_token")
+      if (!saved) {
+        saved = localStorage.getItem("agrolead_admin_token")
+        if (saved) {
+          sessionStorage.setItem("agrolead_admin_token", saved)
+          localStorage.removeItem("agrolead_admin_token")
+        }
+      }
       if (!saved) return
       appState.token = saved
       try {
@@ -1272,6 +1335,7 @@
         await loadAll()
       } catch {
         appState.token = ""
+        sessionStorage.removeItem("agrolead_admin_token")
         localStorage.removeItem("agrolead_admin_token")
       }
     })()

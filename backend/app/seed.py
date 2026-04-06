@@ -1,4 +1,3 @@
-import hashlib
 import os
 from datetime import datetime, timedelta, timezone
 
@@ -25,10 +24,7 @@ from .models import (
     RefRequestType,
     RefTransportMode,
 )
-
-
-def _hash_password(raw: str) -> str:
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+from .security import hash_password
 
 
 def _now() -> datetime:
@@ -285,11 +281,15 @@ def _ensure_company(session: Session) -> None:
 def _ensure_admin_user(session: Session) -> None:
     login = os.getenv("ADMIN_USER", "admin")
     password = os.getenv("ADMIN_PASS", "315920")
+    reset_password = os.getenv("RESET_ADMIN_PASSWORD_ON_STARTUP", "0").strip().lower() not in {"0", "false", "no", "off"}
     existing = session.exec(select(AdminUser).where(AdminUser.login == login)).first()
     if existing:
-        existing.password_hash = _hash_password(password)
-        existing.full_name = "Системный администратор"
-        existing.role_code = "admin"
+        if reset_password or not (existing.password_hash or "").strip():
+            existing.password_hash = hash_password(password)
+        if not (existing.full_name or "").strip():
+            existing.full_name = "Системный администратор"
+        if not (existing.role_code or "").strip():
+            existing.role_code = "admin"
         existing.is_active = True
         existing.updated_at = _now()
         session.add(existing)
@@ -298,7 +298,7 @@ def _ensure_admin_user(session: Session) -> None:
     session.add(
         AdminUser(
             login=login,
-            password_hash=_hash_password(password),
+            password_hash=hash_password(password),
             full_name="Системный администратор",
             role_code="admin",
             is_active=True,
