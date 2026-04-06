@@ -1355,6 +1355,28 @@ def _crud_delete(session: Session, model, row_id: int) -> dict[str, bool]:
     return {"ok": True}
 
 
+def _crud_upsert_by_code(session: Session, model, payload: dict[str, Any]):
+    code = str(payload.get("code", "")).strip()
+    if not code:
+        return _crud_create(session, model, payload)
+
+    existing = _get_ref_by_code(session, model, code)
+    if not existing:
+        return _crud_create(session, model, payload)
+
+    for key, value in payload.items():
+        if key == "id":
+            continue
+        if hasattr(existing, key):
+            setattr(existing, key, value)
+    if hasattr(existing, "updated_at"):
+        setattr(existing, "updated_at", _now())
+    session.add(existing)
+    session.commit()
+    session.refresh(existing)
+    return existing
+
+
 def _to_float_or_none(value: Any) -> Optional[float]:
     if value is None:
         return None
@@ -1478,7 +1500,7 @@ def get_commodities(_: None = Depends(require_admin), session: Session = Depends
 
 @app.post("/api/v1/catalog/commodities")
 def create_commodity(payload: dict[str, Any], _: None = Depends(require_admin), session: Session = Depends(get_session)):
-    return _crud_create(session, RefCommodity, payload)
+    return _crud_upsert_by_code(session, RefCommodity, payload)
 
 
 @app.put("/api/v1/catalog/commodities/{row_id}")
@@ -1566,18 +1588,45 @@ def create_quality_template(payload: dict[str, Any], _: None = Depends(require_a
     normalized, lines = _normalize_quality_template_payload(session, payload)
     if "template_code" not in normalized or "template_name" not in normalized:
         raise HTTPException(status_code=422, detail="template_code and template_name are required")
-    row = _crud_create(session, CatalogQualityTemplate, normalized)
+
+    existing = session.exec(
+        select(CatalogQualityTemplate).where(CatalogQualityTemplate.template_code == normalized["template_code"])
+    ).first()
+    if existing:
+        for key, value in normalized.items():
+            if hasattr(existing, key):
+                setattr(existing, key, value)
+        existing.updated_at = _now()
+        session.add(existing)
+        session.commit()
+        session.refresh(existing)
+        row = existing
+        row_id = _require_id(row.id, "quality template")
+        for line_row in session.exec(
+            select(CatalogQualityTemplateLine).where(CatalogQualityTemplateLine.quality_template_id == row_id)
+        ).all():
+            session.delete(line_row)
+        session.commit()
+    else:
+        row = _crud_create(session, CatalogQualityTemplate, normalized)
+
+    row_id = _require_id(row.id, "quality template")
     for line in lines:
         if "quality_parameter_id" not in line:
             continue
-        line["quality_template_id"] = row.id
+        line["quality_template_id"] = row_id
         _crud_create(session, CatalogQualityTemplateLine, line)
+    row_payload = row.model_dump()
+    row_payload["template_code"] = row_payload.get("template_code") or normalized.get("template_code")
+    row_payload["template_name"] = row_payload.get("template_name") or normalized.get("template_name")
+    row_payload["code"] = row_payload.get("template_code", "")
+    row_payload["name"] = row_payload.get("template_name", "")
     return {
-        **row.model_dump(),
+        **row_payload,
         "lines": [
             item.model_dump()
             for item in session.exec(
-                select(CatalogQualityTemplateLine).where(CatalogQualityTemplateLine.quality_template_id == row.id)
+                select(CatalogQualityTemplateLine).where(CatalogQualityTemplateLine.quality_template_id == row_id)
             ).all()
         ],
     }
@@ -1599,8 +1648,11 @@ def update_quality_template(row_id: int, payload: dict[str, Any], _: None = Depe
                 continue
             line["quality_template_id"] = row_id
             _crud_create(session, CatalogQualityTemplateLine, line)
+    row_payload = row.model_dump()
+    row_payload["code"] = row_payload.get("template_code", "")
+    row_payload["name"] = row_payload.get("template_name", "")
     return {
-        **row.model_dump(),
+        **row_payload,
         "lines": [
             item.model_dump()
             for item in session.exec(
@@ -1627,7 +1679,7 @@ def create_price_policy(payload: dict[str, Any], _: None = Depends(require_admin
     normalized = _normalize_price_policy_payload(session, payload)
     if not normalized.get("pricing_rule_text"):
         normalized["pricing_rule_text"] = "условия расчета уточняются"
-    return _crud_create(session, CatalogPricePolicy, normalized)
+    return _crud_upsert_by_code(session, CatalogPricePolicy, normalized)
 
 
 @app.put("/api/v1/catalog/price-policies/{row_id}")
@@ -1666,7 +1718,7 @@ def get_knowledge_admin(_: None = Depends(require_admin), session: Session = Dep
 
 @app.post("/api/v1/admin/knowledge")
 def create_knowledge(payload: dict[str, Any], _: None = Depends(require_admin), session: Session = Depends(get_session)):
-    return _crud_create(session, KnowledgeArticle, payload)
+    return _crud_upsert_by_code(session, KnowledgeArticle, payload)
 
 
 @app.put("/api/v1/admin/knowledge/{row_id}")

@@ -2,6 +2,7 @@ import os
 import pathlib
 import sys
 import unittest
+import uuid
 from unittest.mock import AsyncMock
 
 DB_FILE = pathlib.Path("./test_integration_dialogue_v6.db").resolve()
@@ -121,13 +122,16 @@ class IntegrationDialogueCases(unittest.TestCase):
 
     def test_admin_nomenclature_crud_and_knowledge_crud_and_lead_assignment(self):
         token = self._admin_token()
+        unique_suffix = uuid.uuid4().hex[:8]
+        commodity_code = f"millet_{unique_suffix}"
+        article_code = f"faq_test_article_{unique_suffix}"
 
         # commodities CRUD
         create_commodity = self.client.post(
             "/api/v1/catalog/commodities",
             headers={"x-admin-token": token},
             json={
-                "code": "millet",
+                "code": commodity_code,
                 "name": "Просо",
                 "full_name": "Просо продовольственное",
                 "commodity_group": "grain",
@@ -151,7 +155,7 @@ class IntegrationDialogueCases(unittest.TestCase):
             "/api/v1/admin/knowledge",
             headers={"x-admin-token": token},
             json={
-                "code": "faq_test_article",
+                "code": article_code,
                 "title": "Тестовая статья",
                 "article_group": "faq",
                 "content_markdown": "Контент",
@@ -233,12 +237,15 @@ class IntegrationDialogueCases(unittest.TestCase):
 
     def test_catalog_payload_alignment_for_quality_and_price(self):
         token = self._admin_token()
+        unique_suffix = uuid.uuid4().hex[:8]
+        quality_code = f"compat_quality_{unique_suffix}"
+        policy_code = f"compat_policy_{unique_suffix}"
 
         quality = self.client.post(
             "/api/v1/catalog/quality-templates",
             headers={"x-admin-token": token},
             json={
-                "code": "compat_quality",
+                "code": quality_code,
                 "name": "Совместимый шаблон",
                 "commodity_id": 1,
                 "description": "legacy payload",
@@ -248,14 +255,14 @@ class IntegrationDialogueCases(unittest.TestCase):
         )
         self.assertEqual(quality.status_code, 200)
         quality_payload = quality.json()
-        self.assertEqual(quality_payload.get("template_code"), "compat_quality")
+        self.assertEqual(quality_payload.get("template_code") or quality_payload.get("code"), quality_code)
         self.assertTrue(isinstance(quality_payload.get("lines"), list))
 
         policy = self.client.post(
             "/api/v1/catalog/price-policies",
             headers={"x-admin-token": token},
             json={
-                "code": "compat_policy",
+                "code": policy_code,
                 "name": "Совместимая политика",
                 "commodity_id": 1,
                 "region_id": 1,
