@@ -1,11 +1,9 @@
-# SSL files
+# SSL
 
-Положи в эту папку файлы сертификата для Nginx:
+Production TLS is managed automatically by Let's Encrypt in Docker volumes:
 
-- `fullchain.pem` — цепочка сертификатов (leaf + intermediate)
-- `privkey.key` — приватный ключ (которым был подписан CSR)
+- `letsencrypt` stores issued certificates and renewal metadata.
+- `certbot_www` stores temporary HTTP-01 challenge files.
 
-Важно:
-
-- не коммить эти файлы в git;
-- права на приватный ключ должны быть ограничены.
+Do not commit private keys, certificate dumps, or copied files from `/etc/letsencrypt`.
+The legacy `ssl/fullchain.pem` and `ssl/privkey.key` files are no longer required.

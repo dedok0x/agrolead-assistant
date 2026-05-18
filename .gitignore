@@ -22,6 +22,8 @@ env/
 
 # Local environment files (keep templates tracked)
 .env
+.env.*
+!.env.example
 .env.local
 .env.*.local
 
@@ -30,10 +32,14 @@ env/
 logs/
 deploy/logs/
 
-# Local databases / temp
+# Local databases / dumps / temp
 *.sqlite
 *.sqlite3
 *.db
+*.sql
+*.dump
+*.backup
+*.bak
 tmp/
 temp/
 .tmp/
@@ -44,10 +50,18 @@ build/
 *.egg-info/
 
 # SSL private material (templates/docs may remain)
+*.key
+*.pem
+*.crt
+*.p12
+*.pfx
 ssl/*.key
 ssl/*.pem
 ssl/*.crt
 ssl/*.p12
+id_rsa*
+id_ed25519*
+*.ppk
 
 # Docker overrides / local compose files
 docker-compose.override.yml

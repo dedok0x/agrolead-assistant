@@ -6,9 +6,9 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-agrolead}
       POSTGRES_USER: ${POSTGRES_USER:-agrolead}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-agrolead123}
-    ports:
-      - "5432:5432"
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    expose:
+      - "5432"
     volumes:
       - pg_data:/var/lib/postgresql/data
     healthcheck:
@@ -31,15 +31,16 @@ services:
     container_name: agrolead-api
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     environment:
       TZ: ${TZ:-Europe/Moscow}
-      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://agrolead:agrolead123@db:5432/agrolead}
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
       ADMIN_USER: ${ADMIN_USER:-admin}
-      ADMIN_PASS: ${ADMIN_PASS:-315920}
+      ADMIN_PASS: ${ADMIN_PASS:?ADMIN_PASS is required}
       ADMIN_TOKEN: ${ADMIN_TOKEN:-}
       ALLOW_STATIC_ADMIN_TOKEN: ${ALLOW_STATIC_ADMIN_TOKEN:-0}
       ADMIN_SESSION_TTL_MINUTES: ${ADMIN_SESSION_TTL_MINUTES:-720}
+      RESET_ADMIN_PASSWORD_ON_STARTUP: ${RESET_ADMIN_PASSWORD_ON_STARTUP:-0}
       SALES_STYLE: ${SALES_STYLE:-kuban-direct}
       TOXIC_STRICT_MODE: ${TOXIC_STRICT_MODE:-1}
 
@@ -61,7 +62,6 @@ services:
         condition: service_healthy
     volumes:
       - app_data:/data
-      - ./ssl:/ssl:ro
     healthcheck:
       test:
         [
@@ -84,6 +84,8 @@ services:
     image: agrolead/webui:local
     container_name: agrolead-webui
     restart: unless-stopped
+    environment:
+      TLS_DOMAIN: ${DOMAIN_NAME:-artemshtodin.ru}
     ports:
       - "80:80"
       - "443:443"
@@ -93,13 +95,33 @@ services:
     mem_limit: 128m
     cpus: 0.10
     volumes:
-      - ./ssl:/ssl:ro
+      - letsencrypt:/etc/letsencrypt
+      - certbot_www:/var/www/certbot:ro
+    networks:
+      - agrolead
+
+  certbot:
+    image: certbot/certbot:latest
+    container_name: agrolead-certbot
+    restart: unless-stopped
+    volumes:
+      - letsencrypt:/etc/letsencrypt
+      - certbot_www:/var/www/certbot
+    entrypoint: /bin/sh
+    command: >
+      -c "trap exit TERM;
+      while :; do
+        certbot renew --webroot -w /var/www/certbot --quiet;
+        sleep 12h & wait $${!};
+      done"
     networks:
       - agrolead
 
 volumes:
   app_data:
   pg_data:
+  letsencrypt:
+  certbot_www:
 
 networks:
   agrolead:

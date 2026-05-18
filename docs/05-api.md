@@ -177,7 +177,7 @@
 ```json
 {
   "username": "admin",
-  "password": "315920"
+  "password": "<ADMIN_PASS from .env>"
 }
 ```
 

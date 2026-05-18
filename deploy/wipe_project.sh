@@ -24,7 +24,7 @@ if command -v docker >/dev/null 2>&1; then
   fi
 
   echo "[2/7] Удаление контейнеров проекта"
-  for c in agrolead-db agrolead-api agrolead-webui; do
+  for c in agrolead-db agrolead-api agrolead-webui agrolead-certbot; do
     docker rm -f "$c" >/dev/null 2>&1 || true
   done
 

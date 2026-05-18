@@ -155,6 +155,87 @@ env_or_default() {
   fi
 }
 
+random_secret() {
+  if command -v openssl >/dev/null 2>&1; then
+    openssl rand -hex 24
+  else
+    "$PYTHON_BIN" - <<'PY'
+import secrets
+print(secrets.token_hex(24))
+PY
+  fi
+}
+
+ensure_env_var() {
+  local key="$1"
+  local fallback="$2"
+  local current
+  current="$(get_env_var "$key")"
+  if [[ -z "$current" ]]; then
+    upsert_env_var "$key" "$fallback"
+  fi
+}
+
+ensure_secret_env_var() {
+  local key="$1"
+  local current
+  current="$(get_env_var "$key")"
+  if [[ -z "$current" ]]; then
+    upsert_env_var "$key" "$(random_secret)"
+    warn "$key was empty; generated a value in .env"
+  fi
+}
+
+warn_known_weak_secret() {
+  local key="$1"
+  local current
+  current="$(get_env_var "$key")"
+  case "$current" in
+    315920|agrolead123|change-me|change-me-*)
+      warn "$key uses a known weak/example value; rotate it after this deploy"
+      ;;
+  esac
+}
+
+certbot_base_args() {
+  local domain="$1"
+  local email="$2"
+  local staging="$3"
+  CERTBOT_ARGS=(certonly --webroot -w /var/www/certbot -d "$domain" --non-interactive --agree-tos --no-eff-email)
+  if [[ -n "$email" ]]; then
+    CERTBOT_ARGS+=(--email "$email")
+  else
+    CERTBOT_ARGS+=(--register-unsafely-without-email)
+  fi
+  if [[ "$staging" == "1" || "$staging" == "true" || "$staging" == "yes" ]]; then
+    CERTBOT_ARGS+=(--staging)
+  fi
+}
+
+obtain_or_renew_certificate() {
+  local domain
+  local email
+  local staging
+  domain="$(env_or_default "DOMAIN_NAME" "artemshtodin.ru")"
+  email="$(get_env_var "CERTBOT_EMAIL")"
+  staging="$(env_or_default "CERTBOT_STAGING" "0")"
+
+  step "Let's Encrypt certificate for $domain"
+  if docker compose -f "$COMPOSE_FILE" run --rm --entrypoint sh certbot -c "test -f /etc/letsencrypt/renewal/$domain.conf"; then
+    docker compose -f "$COMPOSE_FILE" run --rm --entrypoint certbot certbot renew \
+      --cert-name "$domain" --webroot -w /var/www/certbot --non-interactive
+  else
+    docker compose -f "$COMPOSE_FILE" run --rm --entrypoint sh certbot -c \
+      "rm -rf /etc/letsencrypt/live/$domain /etc/letsencrypt/archive/$domain /etc/letsencrypt/renewal/$domain.conf"
+    certbot_base_args "$domain" "$email" "$staging"
+    docker compose -f "$COMPOSE_FILE" run --rm --entrypoint certbot certbot "${CERTBOT_ARGS[@]}"
+  fi
+
+  docker compose -f "$COMPOSE_FILE" exec -T webui nginx -s reload
+  docker compose -f "$COMPOSE_FILE" up -d certbot
+  ok "Let's Encrypt certificate is installed and renewal loop is running"
+}
+
 prompt_secret_if_empty() {
   local key="$1"
   local prompt="$2"
@@ -162,6 +243,10 @@ prompt_secret_if_empty() {
   local current
   current="$(get_env_var "$key")"
   if [[ -n "$current" ]]; then
+    return
+  fi
+  if [[ "$key" == "GIGACHAT_AUTH_KEY" ]]; then
+    warn "GIGACHAT_AUTH_KEY is empty; chat replies will use the built-in fallback until it is set"
     return
   fi
   if [[ ! -t 0 ]]; then
@@ -253,6 +338,19 @@ if [[ ! -f "$ENV_FILE" ]]; then
   fi
 fi
 
+ensure_env_var "DOMAIN_NAME" "artemshtodin.ru"
+ensure_env_var "CERTBOT_STAGING" "0"
+ensure_env_var "POSTGRES_DB" "agrolead"
+ensure_env_var "POSTGRES_USER" "agrolead"
+ensure_secret_env_var "POSTGRES_PASSWORD"
+ensure_secret_env_var "ADMIN_PASS"
+ensure_env_var "ADMIN_USER" "admin"
+ensure_env_var "RESET_ADMIN_PASSWORD_ON_STARTUP" "0"
+ensure_env_var "DATABASE_URL" "postgresql+psycopg://$(get_env_var "POSTGRES_USER"):$(get_env_var "POSTGRES_PASSWORD")@db:5432/$(get_env_var "POSTGRES_DB")"
+
+warn_known_weak_secret "POSTGRES_PASSWORD"
+warn_known_weak_secret "ADMIN_PASS"
+
 upsert_env_var "LLM_PROVIDER" "gigachat"
 upsert_env_var "LLM_REQUEST_TIMEOUT_SECONDS" "5"
 upsert_env_var "LLM_MAX_RETRIES" "1"
@@ -266,23 +364,15 @@ upsert_env_var "GIGACHAT_INSECURE_SSL_FALLBACK" "$(env_or_default "GIGACHAT_INSE
 upsert_env_var "ALLOW_STATIC_ADMIN_TOKEN" "$(env_or_default "ALLOW_STATIC_ADMIN_TOKEN" "0")"
 upsert_env_var "ADMIN_SESSION_TTL_MINUTES" "$(env_or_default "ADMIN_SESSION_TTL_MINUTES" "720")"
 
-if [[ -f "$ROOT_DIR/ssl/fullchain.pem" ]]; then
-  upsert_env_var "GIGACHAT_CA_FILE" "/ssl/fullchain.pem"
-elif [[ -f "$ROOT_DIR/ssl/cacert.pem" ]]; then
-  upsert_env_var "GIGACHAT_CA_FILE" "/ssl/cacert.pem"
-fi
 ok ".env готов"
-
-step "Проверка SSL сертификатов webui"
-[[ -f "$ROOT_DIR/ssl/fullchain.pem" ]] || die "Не найден файл: ssl/fullchain.pem"
-[[ -f "$ROOT_DIR/ssl/privkey.key" ]] || die "Не найден файл: ssl/privkey.key"
-ok "SSL файлы webui найдены"
 
 step "Сборка и запуск контейнеров"
 docker compose -f "$COMPOSE_FILE" down --remove-orphans || true
 docker compose -f "$COMPOSE_FILE" build --no-cache --pull
 docker compose -f "$COMPOSE_FILE" up -d --force-recreate --remove-orphans
 ok "Сервисы подняты"
+
+obtain_or_renew_certificate
 
 API_BASE="http://127.0.0.1:8000"
 WEB_BASE_HTTP="http://127.0.0.1"
@@ -304,7 +394,7 @@ ok "API health ok"
 
 step "Smoke: admin login"
 ADMIN_USER_VALUE="$(env_or_default "ADMIN_USER" "admin")"
-ADMIN_PASS_VALUE="$(env_or_default "ADMIN_PASS" "315920")"
+ADMIN_PASS_VALUE="$(get_env_var "ADMIN_PASS")"
 LOGIN_BODY="{\"username\":\"${ADMIN_USER_VALUE}\",\"password\":\"${ADMIN_PASS_VALUE}\"}"
 request_json "POST /api/v1/admin/login" "$API_BASE/api/v1/admin/login" "$LOGIN_BODY"
 [[ "$LAST_HTTP_CODE" == "200" ]] || die "admin login не пройден"
@@ -407,8 +497,8 @@ echo ""
 echo -e "${GREEN}===========================================${NC}"
 echo -e "${GREEN}✅ DEPLOY SUCCESS${NC}"
 echo -e "${GREEN}===========================================${NC}"
-echo "Чат:      https://localhost"
-echo "Админка:  https://localhost/admin"
+echo "Чат:      https://$(env_or_default "DOMAIN_NAME" "artemshtodin.ru")"
+echo "Админка:  https://$(env_or_default "DOMAIN_NAME" "artemshtodin.ru")/admin"
 echo "API docs: http://localhost:8000/docs"
 echo "Лог деплоя: $LOG_FILE"
 echo "Готово"

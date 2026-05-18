@@ -14,6 +14,7 @@ os.environ.setdefault("TOXIC_STRICT_MODE", "1")
 os.environ.setdefault("LLM_PROVIDER", "gigachat")
 os.environ.setdefault("GIGACHAT_AUTH_KEY", "test-auth-key")
 os.environ.setdefault("GIGACHAT_VERIFY_SSL", "0")
+os.environ.setdefault("ADMIN_PASS", "test-admin-password")
 
 BACKEND_ROOT = pathlib.Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
@@ -21,12 +22,13 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from fastapi.testclient import TestClient
 
-from app.main import app, llm_service
+from app.main import app, llm_service, startup
 from app.sales_logic import detect_request_type, extract_facts, parse_contact_name_or_company
 
 
 class IntegrationDialogueCases(unittest.TestCase):
     def setUp(self) -> None:
+        startup()
         self.client = TestClient(app)
         self._orig_chat_completion = llm_service.gigachat_client.chat_completion
         llm_service.gigachat_client.chat_completion = AsyncMock(
@@ -42,7 +44,7 @@ class IntegrationDialogueCases(unittest.TestCase):
     def _admin_token(self) -> str:
         login = self.client.post(
             "/api/v1/admin/login",
-            json={"username": os.getenv("ADMIN_USER", "admin"), "password": os.getenv("ADMIN_PASS", "315920")},
+            json={"username": os.getenv("ADMIN_USER", "admin"), "password": os.getenv("ADMIN_PASS", "test-admin-password")},
         )
         self.assertEqual(login.status_code, 200)
         return login.json()["token"]
@@ -201,13 +203,13 @@ class IntegrationDialogueCases(unittest.TestCase):
     def test_admin_login_returns_rotating_session_tokens(self):
         login1 = self.client.post(
             "/api/v1/admin/login",
-            json={"username": os.getenv("ADMIN_USER", "admin"), "password": os.getenv("ADMIN_PASS", "315920")},
+            json={"username": os.getenv("ADMIN_USER", "admin"), "password": os.getenv("ADMIN_PASS", "test-admin-password")},
         )
         self.assertEqual(login1.status_code, 200)
 
         login2 = self.client.post(
             "/api/v1/admin/login",
-            json={"username": os.getenv("ADMIN_USER", "admin"), "password": os.getenv("ADMIN_PASS", "315920")},
+            json={"username": os.getenv("ADMIN_USER", "admin"), "password": os.getenv("ADMIN_PASS", "test-admin-password")},
         )
         self.assertEqual(login2.status_code, 200)
         self.assertNotEqual(login1.json().get("token"), login2.json().get("token"))

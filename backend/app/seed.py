@@ -280,7 +280,9 @@ def _ensure_company(session: Session) -> None:
 
 def _ensure_admin_user(session: Session) -> None:
     login = os.getenv("ADMIN_USER", "admin")
-    password = os.getenv("ADMIN_PASS", "315920")
+    password = os.getenv("ADMIN_PASS", "")
+    if not password:
+        raise RuntimeError("ADMIN_PASS is required")
     reset_password = os.getenv("RESET_ADMIN_PASSWORD_ON_STARTUP", "0").strip().lower() not in {"0", "false", "no", "off"}
     existing = session.exec(select(AdminUser).where(AdminUser.login == login)).first()
     if existing:

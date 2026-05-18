@@ -68,7 +68,7 @@ LOGGER = logging.getLogger("agrolead.api")
 app = FastAPI(title="AgroLead Assistant API", version="6.0.0")
 
 ADMIN_USER = os.getenv("ADMIN_USER", "admin")
-ADMIN_PASS = os.getenv("ADMIN_PASS", "315920")
+ADMIN_PASS = os.getenv("ADMIN_PASS", "")
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "")
 ALLOW_STATIC_ADMIN_TOKEN = os.getenv("ALLOW_STATIC_ADMIN_TOKEN", "0").strip().lower() not in {"0", "false", "no", "off"}
 ADMIN_SESSION_TTL_MINUTES = max(10, min(int(os.getenv("ADMIN_SESSION_TTL_MINUTES", "720")), 60 * 24 * 30))

@@ -14,6 +14,7 @@ os.environ.setdefault("TOXIC_STRICT_MODE", "1")
 os.environ.setdefault("LLM_PROVIDER", "gigachat")
 os.environ.setdefault("GIGACHAT_AUTH_KEY", "test-auth-key")
 os.environ.setdefault("GIGACHAT_VERIFY_SSL", "0")
+os.environ.setdefault("ADMIN_PASS", "test-admin-password")
 
 BACKEND_ROOT = pathlib.Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
@@ -21,11 +22,12 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from fastapi.testclient import TestClient
 
-from app.main import app, llm_service
+from app.main import app, llm_service, startup
 
 
 class ChatStreamCases(unittest.TestCase):
     def setUp(self) -> None:
+        startup()
         self.client = TestClient(app)
         self._orig_chat_completion = llm_service.gigachat_client.chat_completion
         llm_service.gigachat_client.chat_completion = AsyncMock(

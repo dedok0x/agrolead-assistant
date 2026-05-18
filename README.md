@@ -26,6 +26,6 @@ bash ./deploy.sh
 
 После деплоя:
 
-- Публичный чат: `https://localhost`
-- Админка: `https://localhost/admin`
+- Публичный чат: `https://artemshtodin.ru`
+- Админка: `https://artemshtodin.ru/admin`
 - Swagger: `http://localhost:8000/docs`
