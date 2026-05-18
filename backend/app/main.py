@@ -66,6 +66,7 @@ from .services.telegram_service import TelegramService
 
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 LOGGER = logging.getLogger("agrolead.api")
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 app = FastAPI(title="AgroLead Assistant API", version="7.0.0")
 
