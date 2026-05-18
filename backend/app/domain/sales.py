@@ -32,7 +32,11 @@ class NextAction(str, Enum):
 class UserSignal(str, Enum):
     PROVIDES_FACT = "provides_fact"
     ASKS_CAPABILITIES = "asks_capabilities"
+    ASKS_IDENTITY = "asks_identity"
     ASKS_CLARIFICATION = "asks_clarification"
+    CONSULTATION_REQUEST = "consultation_request"
+    META_DIALOGUE = "meta_dialogue"
+    NEGATIVE_FEEDBACK = "negative_feedback"
     FRUSTRATION = "frustration"
     VAGUE_ANSWER = "vague_answer"
     REFUSAL_OR_UNKNOWN = "refusal_or_unknown"

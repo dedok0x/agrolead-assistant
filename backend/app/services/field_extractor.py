@@ -59,6 +59,16 @@ class FieldExtractor:
         facts: list[ExtractedFact] = []
         known = known_facts or {}
         signal = user_signal or UserSignal.PROVIDES_FACT.value
+        fact_only_signals = {
+            UserSignal.PROVIDES_FACT.value,
+            UserSignal.OBJECTION_PRICE.value,
+            UserSignal.WANTS_HUMAN.value,
+        }
+        if signal not in fact_only_signals:
+            if signal == UserSignal.CONSULTATION_REQUEST.value:
+                request_type = self._request_type(normalized)
+                return [ExtractedFact("request_type", request_type, request_type, 0.95, text)] if request_type else []
+            return []
 
         request_type = self._request_type(normalized)
         if request_type:
@@ -99,6 +109,20 @@ class FieldExtractor:
 
     @staticmethod
     def _request_type(text: str) -> str:
+        if any(word in text for word in ["логист", "перевоз", "доставка", "маршрут", "вагон", "фура"]):
+            return RequestType.LOGISTICS.value
+        if any(word in text for word in ["хранен", "элеватор", "склад", "перевалк"]):
+            return RequestType.STORAGE.value
+        if any(word in text for word in ["экспорт", "вэд", "fob", "cfr"]):
+            return RequestType.EXPORT.value
+        if "налич" in text:
+            return RequestType.AVAILABILITY.value
+        if any(word in text for word in ["консультац", "проконсульт", "консульт"]):
+            return RequestType.CONSULTATION.value
+        if any(word in text for word in ["продажа", "продать", "реализовать", "сдам", "поставщик"]):
+            return RequestType.SELL_GRAIN.value
+        if any(word in text for word in ["купить", "покупка", "закупить", "нужна", "нужно", "приобрести"]):
+            return RequestType.BUY_GRAIN.value
         if any(word in text for word in ["логист", "перевоз", "доставка", "маршрут", "вагон", "фура"]):
             return RequestType.LOGISTICS.value
         if any(word in text for word in ["хранен", "элеватор", "склад", "перевалк"]):

@@ -33,8 +33,10 @@ class GigaChatComposer:
         captured_fields: list[str],
         retrieved_context: list[Any],
         forbidden_claims: list[str] | None = None,
+        dialogue_guidance: str | None = None,
+        fallback_override: str | None = None,
     ) -> ComposerResult:
-        fallback = self.validator.fallback(next_action, known_facts)
+        fallback = fallback_override or self.validator.fallback(next_action, known_facts)
         system_prompt = (
             "Ты — деловой AI-ассистент компании «ПЕТРОХЛЕБ-КУБАНЬ». "
             "Ты помогаешь клиенту оформить заявку по зерну, логистике, хранению или ВЭД. "
@@ -54,6 +56,7 @@ class GigaChatComposer:
             "missing_fields": missing_fields,
             "captured_fields": captured_fields,
             "retrieved_context": [item.to_dict() if hasattr(item, "to_dict") else item for item in retrieved_context],
+            "dialogue_guidance": dialogue_guidance or "",
             "forbidden_claims": forbidden_claims or [
                 "цены без контекста",
                 "наличие без контекста",

@@ -44,6 +44,42 @@ class DialoguePolicy:
                     "Начнем с продажи, покупки или логистики?"
                 ),
             )
+        if user_signal == UserSignal.ASKS_IDENTITY.value:
+            return DialoguePolicyResult(
+                response_strategy="identity",
+                should_save_fact=save,
+                fallback_text=(
+                    "Я AI-ассистент ПЕТРОХЛЕБ-КУБАНЬ. Помогаю с заявками по зерну, логистике, хранению и ВЭД: могу просто проконсультировать, "
+                    "а если задача созреет, аккуратно соберу данные для менеджера. Скажите своими словами, что хотите понять?"
+                ),
+            )
+        if user_signal == UserSignal.CONSULTATION_REQUEST.value:
+            return DialoguePolicyResult(
+                response_strategy="consultation",
+                should_save_fact={**save, "product": False, "volume": False, "region": False},
+                fallback_text=(
+                    "Да, можем без анкеты: просто проконсультирую. Я AI-ассистент ПЕТРОХЛЕБ-КУБАНЬ, работаю по закупке и продаже зерна, логистике, хранению и ВЭД. "
+                    "Что разобрать в первую очередь?"
+                ),
+            )
+        if user_signal == UserSignal.META_DIALOGUE.value:
+            return DialoguePolicyResult(
+                response_strategy="meta_dialogue",
+                should_save_fact={**save, "product": False, "volume": False, "region": False},
+                fallback_text=(
+                    "Проще так: я могу либо ответить на вопрос по компании и услугам, либо помочь оформить заявку. "
+                    "Если нужна консультация, просто напишите тему, например: продажа зерна, покупка, логистика, хранение или экспорт."
+                ),
+            )
+        if user_signal == UserSignal.NEGATIVE_FEEDBACK.value:
+            return DialoguePolicyResult(
+                response_strategy="recover_feedback",
+                should_save_fact={**save, "product": False, "volume": False, "region": False},
+                fallback_text=(
+                    "Справедливо, я слишком рано ушел в анкету. Давайте нормально: я AI-ассистент ПЕТРОХЛЕБ-КУБАНЬ, могу сначала просто проконсультировать без заявки. "
+                    "Напишите вопрос своими словами, а параметры сделки будем собирать только если это действительно понадобится."
+                ),
+            )
         if user_signal == UserSignal.ASKS_CLARIFICATION.value:
             return DialoguePolicyResult(
                 response_strategy="clarification",

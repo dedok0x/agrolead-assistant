@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..domain.sales import REQUIRED_FIELDS, request_type_label
+from ..domain.sales import REQUIRED_FIELDS, RequestType, request_type_label
 
 
 FIELD_LABELS = {
@@ -24,11 +24,12 @@ FIELD_LABELS = {
 
 class LeadQualificationService:
     def missing_fields(self, known_facts: dict[str, Any]) -> list[str]:
-        return [field for field in REQUIRED_FIELDS if not self._has_value(known_facts.get(field))]
+        return [field for field in self.required_fields(known_facts) if not self._has_value(known_facts.get(field))]
 
     def qualification_score(self, known_facts: dict[str, Any]) -> int:
-        collected = len(REQUIRED_FIELDS) - len(self.missing_fields(known_facts))
-        return int(round((collected / len(REQUIRED_FIELDS)) * 100))
+        required = self.required_fields(known_facts)
+        collected = len(required) - len(self.missing_fields(known_facts))
+        return int(round((collected / len(required)) * 100)) if required else 0
 
     def captured_fields(self, known_facts: dict[str, Any]) -> list[str]:
         rows: list[str] = []
@@ -51,6 +52,17 @@ class LeadQualificationService:
             if self._has_value(value):
                 cleaned[key] = value
         return cleaned
+
+    @staticmethod
+    def required_fields(known_facts: dict[str, Any]) -> list[str]:
+        request_type = str(known_facts.get("request_type") or "")
+        if request_type == RequestType.CONSULTATION.value:
+            return ["request_type", "contact"]
+        if request_type == RequestType.LOGISTICS.value:
+            return ["request_type", "region", "timing", "contact"]
+        if request_type == RequestType.STORAGE.value:
+            return ["request_type", "product", "volume", "region", "timing", "contact"]
+        return REQUIRED_FIELDS
 
     @staticmethod
     def _has_value(value: Any) -> bool:

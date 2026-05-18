@@ -236,7 +236,24 @@ class ConversationService:
             lead_state=known_facts,
             limit=5,
         )
-        if policy.fallback_text:
+        agentic_strategies = {"identity", "consultation", "meta_dialogue", "recover_feedback", "capabilities", "clarification"}
+        if policy.fallback_text and policy.response_strategy in agentic_strategies:
+            composed = await self.composer.compose(
+                user_message=clean_text,
+                source_channel=source_channel,
+                stage=decision.stage.value,
+                next_action=NextAction.ANSWER_FAQ.value,
+                known_facts=known_facts,
+                missing_fields=decision.missing_fields,
+                captured_fields=decision.captured_fields,
+                retrieved_context=rag_context,
+                dialogue_guidance=policy.fallback_text,
+                fallback_override=policy.fallback_text,
+            )
+            text_out = composed.text
+            provider = composed.provider
+            model = composed.model
+        elif policy.fallback_text:
             text_out = policy.fallback_text
             provider = "template-policy"
             model = "dialogue-policy-v1"
@@ -261,7 +278,13 @@ class ConversationService:
 
         last_out = self._last_assistant_text(session, chat_id)
         if last_out and text_out.strip() == last_out.strip():
-            text_out = f"Зафиксировал без изменений. {policy.reformulated_question or self.validator.fallback(decision.next_action.value, known_facts)}"
+            if policy.response_strategy in agentic_strategies:
+                text_out = (
+                    "Окей, без анкеты. Я могу просто объяснить, чем занимается ПЕТРОХЛЕБ-КУБАНЬ, или разобрать вашу ситуацию по зерну, логистике, хранению либо ВЭД. "
+                    "Напишите тему одним-двумя словами, а я подстроюсь."
+                )
+            else:
+                text_out = f"Зафиксировал без изменений. {policy.reformulated_question or self.validator.fallback(decision.next_action.value, known_facts)}"
 
         bot_message = self._save_message(session, chat_id, "out", text_out, provider=provider, model=model)
         chat.last_bot_message_at = bot_message.created_at
