@@ -45,7 +45,8 @@ class ChatStreamCases(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(payload.get("status"), "ok")
-        self.assertEqual(payload.get("agent_engine"), "sales-lead-orchestrator-v6")
+        self.assertEqual(payload.get("agent_engine"), "sales-lead-orchestrator-v7")
+        self.assertEqual(payload.get("compat_engine"), "sales-lead-orchestrator-v6")
 
     def test_chat_stream_returns_done(self):
         response = self.client.post(

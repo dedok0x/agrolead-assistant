@@ -1,5 +1,3 @@
-@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap");
-
 :root {
   --ds-bg: #f6f4ee;
   --ds-surface: #ffffff;
@@ -14,9 +12,9 @@
   --ds-warning: #9b721f;
   --ds-success: #2f7a56;
   --ds-focus: #5f8777;
-  --ds-radius-lg: 24px;
-  --ds-radius-md: 18px;
-  --ds-radius-sm: 12px;
+  --ds-radius-lg: 12px;
+  --ds-radius-md: 8px;
+  --ds-radius-sm: 8px;
   --ds-shadow-1: 0 10px 26px rgba(44, 56, 44, 0.07);
   --ds-shadow-2: 0 20px 44px rgba(33, 44, 33, 0.1);
   --ds-space-1: 4px;
@@ -43,7 +41,7 @@ body {
   min-height: 100vh;
   color: var(--ds-text);
   background: var(--ds-bg);
-  font-family: "Manrope", "IBM Plex Sans", "Segoe UI", sans-serif;
+  font-family: "Segoe UI", "Inter", "Arial", sans-serif;
   line-height: 1.45;
 }
 

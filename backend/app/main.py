@@ -61,11 +61,13 @@ from .sales_logic import (
 )
 from .security import generate_session_token, hash_password, hash_session_token, verify_password
 from .seed import seed_defaults
+from .services.conversation_service import ConversationService
+from .services.telegram_service import TelegramService
 
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 LOGGER = logging.getLogger("agrolead.api")
 
-app = FastAPI(title="AgroLead Assistant API", version="6.0.0")
+app = FastAPI(title="AgroLead Assistant API", version="7.0.0")
 
 ADMIN_USER = os.getenv("ADMIN_USER", "admin")
 ADMIN_PASS = os.getenv("ADMIN_PASS", "")
@@ -75,6 +77,8 @@ ADMIN_SESSION_TTL_MINUTES = max(10, min(int(os.getenv("ADMIN_SESSION_TTL_MINUTES
 
 llm_service = LLMService()
 agent = SalesAssistantAgent(llm_service=llm_service)
+conversation_service = ConversationService(llm_service=llm_service)
+telegram_service = TelegramService(conversation_service=conversation_service)
 
 COMMODITY_NAME_SYNONYMS = {
     "пшениц": "пшеница",
@@ -738,6 +742,19 @@ def _record_checkpoint(session: Session, chat: ChatSession, code: str, status: s
 
 
 async def _process_chat(session: Session, payload: ChatIn) -> dict[str, Any]:
+    result = await conversation_service.handle_message(
+        text=payload.text,
+        session_id=payload.session_id,
+        client_id=payload.client_id,
+        source_channel=payload.source_channel,
+        external_user_id=payload.external_user_id,
+        metadata={"external_chat_id": payload.external_chat_id} if payload.external_chat_id else None,
+        db_session=session,
+    )
+    out = result.to_dict()
+    out["request_type_v7"] = result.known_facts.get("request_type") if result.known_facts else None
+    return out
+
     text = (payload.text or "").strip()
     if not text:
         raise HTTPException(status_code=400, detail="text is required")
@@ -989,8 +1006,13 @@ def health(session: Session = Depends(get_session)) -> dict[str, Any]:
     return {
         "status": "ok" if db_ok else "error",
         "time": _now().isoformat(),
-        "agent_engine": "sales-lead-orchestrator-v6",
+        "agent_engine": "sales-lead-orchestrator-v7",
+        "compat_engine": "sales-lead-orchestrator-v6",
         "db_ok": db_ok,
+        "telegram": {
+            "enabled": telegram_service.enabled,
+            "webhook_url": telegram_service.webhook_url if telegram_service.enabled else "",
+        },
     }
 
 
@@ -1024,10 +1046,17 @@ async def chat_stream(payload: ChatIn, session: Session = Depends(get_session)) 
                 "session_id": result["session_id"],
                 "lead_id": result.get("lead_id"),
                 "request_type": result.get("request_type"),
+                "request_type_v7": result.get("request_type_v7"),
                 "status": result.get("status"),
+                "stage": result.get("stage"),
+                "state": result.get("state"),
                 "provider": result.get("provider"),
                 "model": result.get("model"),
                 "captured_fields": result.get("captured_fields") or [],
+                "known_facts": result.get("known_facts") or {},
+                "missing_fields": result.get("missing_fields") or [],
+                "qualification_score": result.get("qualification_score", 0),
+                "source_channel": result.get("source_channel") or payload.source_channel,
                 "next_action": result.get("next_action") or "",
                 "negotiation_stage": result.get("negotiation_stage") or "qualification",
                 "token": text,
@@ -1157,7 +1186,46 @@ def bootstrap(session: Session = Depends(get_session)) -> dict[str, Any]:
         "request_types": request_types,
         "settings": public_settings,
         "llm": public_llm,
+        "telegram": {
+            "enabled": telegram_service.enabled,
+            "webhook_url": telegram_service.webhook_url if telegram_service.enabled else "",
+        },
     }
+
+
+@app.post("/api/integrations/telegram/webhook")
+async def telegram_webhook(
+    payload: dict[str, Any],
+    x_telegram_bot_api_secret_token: Optional[str] = Header(default=None),
+    session: Session = Depends(get_session),
+) -> dict[str, Any]:
+    secret = os.getenv("TELEGRAM_WEBHOOK_SECRET", "").strip()
+    if secret and x_telegram_bot_api_secret_token != secret:
+        raise HTTPException(status_code=403, detail="Invalid Telegram webhook secret")
+    return await telegram_service.handle_update(payload, db_session=session)
+
+
+@app.get("/api/admin/telegram/status")
+@app.get("/api/v1/admin/telegram/status")
+async def telegram_status(_: None = Depends(require_admin)) -> dict[str, Any]:
+    info = await telegram_service.get_webhook_info()
+    return {
+        "enabled": telegram_service.enabled,
+        "token_configured": telegram_service.enabled,
+        "webhook_url": telegram_service.webhook_url if telegram_service.enabled else "",
+        "last_error": telegram_service.last_error,
+        "raw": info,
+    }
+
+
+@app.post("/api/admin/telegram/set-webhook")
+@app.post("/api/v1/admin/telegram/set-webhook")
+async def telegram_set_webhook(
+    payload: Optional[dict[str, Any]] = None,
+    _: None = Depends(require_admin),
+) -> dict[str, Any]:
+    url = (payload or {}).get("url") if isinstance(payload, dict) else None
+    return await telegram_service.set_webhook(url=url)
 
 
 @app.post("/api/admin/login")
@@ -1221,11 +1289,28 @@ def admin_stats(_: None = Depends(require_admin), session: Session = Depends(get
     sessions = session.exec(select(ChatSession)).all()
     tasks = session.exec(select(CrmTask)).all()
     request_types = {row.id: row.code for row in session.exec(select(RefRequestType)).all()}
+    sources = {row.id: row.code for row in session.exec(select(RefLeadSource)).all()}
 
     by_request: dict[str, int] = {}
+    by_source: dict[str, int] = {}
+    scores: list[int] = []
+    v7_required = {"request_type", "product", "volume", "region", "timing", "contact"}
     for lead in leads:
         code = request_types.get(lead.request_type_id, "unknown")
         by_request[code] = by_request.get(code, 0) + 1
+        source_code = sources.get(lead.source_id, "unknown")
+        by_source[source_code] = by_source.get(source_code, 0) + 1
+        fields = session.exec(select(ChatMissingField).where(ChatMissingField.lead_id == lead.id)).all()
+        v7_fields = [field for field in fields if field.field_code in v7_required]
+        if v7_fields:
+            collected = len([field for field in v7_fields if field.is_collected])
+            scores.append(int(round(collected / len(v7_required) * 100)))
+        elif lead.status_code == "qualified":
+            scores.append(100)
+        elif lead.status_code == "partially_qualified":
+            scores.append(67)
+        else:
+            scores.append(0)
 
     stage_counts: dict[str, int] = {}
     for lead in leads:
@@ -1237,8 +1322,11 @@ def admin_stats(_: None = Depends(require_admin), session: Session = Depends(get
         "unassigned_leads": len([lead for lead in leads if not lead.assigned_manager_user_id]),
         "sessions_total": len(sessions),
         "tasks_open": len([task for task in tasks if task.status != "done"]),
+        "ready_for_manager": len([lead for lead in leads if lead.status_code in {"qualified", "handed_to_manager"}]),
+        "avg_qualification_score": int(round(sum(scores) / len(scores))) if scores else 0,
         "by_request_type": by_request,
         "by_stage": stage_counts,
+        "by_source_channel": by_source,
     }
 
 
@@ -1268,6 +1356,8 @@ def list_leads(
     limit = max(1, min(limit, 1000))
     leads = session.exec(select(CrmLead)).all()
     request_type_by_id = {row.id: row.code for row in session.exec(select(RefRequestType)).all()}
+    source_by_id = {row.id: row.code for row in session.exec(select(RefLeadSource)).all()}
+    v7_required = {"request_type", "product", "volume", "region", "timing", "contact"}
 
     if status_code:
         leads = [lead for lead in leads if lead.status_code == status_code]
@@ -1281,8 +1371,20 @@ def list_leads(
     for lead in leads[:limit]:
         item = lead.model_dump()
         item["request_type_code"] = request_type_by_id.get(lead.request_type_id, "unknown")
+        item["source_channel"] = source_by_id.get(lead.source_id, "unknown")
         lead_item = session.exec(select(CrmLeadItem).where(CrmLeadItem.lead_id == lead.id)).first()
         snapshot = session.exec(select(CrmLeadContactSnapshot).where(CrmLeadContactSnapshot.lead_id == lead.id)).first()
+        missing_rows = session.exec(select(ChatMissingField).where(ChatMissingField.lead_id == lead.id)).all()
+        v7_rows = [row for row in missing_rows if row.field_code in v7_required]
+        if v7_rows:
+            collected = len([row for row in v7_rows if row.is_collected])
+            item["qualification_score"] = int(round(collected / len(v7_required) * 100))
+        elif lead.status_code == "qualified":
+            item["qualification_score"] = 100
+        elif lead.status_code == "partially_qualified":
+            item["qualification_score"] = 67
+        else:
+            item["qualification_score"] = 0
         item["lead_item"] = lead_item.model_dump() if lead_item else None
         item["contact_snapshot"] = snapshot.model_dump() if snapshot else None
         result.append(item)

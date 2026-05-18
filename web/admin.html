@@ -138,6 +138,32 @@
       font-weight: 600;
     }
 
+    .progress-mini {
+      width: 92px;
+      height: 8px;
+      border-radius: 8px;
+      background: #eee5d6;
+      overflow: hidden;
+      margin-top: 4px;
+    }
+
+    .progress-mini span {
+      display: block;
+      height: 100%;
+      background: linear-gradient(90deg, #315d4a, #b98d38);
+    }
+
+    .channel-pill {
+      display: inline-flex;
+      border: 1px solid #d9d2c4;
+      border-radius: 8px;
+      padding: 4px 8px;
+      background: #fbf8f1;
+      color: #43534b;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
     @media (max-width: 1120px) {
       .admin-shell {
         grid-template-columns: 1fr;
@@ -176,8 +202,8 @@
     <div class="ds-breadcrumbs">ПЕТРОХЛЕБ-КУБАНЬ / Внутренние инструменты / Операционный центр</div>
 
     <section class="ds-page-head">
-      <h1 class="ds-page-title">Операционный центр заявок</h1>
-      <p class="ds-page-desc">Единое рабочее пространство для регистрации входящих запросов, распределения менеджеров, контроля этапов и управления справочниками.</p>
+      <h1 class="ds-page-title">Back-office AI sales assistant</h1>
+      <p class="ds-page-desc">Единое рабочее пространство для лидов из web и Telegram, контроля квалификации, справочников RAG и передачи готовых заявок менеджерам.</p>
       <div class="ds-status-strip">
         <span class="ds-status-item">Запросы принимаются</span>
         <span class="ds-status-item warn">Контроль SLA активен</span>
@@ -214,10 +240,10 @@
   <script>
     const sections = [
       { code: "dashboard", title: "Dashboard" },
-      { code: "registry", title: "Реестр запросов" },
+      { code: "registry", title: "Leads" },
       { code: "workspace", title: "Рабочее место заявки" },
-      { code: "reference", title: "Справочники" },
-      { code: "assistant-config", title: "Настройка intake" },
+      { code: "reference", title: "Knowledge / Catalog" },
+      { code: "assistant-config", title: "Settings / Integrations" },
       { code: "users", title: "Пользователи" },
       { code: "sessions", title: "Чат-сессии" },
     ]
@@ -268,10 +294,13 @@
       knowledge: [],
       settings: [],
       requestTypes: [],
+      telegramStatus: {},
+      llmStatus: {},
       filters: {
         search: "",
         status: "",
         requestType: "",
+        sourceChannel: "",
         priority: "",
         managerId: "",
         regionId: "",
@@ -380,6 +409,8 @@
           id: row.id || "",
           статус: statusLabel[row.status_code] || row.status_code || "",
           тип: row.request_type_code || "",
+          канал: row.source_channel || "",
+          qualification_score: row.qualification_score || 0,
           приоритет: row.priority_code || "",
           компания: contact.company_name || "",
           контакт: contact.contact_name || "",
@@ -462,6 +493,7 @@
         search: "",
         status: preset?.filter.status || "",
         requestType: "",
+        sourceChannel: "",
         priority: "",
         managerId: "",
         regionId: "",
@@ -499,6 +531,7 @@
 
         if (filters.status && row.status_code !== filters.status) return false
         if (filters.requestType && row.request_type_code !== filters.requestType) return false
+        if (filters.sourceChannel && row.source_channel !== filters.sourceChannel) return false
         if (filters.priority && row.priority_code !== filters.priority) return false
         if (filters.managerId && String(row.assigned_manager_user_id || "") !== filters.managerId) return false
         if (filters.regionId && String(item.source_region_id || item.destination_region_id || "") !== filters.regionId) return false
@@ -523,6 +556,7 @@
             row.summary,
             row.manager_comment,
             row.request_type_code,
+            row.source_channel,
             contact.company_name,
             contact.contact_name,
             contact.phone,
@@ -565,14 +599,21 @@
 
       const rowsRequest = Object.entries(stats.by_request_type || {}).map(([code, count]) => `<tr><td>${escapeHtml(requestTypeLabel(code))}</td><td>${escapeHtml(count)}</td></tr>`).join("")
       const rowsStage = Object.entries(stats.by_stage || {}).map(([code, count]) => `<tr><td>${escapeHtml(statusLabel[code] || code)}</td><td>${escapeHtml(count)}</td></tr>`).join("")
+      const rowsSource = Object.entries(stats.by_source_channel || {}).map(([code, count]) => `<tr><td>${escapeHtml(code)}</td><td>${escapeHtml(count)}</td></tr>`).join("")
+      const webLeads = (stats.by_source_channel || {}).web_widget || 0
+      const telegramLeads = (stats.by_source_channel || {}).telegram || 0
 
       document.getElementById("section-dashboard").innerHTML = `
         <h2 style="margin:0 0 10px">Dashboard</h2>
         <div class="ds-grid-4">
-          <div class="soft-kpi"><div class="label">Новые за сегодня</div><div class="value">${todayCount}</div></div>
-          <div class="soft-kpi"><div class="label">За 7 дней</div><div class="value">${weekCount}</div></div>
-          <div class="soft-kpi"><div class="label">Среднее время обновления (мин)</div><div class="value">${avgResponse}</div></div>
+          <div class="soft-kpi"><div class="label">Всего лидов</div><div class="value">${stats.leads_total || 0}</div></div>
+          <div class="soft-kpi"><div class="label">Новых сегодня</div><div class="value">${todayCount}</div></div>
+          <div class="soft-kpi"><div class="label">Готовы к менеджеру</div><div class="value">${stats.ready_for_manager || 0}</div></div>
+          <div class="soft-kpi"><div class="label">Средняя готовность</div><div class="value">${stats.avg_qualification_score || 0}%</div></div>
+          <div class="soft-kpi"><div class="label">Web leads</div><div class="value">${webLeads}</div></div>
+          <div class="soft-kpi"><div class="label">Telegram leads</div><div class="value">${telegramLeads}</div></div>
           <div class="soft-kpi"><div class="label">Неназначенные</div><div class="value">${stats.unassigned_leads || 0}</div></div>
+          <div class="soft-kpi"><div class="label">Среднее обновление, мин</div><div class="value">${avgResponse}</div></div>
         </div>
 
         <div class="workspace-grid" style="margin-top:12px">
@@ -584,6 +625,10 @@
             <h4>Типы запросов</h4>
             <div class="ds-table-wrap"><table class="ds-table compact"><thead><tr><th>Тип</th><th>Кол-во</th></tr></thead><tbody>${rowsRequest || "<tr><td colspan='2'>Нет данных</td></tr>"}</tbody></table></div>
           </div>
+          <div class="detail-box">
+            <h4>Source channels</h4>
+            <div class="ds-table-wrap"><table class="ds-table compact"><thead><tr><th>Канал</th><th>Кол-во</th></tr></thead><tbody>${rowsSource || "<tr><td colspan='2'>Нет данных</td></tr>"}</tbody></table></div>
+          </div>
         </div>
       `
     }
@@ -593,6 +638,7 @@
       const rows = getFilteredLeads()
 
       const requestTypeOptions = [...new Set(appState.leads.map(row => row.request_type_code).filter(Boolean))]
+      const sourceOptions = [...new Set(appState.leads.map(row => row.source_channel).filter(Boolean))]
       const managerOptions = appState.users.map(user => `<option value='${user.id}'>${escapeHtml(user.full_name || user.login || user.id)}</option>`).join("")
 
       const tableRows = rows.map(row => {
@@ -600,12 +646,15 @@
         const item = row.lead_item || {}
         const manager = appState.users.find(u => u.id === row.assigned_manager_user_id)
         const region = item.source_region_id || item.destination_region_id || ""
+        const score = Number(row.qualification_score || 0)
 
         return `
           <tr>
             <td>${escapeHtml(row.id)}</td>
             <td>${escapeHtml(requestTypeLabel(row.request_type_code || ""))}</td>
+            <td><span class='channel-pill'>${escapeHtml(row.source_channel || "")}</span></td>
             <td><span class='ds-badge ${statusClass[row.status_code] || ""}'>${escapeHtml(statusLabel[row.status_code] || row.status_code || "")}</span></td>
+            <td>${score}%<div class='progress-mini'><span style='width:${Math.max(0, Math.min(score, 100))}%'></span></div></td>
             <td>${escapeHtml(row.priority_code || "")}</td>
             <td>${escapeHtml(contact.company_name || contact.contact_name || "")}</td>
             <td>${escapeHtml(contact.phone || contact.email || contact.telegram || "")}</td>
@@ -641,6 +690,10 @@
             <option value=''>Все типы</option>
             ${requestTypeOptions.map(code => `<option value='${code}' ${appState.filters.requestType === code ? "selected" : ""}>${escapeHtml(requestTypeLabel(code))}</option>`).join("")}
           </select>
+          <select class='ds-select' id='f-source'>
+            <option value=''>Все каналы</option>
+            ${sourceOptions.map(code => `<option value='${code}' ${appState.filters.sourceChannel === code ? "selected" : ""}>${escapeHtml(code)}</option>`).join("")}
+          </select>
           <select class='ds-select' id='f-priority'>
             <option value=''>Любой приоритет</option>
             ${["low", "normal", "high"].map(p => `<option value='${p}' ${appState.filters.priority === p ? "selected" : ""}>${p}</option>`).join("")}
@@ -672,10 +725,10 @@
           <table class='ds-table'>
             <thead>
               <tr>
-                <th>ID</th><th>Тип</th><th>Статус</th><th>Приоритет</th><th>Компания/контакт</th><th>Связь</th><th>Товар ID</th><th>Объем</th><th>Регион ID</th><th>Менеджер</th><th>Обновлено</th><th>Действие</th>
+                <th>ID</th><th>Тип</th><th>Канал</th><th>Статус</th><th>Score</th><th>Приоритет</th><th>Компания/контакт</th><th>Связь</th><th>Товар ID</th><th>Объем</th><th>Регион ID</th><th>Менеджер</th><th>Обновлено</th><th>Действие</th>
               </tr>
             </thead>
-            <tbody>${tableRows || "<tr><td colspan='12'>Нет заявок по выбранным фильтрам</td></tr>"}</tbody>
+            <tbody>${tableRows || "<tr><td colspan='14'>Нет заявок по выбранным фильтрам</td></tr>"}</tbody>
           </table>
         </div>
       `
@@ -710,6 +763,7 @@
           search: document.getElementById("f-search").value.trim(),
           status: document.getElementById("f-status").value,
           requestType: document.getElementById("f-request").value,
+          sourceChannel: document.getElementById("f-source").value,
           priority: document.getElementById("f-priority").value,
           managerId: document.getElementById("f-manager").value,
           regionId: document.getElementById("f-region").value.trim(),
@@ -1172,11 +1226,43 @@
           <input class='ds-input' id='cfg-route-hot' value='${escapeHtml(getSettingValue("routing.rule.hot", "urgency=high -> manager_queue=priority"))}' />
         </div>
 
+        <div class='detail-box'>
+          <h4>Integrations</h4>
+          <div class='ds-grid-2'>
+            <div>
+              <b>Telegram</b><br />
+              <span class='channel-pill'>${appState.telegramStatus.enabled ? "enabled" : "disabled / token missing"}</span>
+              <div class='ds-section-sub'>${escapeHtml(appState.telegramStatus.webhook_url || "webhook не настроен")}</div>
+              <button class='ds-btn ghost' id='set-telegram-webhook' style='margin-top:8px'>Обновить webhook</button>
+            </div>
+            <div>
+              <b>GigaChat</b><br />
+              <span class='channel-pill'>${appState.llmStatus.gigachat_enabled ? "enabled" : "fallback mode"}</span>
+              <div class='ds-section-sub'>${escapeHtml(appState.llmStatus.last_error || appState.llmStatus.preferred_provider || "")}</div>
+            </div>
+          </div>
+        </div>
+
         <div class='ds-row'>
           <button class='ds-btn' id='save-assistant-config'>Сохранить настройки</button>
         </div>
         <div id='assistant-config-msg' class='ds-msg'></div>
       `
+
+      document.getElementById("set-telegram-webhook").onclick = async () => {
+        const msg = document.getElementById("assistant-config-msg")
+        msg.textContent = ""
+        try {
+          const result = await api("/api/v1/admin/telegram/set-webhook", { method: "POST", body: JSON.stringify({}) })
+          msg.className = result.ok ? "ds-msg ok" : "ds-msg warn"
+          msg.textContent = result.ok ? "Telegram webhook обновлен" : (result.description || "Telegram disabled")
+          await loadAll()
+          setActiveSection("assistant-config")
+        } catch (error) {
+          msg.className = "ds-msg err"
+          msg.textContent = `Ошибка Telegram: ${error.message || error}`
+        }
+      }
 
       document.getElementById("save-assistant-config").onclick = async () => {
         const entries = [
@@ -1246,7 +1332,7 @@
     }
 
     async function loadAll() {
-      const [stats, leads, pipeline, users, sessions, counterparties, commodities, regions, transportModes, deliveryBasis, qualityTemplates, pricePolicies, lots, knowledge, settings, requestTypes] = await Promise.all([
+      const [stats, leads, pipeline, users, sessions, counterparties, commodities, regions, transportModes, deliveryBasis, qualityTemplates, pricePolicies, lots, knowledge, settings, requestTypes, telegramStatus, llmStatus] = await Promise.all([
         api("/api/v1/admin/stats"),
         api("/api/v1/leads"),
         api("/api/v1/admin/pipeline"),
@@ -1263,6 +1349,8 @@
         api("/api/v1/admin/knowledge"),
         api("/api/v1/admin/settings"),
         api("/api/v1/admin/reference/request-types"),
+        api("/api/v1/admin/telegram/status"),
+        api("/api/llm/status"),
       ])
 
       appState.stats = stats || {}
@@ -1281,6 +1369,8 @@
       appState.knowledge = knowledge || []
       appState.settings = settings || []
       appState.requestTypes = requestTypes || []
+      appState.telegramStatus = telegramStatus || {}
+      appState.llmStatus = llmStatus || {}
 
       renderDashboard()
       renderRegistry()

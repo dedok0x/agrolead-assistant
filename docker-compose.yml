@@ -57,6 +57,10 @@ services:
       GIGACHAT_VERIFY_SSL: ${GIGACHAT_VERIFY_SSL:-1}
       GIGACHAT_CA_FILE: ${GIGACHAT_CA_FILE:-}
       GIGACHAT_INSECURE_SSL_FALLBACK: ${GIGACHAT_INSECURE_SSL_FALLBACK:-0}
+
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
+      TELEGRAM_WEBHOOK_URL: ${TELEGRAM_WEBHOOK_URL:-https://artemshtodin.ru/api/integrations/telegram/webhook}
     depends_on:
       db:
         condition: service_healthy
