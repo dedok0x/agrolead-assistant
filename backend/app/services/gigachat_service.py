@@ -82,6 +82,9 @@ class GigaChatComposer:
         except LLMUnavailableError:
             return ComposerResult(text=fallback, provider="fallback", model="none")
 
+        if is_agentic_dialogue and self._looks_like_form_question(text):
+            return ComposerResult(text=fallback, provider="template-policy", model="dialogue-policy-v1")
+
         safe = self.validator.validate(
             text,
             next_action=effective_next_action,
@@ -89,4 +92,22 @@ class GigaChatComposer:
             retrieved_context=retrieved_context,
             source_channel=source_channel,
         )
+        if is_agentic_dialogue and self._looks_like_form_question(safe):
+            return ComposerResult(text=fallback, provider="template-policy", model="dialogue-policy-v1")
         return ComposerResult(text=safe, provider=provider, model=model)
+
+    @staticmethod
+    def _looks_like_form_question(text: str) -> bool:
+        lowered = (text or "").lower()
+        markers = [
+            "какую культуру",
+            "какой объем",
+            "какой объём",
+            "объем рассматриваете",
+            "объём рассматриваете",
+            "регион или маршрут",
+            "контакт для связи",
+            "тип заявки",
+            "фиксируем в заявке",
+        ]
+        return any(marker in lowered for marker in markers)
