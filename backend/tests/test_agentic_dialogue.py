@@ -87,6 +87,9 @@ class AgenticDialogueCases(unittest.TestCase):
             self.assertNotIn("\u043a\u0430\u043a\u0443\u044e \u043a\u0443\u043b\u044c\u0442\u0443\u0440\u0443", payload["text"].lower())
             self.assertNotIn("\u043a\u0430\u043a\u043e\u0439 \u043e\u0431\u044a\u0435\u043c", payload["text"].lower())
         self.assertNotIn("product", responses[-1]["known_facts"])
+        self.assertIn("\u043d\u0435 \u043f\u0440\u043e\u0441\u043e", responses[3]["text"].lower())
+        self.assertIn("\u0431\u0435\u0437 \u0430\u043d\u043a\u0435\u0442", responses[4]["text"].lower())
+        self.assertIn("gigachat", responses[5]["text"].lower())
 
 
 if __name__ == "__main__":

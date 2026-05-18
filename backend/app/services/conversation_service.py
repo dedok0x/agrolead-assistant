@@ -238,7 +238,7 @@ class ConversationService:
             lead_state=known_facts,
             limit=5,
         )
-        agentic_strategies = {"identity", "consultation", "meta_dialogue", "recover_feedback", "capabilities", "clarification", "smalltalk"}
+        agentic_strategies = {"identity", "consultation", "meta_dialogue", "capabilities", "clarification", "smalltalk"}
         if policy.fallback_text and policy.response_strategy in agentic_strategies:
             composed = await self.composer.compose(
                 user_message=clean_text,

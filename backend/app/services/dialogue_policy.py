@@ -33,6 +33,17 @@ class DialoguePolicy:
         attempts = attempts or {}
         save = {fact.field: fact.status == "confirmed" for fact in extracted_facts}
         uncertain = [fact for fact in extracted_facts if fact.status == "uncertain"]
+        rejected = [fact for fact in extracted_facts if fact.status == "rejected"]
+
+        if rejected:
+            return DialoguePolicyResult(
+                response_strategy="correction",
+                should_save_fact={**save, rejected[0].field: False},
+                fallback_text=(
+                    "Понял, это не просо и не культура для заявки. Ничего не фиксирую. "
+                    "Можем просто поговорить без анкеты: задайте любой вопрос, а к заявке вернемся только если понадобится."
+                ),
+            )
 
         if user_signal == UserSignal.ASKS_CAPABILITIES.value:
             return DialoguePolicyResult(
@@ -63,6 +74,15 @@ class DialoguePolicy:
                 ),
             )
         if user_signal == UserSignal.META_DIALOGUE.value:
+            if "гигачат" in user_message.lower():
+                return DialoguePolicyResult(
+                    response_strategy="meta_dialogue",
+                    should_save_fact={**save, "product": False, "volume": False, "region": False},
+                    fallback_text=(
+                        "GigaChat подключён и формулирует ответы, но backend всё равно проверяет факты, чтобы не выдумывать цены, наличие и условия. "
+                        "Если я снова ухожу в анкету, это моя логика квалификации, не ваша ошибка. Давайте без анкеты: о чем хотите поговорить?"
+                    ),
+                )
             return DialoguePolicyResult(
                 response_strategy="meta_dialogue",
                 should_save_fact={**save, "product": False, "volume": False, "region": False},
@@ -206,7 +226,7 @@ class DialoguePolicy:
     def _frustration_text(action: str) -> str:
         if action == NextAction.ASK_VOLUME.value:
             return "Да, давайте проще. Можно без точной цифры — хотя бы примерно: до 100 тонн, 100–500 или больше 500?"
-        return "Да, давайте проще. Напишите как удобно: продажа, покупка, логистика или консультация."
+        return "Да, понял, я снова слишком давлю сценарием. Давайте без анкеты: напишите обычным текстом, что хотите обсудить, и я отвечу по сути."
 
     @staticmethod
     def _vague_text(action: str) -> str:
