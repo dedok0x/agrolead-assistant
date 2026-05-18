@@ -106,7 +106,7 @@ class LoginIn(BaseModel):
 
 class ChatIn(BaseModel):
     text: str
-    session_id: Optional[int] = None
+    session_id: Optional[str | int] = None
     client_id: str = "web"
     source_channel: str = "web_widget"
     external_user_id: Optional[str] = None

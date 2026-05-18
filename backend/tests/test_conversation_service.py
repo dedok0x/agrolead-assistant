@@ -78,6 +78,35 @@ class ConversationServiceCases(unittest.TestCase):
         self.assertIn("qualification_score", final)
         self.assertIn("next_action", final)
 
+    def test_string_session_id_keeps_web_contract_state(self):
+        session_id = "web-contract-string-session"
+        first = self.client.post(
+            "/api/chat",
+            json={
+                "text": "\u043f\u0440\u043e\u0434\u0430\u0436\u0430",
+                "session_id": session_id,
+                "client_id": "v7-web-contract",
+                "source_channel": "web_widget",
+            },
+        )
+        self.assertEqual(first.status_code, 200, first.text)
+        self.assertEqual(first.json()["known_facts"]["request_type"], "sell_grain")
+
+        second = self.client.post(
+            "/api/chat",
+            json={
+                "text": "\u041f\u0448\u0435\u043d\u0438\u0438\u0446\u0430",
+                "session_id": session_id,
+                "client_id": "v7-web-contract",
+                "source_channel": "web_widget",
+            },
+        )
+        self.assertEqual(second.status_code, 200, second.text)
+        payload = second.json()
+        self.assertEqual(payload["known_facts"]["request_type"], "sell_grain")
+        self.assertEqual(payload["known_facts"]["product"], "\u043f\u0448\u0435\u043d\u0438\u0446\u0430")
+        self.assertEqual(payload["next_action"], "ask_volume")
+
 
 if __name__ == "__main__":
     unittest.main()

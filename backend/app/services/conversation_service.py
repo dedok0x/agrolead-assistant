@@ -307,12 +307,19 @@ class ConversationService:
         expected_user = (external_user_id or client_id or "").strip()
         expected_source = source.code
 
-        if session_id and not force_new:
+        string_session_id = str(session_id).strip() if session_id is not None else ""
+        if string_session_id and not force_new:
             try:
-                numeric_session_id = int(session_id)
+                numeric_session_id = int(string_session_id)
             except (TypeError, ValueError):
-                raise HTTPException(status_code=400, detail="session_id must be numeric")
-            existing = session.get(ChatSession, numeric_session_id)
+                numeric_session_id = None
+            existing = session.get(ChatSession, numeric_session_id) if numeric_session_id is not None else None
+            if not existing and numeric_session_id is None:
+                existing = session.exec(
+                    select(ChatSession)
+                    .where(ChatSession.source_id == source.id, ChatSession.external_chat_id == string_session_id)
+                    .order_by(ChatSession.updated_at.desc())
+                ).first()
             if existing:
                 if expected_user and existing.external_user_id and expected_user != existing.external_user_id:
                     raise HTTPException(status_code=403, detail="Session owner mismatch")
@@ -339,7 +346,7 @@ class ConversationService:
         chat = ChatSession(
             source_id=source.id,
             external_user_id=expected_user or None,
-            external_chat_id=external_chat_id or (expected_user if expected_source == "telegram" else None),
+            external_chat_id=external_chat_id or (expected_user if expected_source == "telegram" else None) or (string_session_id if string_session_id and not string_session_id.isdigit() else None),
             current_state_code="new",
             language_code="ru",
         )
