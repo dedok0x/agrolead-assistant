@@ -27,6 +27,9 @@ class SalesEngine:
             known_facts=known,
             user_signal=user_signal,
         )
+        rejected_fields = [fact.field for fact in extracted_items if fact.status == "rejected"]
+        for field in rejected_fields:
+            known.pop(field, None)
         extracted = {
             fact.field: fact.normalized_value
             for fact in extracted_items
@@ -60,7 +63,7 @@ class SalesEngine:
                 intent="irrelevant",
                 extracted_fields=list(extracted),
                 uncertain_facts=uncertain,
-                rejected_fields=[fact.field for fact in extracted_items if fact.status == "rejected"],
+                rejected_fields=rejected_fields,
                 user_signal=signal,
             )
 
@@ -80,7 +83,7 @@ class SalesEngine:
             intent=merged.get("request_type") or next_action.value,
             extracted_fields=list(extracted),
             uncertain_facts=uncertain,
-            rejected_fields=[fact.field for fact in extracted_items if fact.status == "rejected"],
+            rejected_fields=rejected_fields,
             user_signal=signal,
             is_faq=is_faq,
             is_objection=is_objection,

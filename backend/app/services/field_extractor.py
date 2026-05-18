@@ -59,6 +59,9 @@ class FieldExtractor:
         facts: list[ExtractedFact] = []
         known = known_facts or {}
         signal = user_signal or UserSignal.PROVIDES_FACT.value
+        rejected = self._rejected_fact(normalized)
+        if rejected:
+            return [rejected]
         fact_only_signals = {
             UserSignal.PROVIDES_FACT.value,
             UserSignal.OBJECTION_PRICE.value,
@@ -138,6 +141,14 @@ class FieldExtractor:
         if any(word in text for word in ["купить", "покупка", "закупить", "нужна", "нужно", "приобрести"]):
             return RequestType.BUY_GRAIN.value
         return ""
+
+    @staticmethod
+    def _rejected_fact(text: str) -> ExtractedFact | None:
+        if any(marker in text for marker in ["не просо", "не про просо", "да не просо", "нет не просо"]):
+            return ExtractedFact("product", "", "", 1.0, text, status="rejected")
+        if any(marker in text for marker in ["не пшено", "не про пшено", "да не пшено", "нет не пшено"]):
+            return ExtractedFact("product", "", "", 1.0, text, status="rejected")
+        return None
 
     @staticmethod
     def _contact(text: str) -> str:

@@ -215,6 +215,8 @@ class ConversationService:
             attempts=attempts,
         )
 
+        for key in decision.rejected_fields:
+            self._delete_fact(session, chat_id, key)
         for key in decision.extracted_fields:
             if policy.should_save_fact and not policy.should_save_fact.get(key, True):
                 continue
@@ -236,7 +238,7 @@ class ConversationService:
             lead_state=known_facts,
             limit=5,
         )
-        agentic_strategies = {"identity", "consultation", "meta_dialogue", "recover_feedback", "capabilities", "clarification"}
+        agentic_strategies = {"identity", "consultation", "meta_dialogue", "recover_feedback", "capabilities", "clarification", "smalltalk"}
         if policy.fallback_text and policy.response_strategy in agentic_strategies:
             composed = await self.composer.compose(
                 user_message=clean_text,
@@ -554,6 +556,13 @@ class ConversationService:
                 is_confirmed=True,
             )
         session.add(row)
+
+    def _delete_fact(self, session: Session, chat_id: int, key: str) -> None:
+        rows = session.exec(
+            select(ChatExtractedFact).where(ChatExtractedFact.session_id == chat_id, ChatExtractedFact.fact_key == key)
+        ).all()
+        for row in rows:
+            session.delete(row)
 
     def _attach_fact_to_lead(self, session: Session, chat_id: int, key: str, lead_id: int) -> None:
         row = session.exec(

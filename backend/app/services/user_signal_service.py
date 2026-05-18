@@ -38,6 +38,8 @@ class UserSignalService:
             "интеллектом",
             "ерунду",
             "чушь",
+            "опять 25",
+            "опять двадцать пять",
         ]):
             return UserSignal.NEGATIVE_FEEDBACK.value
         if self._has(text, [
@@ -46,6 +48,11 @@ class UserSignalService:
             "скажи проще",
             "переформулируй",
             "что значит",
+            "где гигачат",
+            "почему не гигачат",
+            "просто поболтать",
+            "поболтать",
+            "да я просто",
         ]) or text == "просто":
             return UserSignal.META_DIALOGUE.value
 
@@ -53,7 +60,7 @@ class UserSignalService:
             return UserSignal.ASKS_CAPABILITIES.value
         if text in {"что", "чего", "в смысле", "не понял", "не поняла", "как это", "а?", "?"}:
             return UserSignal.ASKS_CLARIFICATION.value
-        if self._has(text, ["пипец", "пипейц", "блин", "чё за", "че за", "сложно", "достало"]):
+        if self._has(text, ["пипец", "пипейц", "блин", "чё за", "че за", "сложно", "достало", "емае", "ёмае", "елки", "ну емае"]):
             return UserSignal.FRUSTRATION.value
         if self._has(text, ["дорого", "цена", "почем", "почём", "стоимость", "сколько стоит"]):
             return UserSignal.OBJECTION_PRICE.value
@@ -63,7 +70,7 @@ class UserSignalService:
             return UserSignal.REFUSAL_OR_UNKNOWN.value
         if current_next_action == NextAction.ASK_VOLUME.value and text in {"большой", "много", "нормально", "крупный", "немало", "побольше"}:
             return UserSignal.VAGUE_ANSWER.value
-        if text in {"привет", "здравствуйте", "добрый день", "ок", "ладно", "ага"}:
+        if text in {"привет", "здравствуйте", "добрый день", "ок", "ладно", "ага"} or self._has(text, ["поболтаем", "поговорить просто"]):
             return UserSignal.SMALLTALK.value
         if self._has(text, ["погода", "анекдот", "рецепт", "фильм", "музыка", "политика"]):
             return UserSignal.IRRELEVANT.value

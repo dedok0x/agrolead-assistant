@@ -65,6 +65,29 @@ class AgenticDialogueCases(unittest.TestCase):
         self.assertNotIn("\u043a\u0430\u043a\u043e\u0439 \u043e\u0431\u044a\u0435\u043c", responses[4]["text"].lower())
         self.assertIn("\u0441\u043b\u0438\u0448\u043a\u043e\u043c", responses[4]["text"].lower())
 
+    def test_smalltalk_does_not_turn_into_millet_or_form_loop(self):
+        session_id = None
+        messages = [
+            "\u041f\u0440\u0438\u0432\u0435\u0442",
+            "\u0427\u0442\u043e",
+            "\u0430, \u0434\u0430 \u044f \u043f\u0440\u043e\u0441\u0442\u043e \u043f\u043e\u0431\u043e\u043b\u0442\u0430\u0442\u044c",
+            "\u0434\u0430 \u043d\u0435 \u043f\u0440\u043e\u0441\u043e",
+            "\u043d\u0443 \u0435\u043c\u0430\u0435",
+            "\u0433\u0434\u0435 \u0433\u0438\u0433\u0430\u0447\u0430\u0442",
+            "\u043e\u043f\u044f\u0442\u044c 25",
+        ]
+        responses = []
+        for text in messages:
+            payload = self._send(text, session_id)
+            session_id = payload["session_id"]
+            responses.append(payload)
+
+        for payload in responses:
+            self.assertNotEqual(payload["known_facts"].get("product"), "\u043f\u0440\u043e\u0441\u043e")
+            self.assertNotIn("\u043a\u0430\u043a\u0443\u044e \u043a\u0443\u043b\u044c\u0442\u0443\u0440\u0443", payload["text"].lower())
+            self.assertNotIn("\u043a\u0430\u043a\u043e\u0439 \u043e\u0431\u044a\u0435\u043c", payload["text"].lower())
+        self.assertNotIn("product", responses[-1]["known_facts"])
+
 
 if __name__ == "__main__":
     unittest.main()

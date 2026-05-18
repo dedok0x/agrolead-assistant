@@ -80,6 +80,15 @@ class DialoguePolicy:
                     "Напишите вопрос своими словами, а параметры сделки будем собирать только если это действительно понадобится."
                 ),
             )
+        if user_signal == UserSignal.SMALLTALK.value:
+            return DialoguePolicyResult(
+                response_strategy="smalltalk",
+                should_save_fact={**save, "product": False, "volume": False, "region": False},
+                fallback_text=(
+                    "Привет. Можем просто поговорить без заявки: я расскажу, чем занимается ПЕТРОХЛЕБ-КУБАНЬ, или отвечу на вопрос по зерну, логистике, хранению и ВЭД. "
+                    "О чем поболтаем?"
+                ),
+            )
         if user_signal == UserSignal.ASKS_CLARIFICATION.value:
             return DialoguePolicyResult(
                 response_strategy="clarification",
