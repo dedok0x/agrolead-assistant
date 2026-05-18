@@ -277,7 +277,11 @@ request_json() {
   fi
 
   LAST_REQUEST_DESC="$description"
-  LAST_REQUEST_BODY="$body"
+  if [[ "$description" == *"admin login"* ]]; then
+    LAST_REQUEST_BODY="(masked)"
+  else
+    LAST_REQUEST_BODY="$body"
+  fi
   if [[ -n "$extra_header_name" ]]; then
     LAST_HTTP_CODE="$(curl "${curl_opts[@]}" \
       -H "Content-Type: application/json" \
