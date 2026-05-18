@@ -363,6 +363,12 @@ upsert_env_var "GIGACHAT_VERIFY_SSL" "$(env_or_default "GIGACHAT_VERIFY_SSL" "1"
 upsert_env_var "GIGACHAT_INSECURE_SSL_FALLBACK" "$(env_or_default "GIGACHAT_INSECURE_SSL_FALLBACK" "0")"
 upsert_env_var "ALLOW_STATIC_ADMIN_TOKEN" "$(env_or_default "ALLOW_STATIC_ADMIN_TOKEN" "0")"
 upsert_env_var "ADMIN_SESSION_TTL_MINUTES" "$(env_or_default "ADMIN_SESSION_TTL_MINUTES" "720")"
+case "$(get_env_var "GIGACHAT_CA_FILE")" in
+  /ssl/fullchain.pem|/ssl/cacert.pem)
+    upsert_env_var "GIGACHAT_CA_FILE" ""
+    warn "Cleared legacy GIGACHAT_CA_FILE path from .env"
+    ;;
+esac
 
 ok ".env готов"
 
