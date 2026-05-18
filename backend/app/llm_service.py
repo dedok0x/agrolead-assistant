@@ -52,10 +52,10 @@ class LLMService:
     def _enforce_russian(self, text: str) -> str:
         normalized = (text or "").strip()
         if not normalized:
-            return "Принял. Уточню детали по сделке и дам следующий шаг."
+            return "Принял. Уточню детали по задаче и предложу следующий шаг."
         if _contains_cyrillic(normalized):
             return normalized
-        return "Отвечаю на русском: получил запрос, готов продолжать диалог по сделке."
+        return "Отвечаю на русском: получил запрос, готов продолжить диалог по задаче."
 
     async def _complete_gigachat(
         self,
@@ -131,7 +131,7 @@ class LLMService:
             f"Черновик: {source_text}"
         )
         return await self.complete(
-            system_prompt="Ты B2B ассистент по зерновым сделкам.",
+            system_prompt="Ты B2B-ассистент по зерновым сделкам.",
             user_prompt=rewrite_prompt,
             reason=reason,
             temperature=0.42,

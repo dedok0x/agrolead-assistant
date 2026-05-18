@@ -37,21 +37,22 @@ class GigaChatComposer:
         fallback_override: str | None = None,
     ) -> ComposerResult:
         fallback = fallback_override or self.validator.fallback(next_action, known_facts)
+        is_agentic_dialogue = bool(dialogue_guidance)
+        effective_next_action = NextAction.ANSWER_FAQ.value if is_agentic_dialogue else next_action
         system_prompt = (
-            "Ты — деловой AI-ассистент компании «ПЕТРОХЛЕБ-КУБАНЬ». "
-            "Ты помогаешь клиенту оформить заявку по зерну, логистике, хранению или ВЭД. "
-            "Не выдумывай цены, наличие, сроки, условия доставки и контакты. "
-            "Используй только переданный контекст. "
-            "Твоя задача — сформулировать короткий профессиональный ответ и задать следующий нужный вопрос. "
-            "Не задавай вопрос о поле, которое уже известно. "
-            "Если next_action = handoff_manager, подтверди, что заявка собрана и будет передана менеджеру. "
-            "Стиль: профессионально, коротко, понятно, без канцелярита."
+            "Ты деловой AI-ассистент компании «ПЕТРОХЛЕБ-КУБАНЬ». "
+            "Компания работает с B2B-заявками по продаже и покупке зерна, логистике, хранению и ВЭД. "
+            "Твоя задача — вести разговор как живой предпродажный ассистент: сначала понять человека, затем мягко собрать параметры сделки, если это уместно. "
+            "Не выдумывай цены, наличие, сроки, условия доставки и контакты. Используй только переданный контекст и состояние backend. "
+            "Если пользователь спрашивает, кто ты, просит просто консультацию или критикует качество диалога, ответь по-человечески и не превращай ответ в анкету. "
+            "Если есть dialogue_guidance, следуй ему как главному сценарию ответа. "
+            "Ответ: 1-4 предложения, без markdown-таблиц, не более одного естественного вопроса."
         )
         payload = {
             "user_message": user_message,
             "source_channel": source_channel,
             "stage": stage,
-            "next_action": next_action,
+            "next_action": effective_next_action,
             "known_facts": known_facts,
             "missing_fields": missing_fields,
             "captured_fields": captured_fields,
@@ -65,24 +66,25 @@ class GigaChatComposer:
             ],
         }
         user_prompt = (
-            "Сформулируй ответ на русском языке. Требования: 1-4 предложения, не более одного главного уточняющего вопроса, "
-            "без markdown-таблиц в Telegram.\n"
+            "Сформулируй ответ на русском языке по данным backend. "
+            "Не добавляй факты, которых нет в known_facts или retrieved_context. "
+            "Если dialogue_guidance заполнен, возьми его смысл за основу и сделай ответ естественным.\n"
             f"Данные backend:\n{json.dumps(payload, ensure_ascii=False, indent=2)}"
         )
         try:
             text, provider, model = await self.llm_service.complete(
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
-                reason=f"v7_{next_action}",
-                temperature=0.35 if next_action != NextAction.ANSWER_FAQ.value else 0.45,
-                max_tokens=280,
+                reason=f"v7_{effective_next_action}",
+                temperature=0.55 if is_agentic_dialogue else 0.35,
+                max_tokens=320 if is_agentic_dialogue else 280,
             )
         except LLMUnavailableError:
             return ComposerResult(text=fallback, provider="fallback", model="none")
 
         safe = self.validator.validate(
             text,
-            next_action=next_action,
+            next_action=effective_next_action,
             known_facts=known_facts,
             retrieved_context=retrieved_context,
             source_channel=source_channel,
