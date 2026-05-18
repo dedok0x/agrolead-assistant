@@ -476,6 +476,10 @@
           <h4>Недостает</h4>
           <div id="missing-fields">request_type, product, volume, region, timing, contact</div>
         </div>
+        <div class="detail-box" style="margin:0">
+          <h4>Нужно подтвердить</h4>
+          <div id="uncertain-fields">нет</div>
+        </div>
       </aside>
     </main>
 
@@ -581,6 +585,10 @@
       document.getElementById("stage-label").textContent = event.stage || event.status || "new"
       document.getElementById("next-action").textContent = event.next_action || "уточнить тип заявки"
       document.getElementById("missing-fields").textContent = (event.missing_fields || []).join(", ") || "нет"
+      const uncertain = event.uncertain_facts || {}
+      document.getElementById("uncertain-fields").textContent = Object.entries(uncertain)
+        .map(([key, item]) => `${fieldLabels[key] || key}: ${item.normalized_value || item.value || ""}`)
+        .join("; ") || "нет"
 
       const order = ["request_type", "product", "volume", "region", "timing", "contact", "quality_class", "delivery_terms", "company_name", "route_from", "route_to", "transport_type"]
       const rows = order

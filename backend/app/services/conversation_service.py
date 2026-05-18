@@ -30,10 +30,12 @@ from ..models import (
 )
 from ..schemas.chat import ConversationResult
 from .gigachat_service import GigaChatComposer
+from .dialogue_policy import DialoguePolicy
 from .lead_qualification_service import LeadQualificationService
 from .rag_service import RAGService
 from .response_validator import ResponseValidator
 from .sales_engine import SalesEngine
+from .user_signal_service import UserSignalService
 
 LOGGER = logging.getLogger("agrolead.conversation")
 
@@ -42,6 +44,8 @@ class ConversationService:
     def __init__(self, llm_service: LLMService) -> None:
         self.qualifier = LeadQualificationService()
         self.sales_engine = SalesEngine(self.qualifier)
+        self.signal_service = UserSignalService()
+        self.dialogue_policy = DialoguePolicy()
         self.validator = ResponseValidator()
         self.composer = GigaChatComposer(llm_service=llm_service, validator=self.validator)
 
@@ -183,18 +187,47 @@ class ConversationService:
             )
 
         known_before = self._known_facts(session, chat_id)
-        decision = self.sales_engine.handle(clean_text, known_before)
+        current_decision = self.sales_engine.handle("", known_before)
+        current_next_action = current_decision.next_action.value
+        user_signal = self.signal_service.classify(clean_text, current_next_action)
+        extracted_items = self.sales_engine.extractor.extract(
+            clean_text,
+            current_next_action=current_next_action,
+            known_facts=known_before,
+            user_signal=user_signal,
+        )
+        decision = self.sales_engine.handle(
+            clean_text,
+            known_before,
+            current_next_action=current_next_action,
+            user_signal=user_signal,
+        )
         known_facts = decision.known_facts
+        attempts = self._question_attempts(session, chat_id)
+        policy = self.dialogue_policy.choose(
+            user_message=clean_text,
+            current_next_action=current_next_action,
+            next_action=decision.next_action.value,
+            known_facts=known_facts,
+            missing_fields=decision.missing_fields,
+            extracted_facts=extracted_items,
+            user_signal=user_signal,
+            attempts=attempts,
+        )
 
         for key in decision.extracted_fields:
+            if policy.should_save_fact and not policy.should_save_fact.get(key, True):
+                continue
             self._upsert_fact(session, chat_id, chat.lead_id, key, known_facts.get(key), user_message.id)
         session.commit()
 
         lead = self._sync_crm(session, chat, decision, source_channel)
         lead_id = self._require_id(lead.id, "lead")
         for key in decision.extracted_fields:
+            if policy.should_save_fact and not policy.should_save_fact.get(key, True):
+                continue
             self._attach_fact_to_lead(session, chat_id, key, lead_id)
-        self._sync_missing_fields(session, chat_id, lead_id, decision.missing_fields)
+        self._sync_missing_fields(session, chat_id, lead_id, decision.missing_fields, asked_action=decision.next_action.value)
         session.commit()
 
         rag_context = RAGService(session).retrieve_context(
@@ -203,7 +236,11 @@ class ConversationService:
             lead_state=known_facts,
             limit=5,
         )
-        if decision.next_action == NextAction.REFUSE_IRRELEVANT:
+        if policy.fallback_text:
+            text_out = policy.fallback_text
+            provider = "template-policy"
+            model = "dialogue-policy-v1"
+        elif decision.next_action == NextAction.REFUSE_IRRELEVANT:
             text_out = self.validator.fallback(decision.next_action.value, known_facts)
             provider = "fallback"
             model = "none"
@@ -221,6 +258,10 @@ class ConversationService:
             text_out = composed.text
             provider = composed.provider
             model = composed.model
+
+        last_out = self._last_assistant_text(session, chat_id)
+        if last_out and text_out.strip() == last_out.strip():
+            text_out = f"Зафиксировал без изменений. {policy.reformulated_question or self.validator.fallback(decision.next_action.value, known_facts)}"
 
         bot_message = self._save_message(session, chat_id, "out", text_out, provider=provider, model=model)
         chat.last_bot_message_at = bot_message.created_at
@@ -240,6 +281,7 @@ class ConversationService:
             next_action=decision.next_action.value,
             captured_fields=decision.captured_fields,
             known_facts=known_facts,
+            uncertain_facts=decision.uncertain_facts,
             missing_fields=decision.missing_fields,
             qualification_score=decision.qualification_score,
             source_channel=source_channel,
@@ -407,10 +449,11 @@ class ConversationService:
             row.company_name = str(facts["company_name"])
         session.add(row)
 
-    def _sync_missing_fields(self, session: Session, chat_id: int, lead_id: int, missing: list[str]) -> None:
+    def _sync_missing_fields(self, session: Session, chat_id: int, lead_id: int, missing: list[str], asked_action: str | None = None) -> None:
         existing = session.exec(select(ChatMissingField).where(ChatMissingField.session_id == chat_id)).all()
         by_code = {row.field_code: row for row in existing}
         missing_set = set(missing)
+        asked_field = self._field_for_action(asked_action or "")
         for order, field in enumerate(REQUIRED_FIELDS, start=1):
             row = by_code.get(field)
             if not row:
@@ -421,7 +464,25 @@ class ConversationService:
                 row.resolved_at = self._now()
             if not row.is_collected:
                 row.resolved_at = None
+            if field == asked_field and field in missing_set:
+                row.asked_count = (row.asked_count or 0) + 1
+                row.last_asked_at = self._now()
             session.add(row)
+
+    @staticmethod
+    def _field_for_action(action: str) -> str:
+        return {
+            NextAction.ASK_REQUEST_TYPE.value: "request_type",
+            NextAction.ASK_PRODUCT.value: "product",
+            NextAction.ASK_VOLUME.value: "volume",
+            NextAction.ASK_REGION.value: "region",
+            NextAction.ASK_TIMING.value: "timing",
+            NextAction.ASK_CONTACT.value: "contact",
+        }.get(action, "")
+
+    def _question_attempts(self, session: Session, chat_id: int) -> dict[str, int]:
+        rows = session.exec(select(ChatMissingField).where(ChatMissingField.session_id == chat_id)).all()
+        return {row.field_code: row.asked_count or 0 for row in rows}
 
     def _known_facts(self, session: Session, chat_id: int) -> dict[str, Any]:
         rows = session.exec(select(ChatExtractedFact).where(ChatExtractedFact.session_id == chat_id)).all()
@@ -479,6 +540,14 @@ class ConversationService:
             key=lambda x: x.created_at,
         )
         return render_guardrail_reply(guard, user_text=text, last_assistant_messages=[row.text for row in previous_out[-3:]])
+
+    @staticmethod
+    def _last_assistant_text(session: Session, chat_id: int) -> str:
+        previous_out = sorted(
+            session.exec(select(ChatMessage).where(ChatMessage.session_id == chat_id, ChatMessage.direction == "out")).all(),
+            key=lambda x: x.created_at,
+        )
+        return previous_out[-1].text if previous_out else ""
 
     @staticmethod
     def _save_message(

@@ -62,7 +62,7 @@ class ConversationServiceCases(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 200)
         payload = response.json()
-        self.assertEqual(payload["provider"], "fallback")
+        self.assertIn(payload["provider"], {"fallback", "template-policy"})
         self.assertTrue(payload["text"])
 
     def test_stream_final_event_contains_v7_state(self):

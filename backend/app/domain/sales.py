@@ -29,6 +29,19 @@ class NextAction(str, Enum):
     REFUSE_IRRELEVANT = "refuse_irrelevant"
 
 
+class UserSignal(str, Enum):
+    PROVIDES_FACT = "provides_fact"
+    ASKS_CAPABILITIES = "asks_capabilities"
+    ASKS_CLARIFICATION = "asks_clarification"
+    FRUSTRATION = "frustration"
+    VAGUE_ANSWER = "vague_answer"
+    REFUSAL_OR_UNKNOWN = "refusal_or_unknown"
+    SMALLTALK = "smalltalk"
+    OBJECTION_PRICE = "objection_price"
+    WANTS_HUMAN = "wants_human"
+    IRRELEVANT = "irrelevant"
+
+
 class RequestType(str, Enum):
     SELL_GRAIN = "sell_grain"
     BUY_GRAIN = "buy_grain"
@@ -103,6 +116,9 @@ class SalesDecision:
     request_type: str | None = None
     intent: str | None = None
     extracted_fields: list[str] = field(default_factory=list)
+    uncertain_facts: dict[str, Any] = field(default_factory=dict)
+    rejected_fields: list[str] = field(default_factory=list)
+    user_signal: str = UserSignal.PROVIDES_FACT.value
     is_faq: bool = False
     is_objection: bool = False
 

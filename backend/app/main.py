@@ -1054,6 +1054,7 @@ async def chat_stream(payload: ChatIn, session: Session = Depends(get_session)) 
                 "model": result.get("model"),
                 "captured_fields": result.get("captured_fields") or [],
                 "known_facts": result.get("known_facts") or {},
+                "uncertain_facts": result.get("uncertain_facts") or {},
                 "missing_fields": result.get("missing_fields") or [],
                 "qualification_score": result.get("qualification_score", 0),
                 "source_channel": result.get("source_channel") or payload.source_channel,

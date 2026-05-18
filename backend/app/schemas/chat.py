@@ -15,6 +15,7 @@ class ConversationResult:
     state: str = ""
     captured_fields: list[str] = field(default_factory=list)
     known_facts: dict[str, Any] = field(default_factory=dict)
+    uncertain_facts: dict[str, Any] = field(default_factory=dict)
     missing_fields: list[str] = field(default_factory=list)
     qualification_score: int = 0
     source_channel: str = "web_widget"
