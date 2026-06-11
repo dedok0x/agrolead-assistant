@@ -35,17 +35,17 @@ monolith, not a rewrite target.
 Compose services:
 - `db`: PostgreSQL 16, internal only, persistent volume `pg_data`.
 - `api`: FastAPI on container port `8000`, host-bound only to `127.0.0.1:8000`.
-- `webui`: Nginx reverse proxy, public `80` and `443`.
-- `certbot`: Let's Encrypt renewal loop.
+- `webui`: Nginx static + `/api/` proxy, plain HTTP, host-bound only to `127.0.0.1:8080`.
 
-TLS:
-- Nginx serves ACME HTTP-01 challenge from `/var/www/certbot`.
-- Certificates live in the persistent Docker volume `letsencrypt`.
-- `certbot_www` stores challenge files.
-- Legacy `ssl/fullchain.pem` and `ssl/privkey.key` are not required.
+TLS and public entrypoint (NOT this repo's responsibility):
+- The host-level nginx (`/etc/nginx/sites-available/artemshtodin.ru.conf`) owns
+  ports 80/443, TLS certificates and ACME challenges for all domains.
+- Host certbot (`certbot.timer`) renews certificates centrally.
+- This repo must never contain configs for other domains/services
+  (codex.*, web.*, zabbix.*, Kasm, code-server, Telegram agents, dgu).
 
 Important security posture:
-- Only ports `80` and `443` should be public.
+- This project publishes nothing public; only `127.0.0.1:8000` and `127.0.0.1:8080`.
 - Do not publish PostgreSQL or API directly to the internet.
 - Never commit `.env`, private keys, cert dumps, tokens, DB dumps, or passwords.
 - `.env.example` and `env.example` intentionally leave secrets blank.
@@ -57,7 +57,6 @@ Required server/local env keys:
 - `DATABASE_URL`
 - `ADMIN_USER`, `ADMIN_PASS`
 - `DOMAIN_NAME=artemshtodin.ru`
-- optional `CERTBOT_EMAIL`, `CERTBOT_STAGING`
 - `GIGACHAT_AUTH_KEY` if real LLM responses are needed
 
 `deploy.sh` can generate missing local values for `POSTGRES_PASSWORD` and
@@ -91,7 +90,6 @@ curl -I https://artemshtodin.ru
 curl https://artemshtodin.ru/api/health
 docker compose ps
 docker compose logs --tail=100
-docker compose run --rm --entrypoint certbot certbot certificates
 ```
 
 Expected public behavior:
@@ -109,10 +107,9 @@ Last verified: 2026-05-18.
 - HTTPS certificate: Let's Encrypt for `artemshtodin.ru`, valid until
   2026-08-16.
 - Containers after successful deploy:
-  - `agrolead-webui`: public `80/443`
+  - `agrolead-webui`: `127.0.0.1:8080` (за хостовым nginx)
   - `agrolead-api`: `127.0.0.1:8000`
   - `agrolead-db`: internal `5432`
-  - `agrolead-certbot`: renewal loop
 
 Known non-fatal issue:
 - GigaChat may log SSL verification failures on the server if its upstream chain

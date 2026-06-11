@@ -6,8 +6,16 @@
 - Сервисы:
   - `db` (PostgreSQL 16-alpine)
   - `api` (FastAPI + Uvicorn)
-  - `webui` (Nginx + статические страницы + reverse proxy)
-  - `certbot` (Let's Encrypt выпуск и продление сертификатов)
+  - `webui` (Nginx + статические страницы + `/api/` proxy, только HTTP на `127.0.0.1:8080`)
+
+## Границы ответственности
+
+- TLS, порты 80/443, сертификаты и ACME для **всех** доменов сервера
+  обслуживает хостовый nginx (`/etc/nginx/sites-available/*.conf`) и хостовый
+  certbot (`certbot.timer`). Этот проект ими не управляет.
+- Этот репозиторий описывает только `artemshtodin.ru`-приложение
+  (db/api/webui). Конфиги `codex.*`, `web.*`, `zabbix.*`, Kasm, code-server,
+  Telegram-агентов сюда добавлять нельзя.
 
 ## 2) Требования к окружению
 
@@ -15,7 +23,7 @@
 - `curl`.
 - `python3` или `python` (используется в deploy script).
 - Домен из `DOMAIN_NAME` должен указывать на сервер.
-- Порты `80` и `443` должны быть открыты снаружи.
+- Хостовый nginx должен проксировать `artemshtodin.ru` на `127.0.0.1:8080`.
 
 ## 3) Переменные окружения
 
@@ -25,7 +33,7 @@
 
 - DB: `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `DATABASE_URL`.
 - Admin: `ADMIN_USER`, `ADMIN_PASS`, `ALLOW_STATIC_ADMIN_TOKEN`, `ADMIN_SESSION_TTL_MINUTES`.
-- TLS: `DOMAIN_NAME`, опционально `CERTBOT_EMAIL`, `CERTBOT_STAGING`.
+- Домен: `DOMAIN_NAME` (используется только для внешнего smoke-чека).
 - LLM/GigaChat: `LLM_PROVIDER`, `GIGACHAT_AUTH_KEY`, `GIGACHAT_AUTH_URL`, `GIGACHAT_API_BASE_URL`, `GIGACHAT_MODEL`.
 
 `POSTGRES_PASSWORD` и `ADMIN_PASS` не должны храниться в git. Если они пустые при запуске `deploy.sh`, скрипт сгенерирует значения в локальном `.env`.
@@ -39,18 +47,16 @@
 3. Останавливает старый стек (`docker compose down --remove-orphans`).
 4. Пересобирает образы (`build --no-cache --pull`).
 5. Поднимает контейнеры (`up -d --force-recreate`).
-6. Запускает Nginx с временным self-signed сертификатом, если боевого сертификата ещё нет.
-7. Выпускает или обновляет Let's Encrypt сертификат через certbot webroot.
-8. Перезагружает Nginx и оставляет `certbot` в фоне для автоматического продления.
-9. Выполняет health check API и smoke-тесты:
+6. Выполняет health check API и smoke-тесты:
    - admin login
    - supplier/buyer/faq chat
    - проверка лидов
    - проверка каталогов и admin endpoint'ов
-   - проверка HTTPS и assets webui
+   - проверка webui (`127.0.0.1:8080`) и assets
+   - нефатальная проверка `https://$DOMAIN_NAME` через хостовый nginx
    - проверка runtime-кода в контейнере
    - запуск unit/integration тестов backend
-10. Печатает итоговые URL и путь к логу деплоя.
+7. Печатает итоговые URL и путь к логу деплоя.
 
 ## 5) Ручной запуск без deploy.sh
 
@@ -59,8 +65,6 @@ cp .env.example .env
 # заполнить POSTGRES_PASSWORD, DATABASE_URL, ADMIN_PASS
 docker compose build
 docker compose up -d
-docker compose run --rm certbot certonly --webroot -w /var/www/certbot -d artemshtodin.ru
-docker compose exec webui nginx -s reload
 ```
 
 Проверки после запуска:
@@ -92,10 +96,12 @@ docker compose exec webui nginx -s reload
 
 ### Не работает HTTPS
 
-- проверить `docker compose logs certbot webui`;
-- проверить `docker compose run --rm certbot certificates`;
-- убедиться, что DNS `DOMAIN_NAME` указывает на сервер;
-- убедиться, что порты `80/443` не заняты и доступны снаружи.
+HTTPS обслуживает хостовый nginx, не этот проект:
+
+- `nginx -t && systemctl status nginx` на хосте;
+- `certbot certificates` на хосте;
+- проверить, что `agrolead-webui` слушает `127.0.0.1:8080` (`curl -I http://127.0.0.1:8080`);
+- убедиться, что DNS `DOMAIN_NAME` указывает на сервер.
 
 ## 8) Важные скрипты
 

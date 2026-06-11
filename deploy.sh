@@ -197,44 +197,9 @@ warn_known_weak_secret() {
   esac
 }
 
-certbot_base_args() {
-  local domain="$1"
-  local email="$2"
-  local staging="$3"
-  CERTBOT_ARGS=(certonly --webroot -w /var/www/certbot -d "$domain" --non-interactive --agree-tos --no-eff-email)
-  if [[ -n "$email" ]]; then
-    CERTBOT_ARGS+=(--email "$email")
-  else
-    CERTBOT_ARGS+=(--register-unsafely-without-email)
-  fi
-  if [[ "$staging" == "1" || "$staging" == "true" || "$staging" == "yes" ]]; then
-    CERTBOT_ARGS+=(--staging)
-  fi
-}
-
-obtain_or_renew_certificate() {
-  local domain
-  local email
-  local staging
-  domain="$(env_or_default "DOMAIN_NAME" "artemshtodin.ru")"
-  email="$(get_env_var "CERTBOT_EMAIL")"
-  staging="$(env_or_default "CERTBOT_STAGING" "0")"
-
-  step "Let's Encrypt certificate for $domain"
-  if docker compose -f "$COMPOSE_FILE" run --rm --entrypoint sh certbot -c "test -f /etc/letsencrypt/renewal/$domain.conf"; then
-    docker compose -f "$COMPOSE_FILE" run --rm --entrypoint certbot certbot renew \
-      --cert-name "$domain" --webroot -w /var/www/certbot --non-interactive
-  else
-    docker compose -f "$COMPOSE_FILE" run --rm --entrypoint sh certbot -c \
-      "rm -rf /etc/letsencrypt/live/$domain /etc/letsencrypt/archive/$domain /etc/letsencrypt/renewal/$domain.conf"
-    certbot_base_args "$domain" "$email" "$staging"
-    docker compose -f "$COMPOSE_FILE" run --rm --entrypoint certbot certbot "${CERTBOT_ARGS[@]}"
-  fi
-
-  docker compose -f "$COMPOSE_FILE" exec -T webui nginx -s reload
-  docker compose -f "$COMPOSE_FILE" up -d certbot
-  ok "Let's Encrypt certificate is installed and renewal loop is running"
-}
+# TLS/certbot are intentionally NOT managed here: certificates and the public
+# 80/443 entrypoint belong to the host-level nginx + certbot (see docs/06).
+# This script only deploys and verifies the agrolead-assistant stack itself.
 
 prompt_secret_if_empty() {
   local key="$1"
@@ -343,7 +308,6 @@ if [[ ! -f "$ENV_FILE" ]]; then
 fi
 
 ensure_env_var "DOMAIN_NAME" "artemshtodin.ru"
-ensure_env_var "CERTBOT_STAGING" "0"
 ensure_env_var "POSTGRES_DB" "agrolead"
 ensure_env_var "POSTGRES_USER" "agrolead"
 ensure_secret_env_var "POSTGRES_PASSWORD"
@@ -382,11 +346,8 @@ docker compose -f "$COMPOSE_FILE" build --no-cache --pull
 docker compose -f "$COMPOSE_FILE" up -d --force-recreate --remove-orphans
 ok "Сервисы подняты"
 
-obtain_or_renew_certificate
-
 API_BASE="http://127.0.0.1:8000"
-WEB_BASE_HTTP="http://127.0.0.1"
-WEB_BASE_HTTPS="https://127.0.0.1"
+WEB_BASE="http://127.0.0.1:8080"
 
 step "Health checks"
 wait_http "$API_BASE/api/health" 90 2 || die "API не поднялся"
@@ -455,15 +416,22 @@ request_get "GET /api/v1/admin/stats" "$API_BASE/api/v1/admin/stats" "x-admin-to
 [[ "$LAST_HTTP_CODE" == "200" ]] || die "admin stats endpoint failed"
 ok "Catalog/admin endpoints ok"
 
-step "Smoke: webui HTTPS and redirect"
-HTTP_CODE_HTTP="$(curl -sS -I -o /dev/null -w "%{http_code}" "$WEB_BASE_HTTP/" || true)"
-[[ "$HTTP_CODE_HTTP" == "301" || "$HTTP_CODE_HTTP" == "302" ]] || die "HTTP redirect на 443 не работает"
-HTTP_CODE_HTTPS="$(curl -k -sS -o /dev/null -w "%{http_code}" "$WEB_BASE_HTTPS/" || true)"
-[[ "$HTTP_CODE_HTTPS" == "200" ]] || die "HTTPS webui недоступен"
-ok "Web UI redirect + HTTPS ok"
+step "Smoke: webui"
+HTTP_CODE_WEB="$(curl -sS -o /dev/null -w "%{http_code}" "$WEB_BASE/" || true)"
+[[ "$HTTP_CODE_WEB" == "200" ]] || die "webui недоступен на $WEB_BASE"
+ok "Web UI ok"
+
+step "Smoke: public HTTPS via host nginx (non-fatal)"
+DOMAIN_VALUE="$(env_or_default "DOMAIN_NAME" "artemshtodin.ru")"
+HTTP_CODE_PUBLIC="$(curl -sS -o /dev/null -w "%{http_code}" --max-time 15 "https://$DOMAIN_VALUE/" || true)"
+if [[ "$HTTP_CODE_PUBLIC" == "200" ]]; then
+  ok "https://$DOMAIN_VALUE ok"
+else
+  warn "https://$DOMAIN_VALUE вернул HTTP ${HTTP_CODE_PUBLIC:-n/a}; проверьте host nginx (/etc/nginx)"
+fi
 
 step "Smoke: webui design-system asset"
-request_get "GET /assets/design-system.css" "$WEB_BASE_HTTPS/assets/design-system.css" "" "" "1"
+request_get "GET /assets/design-system.css" "$WEB_BASE/assets/design-system.css"
 [[ "$LAST_HTTP_CODE" == "200" ]] || die "design-system.css недоступен"
 CSS_CONTENT="$(cat "$LAST_RESPONSE_FILE")"
 "$PYTHON_BIN" - "$CSS_CONTENT" <<'PY'

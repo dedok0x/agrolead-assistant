@@ -1,9 +1,9 @@
 # SSL
 
-Production TLS is managed automatically by Let's Encrypt in Docker volumes:
+TLS для всех доменов сервера управляется централизованно на хосте:
 
-- `letsencrypt` stores issued certificates and renewal metadata.
-- `certbot_www` stores temporary HTTP-01 challenge files.
+- сертификаты: `/etc/letsencrypt` (хост), продление — `certbot.timer`;
+- публичные 80/443 и ACME HTTP-01 — хостовый nginx (`/etc/nginx`).
 
-Do not commit private keys, certificate dumps, or copied files from `/etc/letsencrypt`.
-The legacy `ssl/fullchain.pem` and `ssl/privkey.key` files are no longer required.
+Этот проект TLS не обслуживает: `webui` отдаёт только HTTP на `127.0.0.1:8080`.
+Не коммитьте приватные ключи, дампы сертификатов и файлы из `/etc/letsencrypt`.

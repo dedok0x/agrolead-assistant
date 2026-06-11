@@ -82,50 +82,27 @@ services:
     networks:
       - agrolead
 
+  # Plain-HTTP web UI behind the host nginx (TLS terminates at the host).
+  # Published only on localhost; the host nginx proxies artemshtodin.ru here.
   webui:
     build:
       context: ./web
     image: agrolead/webui:local
     container_name: agrolead-webui
     restart: unless-stopped
-    environment:
-      TLS_DOMAIN: ${DOMAIN_NAME:-artemshtodin.ru}
     ports:
-      - "80:80"
-      - "443:443"
+      - "127.0.0.1:8080:80"
     depends_on:
       api:
         condition: service_healthy
     mem_limit: 128m
     cpus: 0.10
-    volumes:
-      - letsencrypt:/etc/letsencrypt
-      - certbot_www:/var/www/certbot:ro
-    networks:
-      - agrolead
-
-  certbot:
-    image: certbot/certbot:latest
-    container_name: agrolead-certbot
-    restart: unless-stopped
-    volumes:
-      - letsencrypt:/etc/letsencrypt
-      - certbot_www:/var/www/certbot
-    entrypoint: /bin/sh
-    command: >
-      -c "trap exit TERM;
-      while :; do
-        certbot renew --webroot -w /var/www/certbot --quiet;
-        sleep 12h & wait $${!};
-      done"
     networks:
       - agrolead
 
 volumes:
   app_data:
   pg_data:
-  letsencrypt:
-  certbot_www:
 
 networks:
   agrolead:

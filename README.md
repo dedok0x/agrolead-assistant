@@ -29,3 +29,10 @@ bash ./deploy.sh
 - Публичный чат: `https://artemshtodin.ru`
 - Админка: `https://artemshtodin.ru/admin`
 - Swagger: `http://localhost:8000/docs`
+
+## Границы ответственности
+
+Репозиторий описывает только приложение `artemshtodin.ru` (db/api/webui на
+`127.0.0.1:8080`). TLS, порты 80/443, certbot и конфиги остальных доменов
+(`codex.*`, `web.*`, `zabbix.*`) живут в хостовом nginx (`/etc/nginx`) и в этом
+репозитории не появляются. Подробнее: `docs/06-deploy-and-ops.md`.
