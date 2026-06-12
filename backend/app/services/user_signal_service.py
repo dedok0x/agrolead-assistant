@@ -74,7 +74,30 @@ class UserSignalService:
             return UserSignal.SMALLTALK.value
         if self._has(text, ["погода", "анекдот", "рецепт", "фильм", "музыка", "политика"]):
             return UserSignal.IRRELEVANT.value
+        if self._is_faq_question(text):
+            return UserSignal.FAQ_QUESTION.value
         return UserSignal.PROVIDES_FACT.value
+
+    @classmethod
+    def _is_faq_question(cls, text: str) -> bool:
+        # Справочный вопрос без коммерческого намерения: отвечаем по базе знаний,
+        # а не гоним пользователя по анкете заявки.
+        commercial = [
+            "продать", "продаж", "продам", "куплю", "купить", "покупк", "закуп",
+            "перевезти", "перевоз", "логистик", "хранение нужно", "оформить заявку",
+        ]
+        if cls._has(text, commercial):
+            return False
+        faq_markers = [
+            "какие документы", "какие нужны документы", "что нужно для",
+            "как оформ", "как происходит", "как работает", "как проходит",
+            "какие условия", "какие требования", "где находитесь", "реквизиты",
+            "чем занимается компания", "расскажите про", "расскажите о",
+        ]
+        if cls._has(text, faq_markers):
+            return True
+        starts_with_question = re.match(r"^(какие|какой|какая|как|что|где|когда|сколько|можно ли|нужно ли)\b", text)
+        return bool(starts_with_question and text.endswith("?"))
 
     @staticmethod
     def _has(text: str, markers: list[str]) -> bool:

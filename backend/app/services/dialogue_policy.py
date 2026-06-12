@@ -45,6 +45,16 @@ class DialoguePolicy:
                 ),
             )
 
+        if user_signal == UserSignal.FAQ_QUESTION.value:
+            return DialoguePolicyResult(
+                response_strategy="faq",
+                should_save_fact=save,
+                fallback_text=(
+                    "Пользователь задал справочный вопрос. Ответь по retrieved_context коротко и по делу. "
+                    "Если в контексте нет ответа, скажи, что точные детали уточнит менеджер. "
+                    "Не задавай анкетных вопросов по заявке."
+                ),
+            )
         if user_signal == UserSignal.ASKS_CAPABILITIES.value:
             return DialoguePolicyResult(
                 response_strategy="capabilities",

@@ -69,6 +69,22 @@ class SalesEngine:
 
         missing = self.qualifier.missing_fields(merged)
         score = self.qualifier.qualification_score(merged)
+        if signal == UserSignal.FAQ_QUESTION.value:
+            return SalesDecision(
+                known_facts=merged,
+                captured_fields=self.qualifier.captured_fields(merged),
+                missing_fields=missing,
+                qualification_score=score,
+                stage=self._stage_for(score, NextAction.ANSWER_FAQ, bool(merged.get("request_type"))),
+                next_action=NextAction.ANSWER_FAQ,
+                request_type=merged.get("request_type"),
+                intent="faq",
+                extracted_fields=list(extracted),
+                uncertain_facts=uncertain,
+                rejected_fields=rejected_fields,
+                user_signal=signal,
+                is_faq=True,
+            )
         next_action = self._next_action(missing, is_faq=is_faq, is_objection=is_objection)
         stage = self._stage_for(score, next_action, bool(merged.get("request_type")))
 
