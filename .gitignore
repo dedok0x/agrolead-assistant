@@ -66,3 +66,6 @@ id_ed25519*
 # Docker overrides / local compose files
 docker-compose.override.yml
 docker-compose.local.yml
+
+# Local working notes and session scratch
+work/

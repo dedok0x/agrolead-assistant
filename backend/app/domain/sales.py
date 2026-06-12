@@ -31,6 +31,7 @@ class NextAction(str, Enum):
 
 class UserSignal(str, Enum):
     PROVIDES_FACT = "provides_fact"
+    FAQ_QUESTION = "faq_question"
     ASKS_CAPABILITIES = "asks_capabilities"
     ASKS_IDENTITY = "asks_identity"
     ASKS_CLARIFICATION = "asks_clarification"

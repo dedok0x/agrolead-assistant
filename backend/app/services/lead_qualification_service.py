@@ -59,7 +59,7 @@ class LeadQualificationService:
         if request_type == RequestType.CONSULTATION.value:
             return ["request_type", "contact"]
         if request_type == RequestType.LOGISTICS.value:
-            return ["request_type", "region", "timing", "contact"]
+            return ["request_type", "product", "volume", "region", "timing", "contact"]
         if request_type == RequestType.STORAGE.value:
             return ["request_type", "product", "volume", "region", "timing", "contact"]
         return REQUIRED_FIELDS

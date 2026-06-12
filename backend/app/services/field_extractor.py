@@ -34,13 +34,31 @@ PRODUCT_CANONICAL = {
 
 REGION_CANONICAL = {
     "Новороссийск": ["новороссийск", "новорос"],
-    "Краснодарский край": ["краснодарский край", "краснодар", "кубань"],
-    "Ростовская область": ["ростовская область", "ростов"],
+    "Краснодарский край": ["краснодарский край", "краснодарском крае", "краснодар", "кубань"],
+    "Ростовская область": ["ростовская область", "ростовской области", "ростов"],
     "Ставропольский край": ["ставропольский край", "ставрополь"],
+    "Волгоградская область": ["волгоградская область", "волгоград"],
+    "Воронежская область": ["воронежская область", "воронеж"],
     "Тамань": ["тамань"],
     "Азов": ["азов"],
     "Ейск": ["ейск"],
 }
+
+SELL_MARKERS = ["продаж", "продать", "продам", "продаем", "реализовать", "реализуем", "сдам", "сдадим", "поставщик", "есть на продажу"]
+BUY_MARKERS = ["купить", "куплю", "покупк", "закуп", "приобрест", "приобрет", "возьмем", "ищем поставщика", "ищу поставщика"]
+LOGISTICS_MARKERS = ["логист", "перевоз", "перевезти", "перевезем", "доставка", "доставить", "маршрут", "вагон", "фура", "автотранспорт"]
+STORAGE_MARKERS = ["хранен", "хранить", "элеватор", "склад", "перевалк"]
+EXPORT_MARKERS = ["экспорт", "вэд", "fob", "cfr"]
+WEAK_BUY_MARKERS = ["нужна", "нужно", "нужен", "требуется", "интересует закупка"]
+
+TIMING_PHRASES = [
+    r"(?:на|до|к|в течение|в теч\.?)\s+(?:след(?:ующ\w*)?\s+)?(?:недел\w*|месяц\w*|квартал\w*|год\w*)",
+    r"срок\w*\s+(?:до\s+)?[а-я0-9 .-]{2,30}?(?:месяц\w*|недел\w*|дн\w*|год\w*)",
+    r"(?:два|три|четыре|пять|\d{1,2})\s+(?:месяц\w*|недел\w*|дн(?:я|ей))",
+    r"(?:в|на|до|к)\s+(?:янв\w*|феврал\w*|март\w*|апрел\w*|ма[ея]|мае|июн\w*|июл\w*|август\w*|сентябр\w*|октябр\w*|ноябр\w*|декабр\w*)",
+    r"(?:следующ\w+|этой|будущ\w+)\s+недел\w*",
+    r"(?:следующ\w+|этом|будущ\w+)\s+месяц\w*",
+]
 
 
 class FieldExtractor:
@@ -73,7 +91,7 @@ class FieldExtractor:
                 return [ExtractedFact("request_type", request_type, request_type, 0.95, text)] if request_type else []
             return []
 
-        request_type = self._request_type(normalized)
+        request_type = self._request_type(normalized, known_request_type=str(known.get("request_type") or ""))
         if request_type:
             facts.append(ExtractedFact("request_type", request_type, request_type, 0.95, text))
 
@@ -93,9 +111,12 @@ class FieldExtractor:
         if product:
             facts.append(product)
 
-        region = self._region(normalized)
-        if region and not self._is_only_product(normalized):
-            facts.append(region)
+        for route_fact in self._route(normalized):
+            facts.append(route_fact)
+        if not any(fact.field == "region" for fact in facts):
+            region = self._region(normalized)
+            if region and not self._is_only_product(normalized):
+                facts.append(region)
 
         quality = self._quality(normalized, text)
         if quality:
@@ -105,40 +126,44 @@ class FieldExtractor:
         if delivery:
             facts.append(delivery)
 
+        company = self._company(text)
+        if company:
+            facts.append(company)
+
         if signal in {UserSignal.VAGUE_ANSWER.value, UserSignal.REFUSAL_OR_UNKNOWN.value}:
             return [fact for fact in facts if fact.field not in {"volume", "timing"}]
 
         return facts
 
     @staticmethod
-    def _request_type(text: str) -> str:
-        if any(word in text for word in ["логист", "перевоз", "доставка", "маршрут", "вагон", "фура"]):
-            return RequestType.LOGISTICS.value
-        if any(word in text for word in ["хранен", "элеватор", "склад", "перевалк"]):
+    def _request_type(text: str, known_request_type: str = "") -> str:
+        has = lambda markers: any(marker in text for marker in markers)
+        sell = has(SELL_MARKERS)
+        buy = has(BUY_MARKERS)
+        logistics = has(LOGISTICS_MARKERS)
+        storage = has(STORAGE_MARKERS)
+        export = has(EXPORT_MARKERS)
+
+        # Хранение и экспорт — узкие маркеры, проверяем первыми.
+        if storage and not (sell or buy):
             return RequestType.STORAGE.value
-        if any(word in text for word in ["экспорт", "вэд", "fob", "cfr"]):
+        if export and not (sell or buy):
             return RequestType.EXPORT.value
-        if "налич" in text:
-            return RequestType.AVAILABILITY.value
-        if any(word in text for word in ["консультац", "проконсульт", "консульт"]):
-            return RequestType.CONSULTATION.value
-        if any(word in text for word in ["продажа", "продать", "реализовать", "сдам", "поставщик"]):
+        # Явный глагол сделки сильнее, чем «доставка/перевозка» в той же фразе:
+        # «купить 100 тонн с доставкой в Краснодар» — это покупка, а не логистика.
+        if sell and not buy:
             return RequestType.SELL_GRAIN.value
-        if any(word in text for word in ["купить", "покупка", "закупить", "нужна", "нужно", "приобрести"]):
+        if buy and not sell:
             return RequestType.BUY_GRAIN.value
-        if any(word in text for word in ["логист", "перевоз", "доставка", "маршрут", "вагон", "фура"]):
+        if logistics:
             return RequestType.LOGISTICS.value
-        if any(word in text for word in ["хранен", "элеватор", "склад", "перевалк"]):
-            return RequestType.STORAGE.value
-        if any(word in text for word in ["экспорт", "вэд", "fob", "cfr"]):
-            return RequestType.EXPORT.value
         if "налич" in text:
             return RequestType.AVAILABILITY.value
-        if any(word in text for word in ["консультац", "проконсульт"]):
+        if has(["консультац", "проконсульт"]):
             return RequestType.CONSULTATION.value
-        if any(word in text for word in ["продажа", "продать", "реализовать", "сдам", "поставщик"]):
-            return RequestType.SELL_GRAIN.value
-        if any(word in text for word in ["купить", "покупка", "закупить", "нужна", "нужно", "приобрести"]):
+        # Слабые маркеры («нужна», «требуется») трактуем как покупку только когда
+        # тип ещё не известен — иначе «нужно уточнить» перетирало бы продажу.
+        if not known_request_type and has(WEAK_BUY_MARKERS):
             return RequestType.BUY_GRAIN.value
         return ""
 
@@ -169,13 +194,24 @@ class FieldExtractor:
 
     @staticmethod
     def _volume(text: str, current_next_action: str | None) -> ExtractedFact | None:
-        m = re.search(r"\b(\d+(?:[.,]\d+)?)\s*(тон+|тн|т|кг)\b", text)
+        m = re.search(r"\b(\d+(?:[.,]\d+)?)\s*(тыс\.?\s*)?(тон\w*|тн|т|кг)\b", text)
         if m:
             value = m.group(1).replace(",", ".")
-            unit = "кг" if m.group(2) == "кг" else "тонн"
+            if m.group(2):
+                value = str(int(float(value) * 1000)) if float(value) == int(float(value)) else str(float(value) * 1000)
+            unit = "кг" if m.group(3) == "кг" else "тонн"
             normalized_value = f"{value.rstrip('0').rstrip('.') if '.' in value else value} {unit}"
             return ExtractedFact("volume", normalized_value, normalized_value, 0.92, text)
         if current_next_action == NextAction.ASK_VOLUME.value:
+            # Ответы на варианты, которые бот сам предлагает («до 100 тонн», «100–500»...)
+            range_match = re.search(r"\b(\d{1,7})\s*[-–—]\s*(\d{1,7})\b", text)
+            if range_match:
+                value = f"{range_match.group(1)}-{range_match.group(2)} тонн"
+                return ExtractedFact("volume", value, value, 0.9, text)
+            bound = re.search(r"\b(до|больше|более|свыше|от)\s+(\d{1,7})\b", text)
+            if bound:
+                value = f"{bound.group(1)} {bound.group(2)} тонн"
+                return ExtractedFact("volume", value, value, 0.9, text)
             numeric = re.fullmatch(r"\d{1,7}", text.strip())
             if numeric:
                 value = f"{numeric.group(0)} тонн"
@@ -188,11 +224,24 @@ class FieldExtractor:
             return ExtractedFact("timing", "по согласованию", "по согласованию", 0.9, text)
         if any(word in text for word in ["срочно", "сегодня", "завтра", "сейчас"]):
             return ExtractedFact("timing", "срочно", "срочно", 0.9, text)
-        if any(word in text for word in ["недел", "месяц", "май", "июн", "июл", "август", "сентябр", "квартал"]):
-            return ExtractedFact("timing", text[:80], text[:80], 0.86, text)
-        date = re.search(r"\b\d{1,2}[./-]\d{1,2}(?:[./-]\d{2,4})?\b", text)
+        for pattern in TIMING_PHRASES:
+            phrase = re.search(pattern, text)
+            if phrase:
+                value = re.sub(r"\s+", " ", phrase.group(0)).strip()
+                return ExtractedFact("timing", value, value, 0.88, text)
+        # (?<![\d-])/(?![\d-]) — чтобы фрагменты телефона «111-22-33» не считались датой
+        date = re.search(r"(?<![\d-])\b\d{1,2}[./-]\d{1,2}(?:[./-]\d{2,4})?\b(?![\d-])", text)
         if date:
             return ExtractedFact("timing", date.group(0), date.group(0), 0.9, text)
+        if current_next_action == NextAction.ASK_TIMING.value and any(
+            word in text
+            for word in [
+                "недел", "месяц", "квартал", "год", "сезон", "уборк", "осен", "весн", "зим", "лет",
+                "январ", "феврал", "март", "апрел", "май", "мае", "июн", "июл", "август", "сентябр", "октябр", "ноябр", "декабр",
+            ]
+        ):
+            value = text[:80].strip()
+            return ExtractedFact("timing", value, value, 0.86, text)
         return None
 
     @staticmethod
@@ -216,22 +265,50 @@ class FieldExtractor:
                 return ExtractedFact("product", best[0], best[0], best[1], text, status=status)
         return None
 
-    @staticmethod
-    def _region(text: str) -> ExtractedFact | None:
-        route = re.search(r"\bиз\s+([а-яa-z0-9 .-]{2,50})\s+в\s+([а-яa-z0-9 .-]{2,50})", text)
-        if route:
-            left = route.group(1).strip(" ,.")
-            right = route.group(2).strip(" ,.")
-            return ExtractedFact("region", f"{left} -> {right}", f"{left} -> {right}", 0.86, text)
+    @classmethod
+    def _route(cls, text: str) -> list[ExtractedFact]:
+        route = re.search(r"\bиз\s+([а-яa-z0-9 .-]{2,40}?)\s+(?:в|до)\s+([а-яa-z0-9.-]+(?:\s+(?:край|область|обл\.?|порт))?)", text)
+        if not route:
+            return []
+        left = cls._canonical_region(route.group(1).strip(" ,.")) or route.group(1).strip(" ,.")
+        right = cls._canonical_region(route.group(2).strip(" ,.")) or route.group(2).strip(" ,.")
+        value = f"{left} -> {right}"
+        return [
+            ExtractedFact("region", value, value, 0.88, text),
+            ExtractedFact("route_from", left, left, 0.88, text),
+            ExtractedFact("route_to", right, right, 0.88, text),
+        ]
+
+    @classmethod
+    def _region(cls, text: str) -> ExtractedFact | None:
         for canonical, aliases in REGION_CANONICAL.items():
             for alias in aliases:
                 if alias in text:
-                    return ExtractedFact("region", canonical, canonical, 0.9 if alias == canonical.lower() else 0.82, text)
+                    # Все алиасы словаря однозначны, поэтому форма слова («в Краснодаре»)
+                    # не делает регион сомнительным фактом.
+                    return ExtractedFact("region", canonical, canonical, 0.9 if alias == canonical.lower() else 0.88, text)
         return None
 
     @staticmethod
+    def _canonical_region(value: str) -> str:
+        lowered = value.lower()
+        for canonical, aliases in REGION_CANONICAL.items():
+            if any(alias in lowered for alias in aliases):
+                return canonical
+        return ""
+
+    @staticmethod
+    def _company(text: str) -> ExtractedFact | None:
+        m = re.search(r"\b(ООО|АО|ПАО|ЗАО|ОАО|ИП|КФХ)\s+[«\"']?([А-ЯЁA-Z][\w «\"'-]{1,40})", text)
+        if not m:
+            return None
+        name = re.split(r"[,.;]|\s(?:контакт|телефон|тел\b)", m.group(2))[0]
+        value = f"{m.group(1)} {name.strip(' «»\"\'')}".strip()
+        return ExtractedFact("company_name", value, value, 0.88, text)
+
+    @staticmethod
     def _quality(text: str, source: str) -> ExtractedFact | None:
-        m = re.search(r"\b([1-6])\s*(?:класс|кл)\b", text)
+        m = re.search(r"\b([1-6])\s*-?\s*(?:го\s+)?(?:класс\w*|кл\b)", text)
         if m:
             value = f"{m.group(1)} класс"
             return ExtractedFact("quality_class", value, value, 0.9, source)
