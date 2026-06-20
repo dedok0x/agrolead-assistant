@@ -12,7 +12,7 @@ from ..db import engine
 from ..domain.sales import DB_REQUEST_TYPE_BY_V7, NextAction, REQUIRED_FIELDS, SalesStage
 from ..guardrail_response_policy import render_guardrail_reply
 from ..guardrails import evaluate_guardrails
-from ..llm_service import LLMService
+from ..llm_service import LLMService, LLMUnavailableError
 from ..models import (
     ChatExtractedFact,
     ChatMessage,
@@ -29,25 +29,31 @@ from ..models import (
     RefRequestType,
 )
 from ..schemas.chat import ConversationResult
-from .gigachat_service import GigaChatComposer
-from .dialogue_policy import DialoguePolicy
+from .gigachat_agent import FACT_KEYS, GigaChatAgent
 from .lead_qualification_service import LeadQualificationService
 from .rag_service import RAGService
-from .response_validator import ResponseValidator
+from .reply_sanitizer import sanitize_reply
 from .sales_engine import SalesEngine
-from .user_signal_service import UserSignalService
 
 LOGGER = logging.getLogger("agrolead.conversation")
+
+# Реплика на случай, когда GigaChat недоступен/не сконфигурирован (fail-closed).
+FAIL_CLOSED_REPLY = (
+    "Секунду, не получилось обработать сообщение. Повторите, пожалуйста, чуть позже — "
+    "я помогу с продажей, покупкой, логистикой, хранением или ВЭД по зерну."
+)
+# Нейтральная реплика, если ответ модели оказался служебным и не прошёл санитайзер.
+SAFE_CLARIFY_REPLY = (
+    "Уточните, пожалуйста, что хотите сделать по зерну: продать, купить, перевезти, "
+    "разместить на хранение или оформить экспорт."
+)
 
 
 class ConversationService:
     def __init__(self, llm_service: LLMService) -> None:
         self.qualifier = LeadQualificationService()
         self.sales_engine = SalesEngine(self.qualifier)
-        self.signal_service = UserSignalService()
-        self.dialogue_policy = DialoguePolicy()
-        self.validator = ResponseValidator()
-        self.composer = GigaChatComposer(llm_service=llm_service, validator=self.validator)
+        self.agent = GigaChatAgent(llm_service=llm_service)
 
     async def handle_message(
         self,
@@ -187,69 +193,47 @@ class ConversationService:
             )
 
         known_before = self._known_facts(session, chat_id)
-        pending = self._pending_facts(session, chat_id)
+        required_fields = self.qualifier.required_fields(known_before)
+        last_assistant = self._last_assistant_messages(session, chat_id, limit=3)
 
-        # Подтверждение/отклонение факта, ожидающего проверки («Правильно понял: 3000 тонн?»).
-        if pending:
-            if self._is_affirmation(clean_text):
-                return self._confirm_pending_fact(
-                    session, chat, chat_id, pending[0], known_before, source_channel
-                )
-            if self._is_negation(clean_text):
-                return self._reject_pending_fact(
-                    session, chat, chat_id, pending[0], known_before, source_channel
-                )
-
-        current_decision = self.sales_engine.handle("", known_before)
-        current_next_action = current_decision.next_action.value
-        user_signal = self.signal_service.classify(clean_text, current_next_action)
-        extracted_items = self.sales_engine.extractor.extract(
-            clean_text,
-            current_next_action=current_next_action,
-            known_facts=known_before,
-            user_signal=user_signal,
-        )
-        decision = self.sales_engine.handle(
-            clean_text,
-            known_before,
-            current_next_action=current_next_action,
-            user_signal=user_signal,
-        )
-        known_facts = decision.known_facts
-        attempts = self._question_attempts(session, chat_id)
-        policy = self.dialogue_policy.choose(
-            user_message=clean_text,
-            current_next_action=current_next_action,
-            next_action=decision.next_action.value,
-            known_facts=known_facts,
-            missing_fields=decision.missing_fields,
-            extracted_facts=extracted_items,
-            user_signal=user_signal,
-            attempts=attempts,
+        # RAG-контекст: инструкции квалификации, номенклатура и справочники — в payload агента.
+        rag_context = RAGService(session).retrieve_context(
+            query=clean_text,
+            intent=str(known_before.get("request_type") or ""),
+            lead_state=known_before,
+            limit=6,
         )
 
-        for key in decision.rejected_fields:
-            self._delete_fact(session, chat_id, key)
-        for key in decision.extracted_fields:
-            if policy.should_save_fact and not policy.should_save_fact.get(key, True):
-                continue
-            self._upsert_fact(session, chat_id, chat.lead_id, key, known_facts.get(key), user_message.id)
-        # Неуверенные факты сохраняем как pending: они не закрывают missing fields,
-        # но переживают реплику и ждут подтверждения пользователя.
-        for key, payload in decision.uncertain_facts.items():
-            if key in known_facts:
-                continue
-            self._upsert_fact(
-                session,
-                chat_id,
-                chat.lead_id,
-                key,
-                payload.get("normalized_value") or payload.get("value"),
-                user_message.id,
-                confidence=min(float(payload.get("confidence") or 0.7), 0.8),
-                confirmed=False,
+        # Единственный «умный» вызов хода: GigaChat извлекает факты, решает интент
+        # и формулирует реплику. Регулярки в извлечении не участвуют.
+        try:
+            turn = await self.agent.run_turn(
+                user_message=clean_text,
+                known_facts=known_before,
+                required_fields=required_fields,
+                retrieved_context=rag_context,
+                last_assistant_messages=last_assistant,
+                source_channel=source_channel,
             )
-        session.commit()
+        except LLMUnavailableError:
+            return self._fail_closed(session, chat, chat_id, source_channel)
+
+        # Служебные сообщения (приветствие, болтовня, мета, не по теме) не порождают
+        # факты и заявки — берём прежнее состояние фактов как есть.
+        if turn.is_service_message:
+            merged_facts = dict(known_before)
+            persisted_keys: list[str] = []
+        else:
+            merged_facts, persisted_keys = self._apply_agent_facts(
+                session, chat, chat_id, known_before, turn, user_message.id
+            )
+            session.commit()
+
+        # Детерминированная перепроверка квалификации по фактам (cross-check):
+        # GigaChat ведёт диалог, но статус лида в CRM считаем по required-fields,
+        # чтобы исключить галлюцинированный скоринг. Текст пустой — извлечения regex нет.
+        decision = self.sales_engine.handle("", merged_facts)
+        known_facts = decision.known_facts
 
         # Лид создаётся только при коммерческом намерении: справочные вопросы,
         # smalltalk и «кто ты» не должны плодить пустые заявки в CRM.
@@ -258,84 +242,24 @@ class ConversationService:
         if chat.lead_id or self._has_commercial_intent(known_facts):
             lead = self._sync_crm(session, chat, decision, source_channel)
             lead_id = self._require_id(lead.id, "lead")
-            for key in decision.extracted_fields:
-                if policy.should_save_fact and not policy.should_save_fact.get(key, True):
-                    continue
+            for key in persisted_keys:
                 self._attach_fact_to_lead(session, chat_id, key, lead_id)
         self._sync_missing_fields(session, chat_id, lead_id, decision.missing_fields, asked_action=decision.next_action.value)
         session.commit()
 
-        rag_context = RAGService(session).retrieve_context(
-            query=clean_text,
-            intent=decision.intent or decision.next_action.value,
-            lead_state=known_facts,
-            limit=5,
-        )
-        agentic_strategies = {"identity", "consultation", "meta_dialogue", "capabilities", "clarification", "smalltalk"}
-        if policy.response_strategy == "faq":
-            composed = await self.composer.compose(
-                user_message=clean_text,
-                source_channel=source_channel,
-                stage=decision.stage.value,
-                next_action=NextAction.ANSWER_FAQ.value,
-                known_facts=known_facts,
-                missing_fields=decision.missing_fields,
-                captured_fields=decision.captured_fields,
-                retrieved_context=rag_context,
-                dialogue_guidance=policy.fallback_text,
-                fallback_override=self._faq_text_from_rag(rag_context),
-            )
-            text_out = composed.text
-            provider = composed.provider
-            model = composed.model
-        elif policy.fallback_text and policy.response_strategy in agentic_strategies:
-            composed = await self.composer.compose(
-                user_message=clean_text,
-                source_channel=source_channel,
-                stage=decision.stage.value,
-                next_action=NextAction.ANSWER_FAQ.value,
-                known_facts=known_facts,
-                missing_fields=decision.missing_fields,
-                captured_fields=decision.captured_fields,
-                retrieved_context=rag_context,
-                dialogue_guidance=policy.fallback_text,
-                fallback_override=policy.fallback_text,
-            )
-            text_out = composed.text
-            provider = composed.provider
-            model = composed.model
-        elif policy.fallback_text:
-            text_out = policy.fallback_text
-            provider = "template-policy"
-            model = "dialogue-policy-v1"
-        elif decision.next_action == NextAction.REFUSE_IRRELEVANT:
-            text_out = self.validator.fallback(decision.next_action.value, known_facts)
-            provider = "fallback"
-            model = "none"
-        else:
-            composed = await self.composer.compose(
-                user_message=clean_text,
-                source_channel=source_channel,
-                stage=decision.stage.value,
-                next_action=decision.next_action.value,
-                known_facts=known_facts,
-                missing_fields=decision.missing_fields,
-                captured_fields=decision.captured_fields,
-                retrieved_context=rag_context,
-            )
-            text_out = composed.text
-            provider = composed.provider
-            model = composed.model
+        # Наружу уходит только живая реплика. Если ответ модели оказался служебным
+        # (просочился JSON/коды полей) — заменяем на безопасную нейтральную фразу.
+        text_out = sanitize_reply(turn.reply_text)
+        provider = turn.provider
+        model = turn.model
+        if not text_out:
+            text_out = SAFE_CLARIFY_REPLY
+            provider = "sanitizer"
+            model = "fail-safe"
 
         last_out = self._last_assistant_text(session, chat_id)
         if last_out and text_out.strip() == last_out.strip():
-            if policy.response_strategy in agentic_strategies:
-                text_out = (
-                    "Окей, без анкеты. Я могу просто объяснить, чем занимается ПЕТРОХЛЕБ-КУБАНЬ, или разобрать вашу ситуацию по зерну, логистике, хранению либо ВЭД. "
-                    "Напишите тему одним-двумя словами, а я подстроюсь."
-                )
-            else:
-                text_out = f"Зафиксировал без изменений. {policy.reformulated_question or self.validator.fallback(decision.next_action.value, known_facts)}"
+            text_out = f"{text_out} Подскажите ещё детали по заявке, и я продолжу."
 
         status = lead.status_code if lead else "faq_only"
         bot_message = self._save_message(session, chat_id, "out", text_out, provider=provider, model=model)
@@ -345,13 +269,6 @@ class ConversationService:
         chat.updated_at = self._now()
         session.add(chat)
         session.commit()
-
-        uncertain_out = dict(decision.uncertain_facts)
-        for row in self._pending_facts(session, chat_id):
-            uncertain_out.setdefault(
-                row.fact_key,
-                {"value": row.fact_value_text, "normalized_value": row.fact_value_text, "confidence": row.confidence, "source_text": ""},
-            )
 
         return ConversationResult(
             text=text_out,
@@ -363,7 +280,7 @@ class ConversationService:
             next_action=decision.next_action.value,
             captured_fields=decision.captured_fields,
             known_facts=known_facts,
-            uncertain_facts=uncertain_out,
+            uncertain_facts={},
             missing_fields=decision.missing_fields,
             qualification_score=decision.qualification_score,
             source_channel=source_channel,
@@ -446,94 +363,67 @@ class ConversationService:
             return True
         return any(known_facts.get(key) for key in ["product", "volume", "region", "contact"])
 
-    @staticmethod
-    def _faq_text_from_rag(rag_context: list[Any]) -> str:
-        for item in rag_context or []:
-            content = (getattr(item, "content", "") or "").strip()
-            if content:
-                return f"{content} Если нужно оформить заявку, напишите, что хотите продать, купить, перевезти или разместить на хранение."
-        return (
-            "Точный ответ уточню у менеджера — оставьте контакт, и он свяжется с вами. "
-            "Если нужно оформить заявку, напишите, что хотите продать, купить, перевезти или разместить на хранение."
-        )
-
-    def _confirm_pending_fact(
+    def _apply_agent_facts(
         self,
         session: Session,
         chat: ChatSession,
         chat_id: int,
-        row: ChatExtractedFact,
         known_before: dict[str, Any],
-        source_channel: str,
-    ) -> ConversationResult:
-        row.is_confirmed = True
-        row.confidence = max(row.confidence, 0.9)
-        row.updated_at = self._now()
-        session.add(row)
-        session.commit()
-        text = f"Зафиксировал: {row.fact_value_text}."
-        return self._finish_pending_turn(session, chat, chat_id, source_channel, prefix=text)
+        turn,
+        message_id: int | None,
+    ) -> tuple[dict[str, Any], list[str]]:
+        """Сохраняет факты, извлечённые ИИ. Пустая строка по известному полю —
+        это явный отказ/коррекция: удаляем факт. Возвращает (merged, saved_keys)."""
+        merged = dict(known_before)
+        persisted: list[str] = []
+        for key in FACT_KEYS:
+            if key not in turn.updated_facts:
+                continue
+            value = turn.updated_facts[key]
+            if value in ("", None):
+                if key in merged:
+                    merged.pop(key, None)
+                    self._delete_fact(session, chat_id, key)
+                continue
+            merged[key] = value
+            self._upsert_fact(session, chat_id, chat.lead_id, key, value, message_id, confidence=0.95, confirmed=True)
+            persisted.append(key)
+        merged = self.qualifier.normalize_known_facts(merged)
+        return merged, persisted
 
-    def _reject_pending_fact(
+    def _fail_closed(
         self,
         session: Session,
         chat: ChatSession,
         chat_id: int,
-        row: ChatExtractedFact,
-        known_before: dict[str, Any],
         source_channel: str,
     ) -> ConversationResult:
-        session.delete(row)
-        session.commit()
-        text = "Понял, это значение не фиксирую."
-        return self._finish_pending_turn(session, chat, chat_id, source_channel, prefix=text)
-
-    def _finish_pending_turn(
-        self,
-        session: Session,
-        chat: ChatSession,
-        chat_id: int,
-        source_channel: str,
-        prefix: str,
-    ) -> ConversationResult:
+        """GigaChat недоступен — отвечаем вежливо, факты и лид не трогаем."""
         known = self._known_facts(session, chat_id)
         decision = self.sales_engine.handle("", known)
-        lead: CrmLead | None = None
-        lead_id: int | None = None
-        if chat.lead_id or self._has_commercial_intent(known):
-            lead = self._sync_crm(session, chat, decision, source_channel)
-            lead_id = self._require_id(lead.id, "lead")
-        self._sync_missing_fields(session, chat_id, lead_id, decision.missing_fields, asked_action=decision.next_action.value)
-        follow_up = self.validator.fallback(decision.next_action.value, known)
-        text_out = f"{prefix} {follow_up}".strip()
-        status = lead.status_code if lead else "faq_only"
-        bot_message = self._save_message(session, chat_id, "out", text_out, provider="template-policy", model="dialogue-policy-v1")
-        chat.last_bot_message_at = bot_message.created_at
-        chat.lead_id = lead_id
-        chat.current_state_code = status
+        bot = self._save_message(session, chat_id, "out", FAIL_CLOSED_REPLY, provider="fail-closed", model="none")
+        chat.last_bot_message_at = bot.created_at
         chat.updated_at = self._now()
         session.add(chat)
         session.commit()
+        status = chat.current_state_code or "faq_only"
         return ConversationResult(
-            text=text_out,
+            text=FAIL_CLOSED_REPLY,
             session_id=chat_id,
-            lead_id=lead_id,
+            lead_id=chat.lead_id,
             status=status,
             state=status,
             stage=decision.stage.value,
             next_action=decision.next_action.value,
             captured_fields=decision.captured_fields,
             known_facts=known,
-            uncertain_facts={
-                row.fact_key: {"value": row.fact_value_text, "normalized_value": row.fact_value_text, "confidence": row.confidence, "source_text": ""}
-                for row in self._pending_facts(session, chat_id)
-            },
+            uncertain_facts={},
             missing_fields=decision.missing_fields,
             qualification_score=decision.qualification_score,
             source_channel=source_channel,
             request_type=self._db_request_type_code(known.get("request_type")),
-            provider="template-policy",
-            model="dialogue-policy-v1",
+            provider="fail-closed",
+            model="none",
         )
 
     def _sync_crm(self, session: Session, chat: ChatSession, decision, source_channel: str) -> CrmLead:
@@ -678,10 +568,6 @@ class ConversationService:
             NextAction.ASK_CONTACT.value: "contact",
         }.get(action, "")
 
-    def _question_attempts(self, session: Session, chat_id: int) -> dict[str, int]:
-        rows = session.exec(select(ChatMissingField).where(ChatMissingField.session_id == chat_id)).all()
-        return {row.field_code: row.asked_count or 0 for row in rows}
-
     _FACT_KEYS = set(REQUIRED_FIELDS + ["quality_class", "delivery_terms", "company_name", "route_from", "route_to", "transport_type", "comment"])
 
     def _known_facts(self, session: Session, chat_id: int) -> dict[str, Any]:
@@ -698,29 +584,6 @@ class ConversationService:
             if value not in ("", None):
                 known[row.fact_key] = value
         return self.qualifier.normalize_known_facts(known)
-
-    def _pending_facts(self, session: Session, chat_id: int) -> list[ChatExtractedFact]:
-        rows = session.exec(select(ChatExtractedFact).where(ChatExtractedFact.session_id == chat_id)).all()
-        pending = [
-            row
-            for row in rows
-            if row.fact_key in self._FACT_KEYS and not row.is_confirmed and row.confidence < 0.85 and row.fact_value_text
-        ]
-        pending.sort(key=lambda row: row.updated_at, reverse=True)
-        return pending
-
-    @staticmethod
-    def _is_affirmation(text: str) -> bool:
-        normalized = re.sub(r"[^\wа-яё ]", "", text.lower().replace("ё", "е")).strip()
-        return normalized in {
-            "да", "ага", "угу", "верно", "точно", "именно", "подтверждаю", "конечно",
-            "да верно", "да точно", "все так", "всё так", "да все так", "правильно", "да правильно",
-        }
-
-    @staticmethod
-    def _is_negation(text: str) -> bool:
-        normalized = re.sub(r"[^\wа-яё ]", "", text.lower().replace("ё", "е")).strip()
-        return normalized in {"нет", "не так", "неверно", "не верно", "неправильно", "не правильно", "нет не так"}
 
     def _upsert_fact(
         self,
@@ -791,6 +654,14 @@ class ConversationService:
             key=lambda x: x.created_at,
         )
         return previous_out[-1].text if previous_out else ""
+
+    @staticmethod
+    def _last_assistant_messages(session: Session, chat_id: int, limit: int = 3) -> list[str]:
+        previous_out = sorted(
+            session.exec(select(ChatMessage).where(ChatMessage.session_id == chat_id, ChatMessage.direction == "out")).all(),
+            key=lambda x: x.created_at,
+        )
+        return [row.text for row in previous_out[-limit:]]
 
     @staticmethod
     def _save_message(

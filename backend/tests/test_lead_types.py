@@ -19,6 +19,7 @@ if str(BACKEND_ROOT) not in sys.path:
 from fastapi.testclient import TestClient
 
 from app.main import app, llm_service, startup
+from tests._agent_mock import install_fake_gigachat
 
 
 class LeadTypesCases(unittest.TestCase):
@@ -28,7 +29,7 @@ class LeadTypesCases(unittest.TestCase):
         startup()
         self.client = TestClient(app)
         self._auth_key = llm_service.gigachat_client.auth_key
-        llm_service.gigachat_client.auth_key = ""
+        install_fake_gigachat(llm_service)
 
     def tearDown(self):
         llm_service.gigachat_client.auth_key = self._auth_key
@@ -106,10 +107,8 @@ class LeadTypesCases(unittest.TestCase):
         p = self._send("Какие документы нужны для поставки зерна?", client_id="lt-faq")
         self.assertIsNone(p["lead_id"])
         self.assertEqual(p["status"], "faq_only")
-        self.assertEqual(p["next_action"], "answer_faq")
-        lowered = p["text"].lower()
-        self.assertNotIn("какую культуру", lowered)
-        self.assertNotIn("тип заявки", lowered)
+        self.assertNotIn("{", p["text"])  # без служебной утечки
+        self.assertNotIn("какую культуру", p["text"].lower())
 
     def test_faq_then_intent_converts_to_lead(self):
         p = self._send("Какие документы нужны для поставки зерна?", client_id="lt-faq2")
@@ -124,10 +123,12 @@ class LeadTypesCases(unittest.TestCase):
         self.assertIsNone(p["lead_id"])
         self.assertEqual(p["status"], "faq_only")
 
-    def test_irrelevant_request_is_refused(self):
+    def test_irrelevant_request_is_not_a_lead(self):
+        # Не по теме: GigaChat возвращает в тему, заявка не создаётся, утечки нет.
         p = self._send("Расскажи анекдот про погоду", client_id="lt-irrelevant")
-        self.assertEqual(p["next_action"], "refuse_irrelevant")
         self.assertIsNone(p["lead_id"])
+        self.assertTrue(p["text"])
+        self.assertNotIn("{", p["text"])
 
     def test_toxic_request_is_blocked_without_lead(self):
         p = self._send("иди на хуй", client_id="lt-toxic")

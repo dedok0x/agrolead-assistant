@@ -24,6 +24,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app, llm_service, startup
 from app.sales_logic import detect_request_type, extract_facts, parse_contact_name_or_company
+from tests._agent_mock import install_fake_gigachat
 
 
 class IntegrationDialogueCases(unittest.TestCase):
@@ -31,12 +32,7 @@ class IntegrationDialogueCases(unittest.TestCase):
         startup()
         self.client = TestClient(app)
         self._orig_chat_completion = llm_service.gigachat_client.chat_completion
-        llm_service.gigachat_client.chat_completion = AsyncMock(
-            return_value=(
-                "Принял данные, заявку фиксирую. Уточним следующий коммерческий параметр и передам менеджеру.",
-                "GigaChat-2",
-            )
-        )
+        install_fake_gigachat(llm_service)
 
     def tearDown(self) -> None:
         llm_service.gigachat_client.chat_completion = self._orig_chat_completion

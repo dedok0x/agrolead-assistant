@@ -19,6 +19,7 @@ if str(BACKEND_ROOT) not in sys.path:
 from fastapi.testclient import TestClient
 
 from app.main import app, llm_service, startup, telegram_service
+from tests._agent_mock import install_fake_gigachat
 
 
 class TelegramWebhookCases(unittest.TestCase):
@@ -28,7 +29,7 @@ class TelegramWebhookCases(unittest.TestCase):
         self._token = telegram_service.token
         self._auth_key = llm_service.gigachat_client.auth_key
         telegram_service.token = ""
-        llm_service.gigachat_client.auth_key = ""
+        install_fake_gigachat(llm_service)
 
     def tearDown(self):
         telegram_service.token = self._token

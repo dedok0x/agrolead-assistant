@@ -59,6 +59,8 @@ ssl/*.key
 ssl/*.pem
 ssl/*.crt
 ssl/*.p12
+# Публичный Russian Trusted Root CA нужен для проверки TLS GigaChat — он не секретный.
+!backend/certs/russian_trusted_ca.pem
 id_rsa*
 id_ed25519*
 *.ppk

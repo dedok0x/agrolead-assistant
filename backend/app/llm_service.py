@@ -1,12 +1,32 @@
 import asyncio
+import json
 import logging
 import os
+import re
 from datetime import datetime, timezone
 from typing import Any
 
 from .gigachat_client import GigaChatClient, GigaChatClientError
 
 LOGGER = logging.getLogger("agrolead.llm")
+
+
+def _parse_json_object(raw: str) -> dict[str, Any]:
+    """Устойчивый разбор JSON-ответа модели: срезаем ```-ограждения и берём
+    первый сбалансированный объект `{...}`. Бросает ValueError, если не вышло."""
+    text = (raw or "").strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?", "", text, flags=re.IGNORECASE).strip()
+        text = re.sub(r"```$", "", text).strip()
+    start = text.find("{")
+    end = text.rfind("}")
+    if start == -1 or end == -1 or end <= start:
+        raise ValueError("no JSON object found in model output")
+    candidate = text[start : end + 1]
+    parsed = json.loads(candidate)
+    if not isinstance(parsed, dict):
+        raise ValueError("model output is not a JSON object")
+    return parsed
 
 
 class LLMUnavailableError(RuntimeError):
@@ -137,6 +157,49 @@ class LLMService:
             temperature=0.42,
             max_tokens=220,
         )
+
+    async def complete_json(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        reason: str = "json",
+        temperature: float = 0.15,
+        max_tokens: int = 700,
+    ) -> tuple[dict[str, Any], str, str]:
+        """Строгий JSON-режим: получаем от GigaChat объект и парсим его.
+
+        Делаем до двух попыток (вторая — с явным напоминанием вернуть только JSON).
+        Если распарсить не удалось — поднимаем LLMUnavailableError (fail-closed)."""
+        json_system = (
+            f"{system_prompt}\n"
+            "Верни строго один JSON-объект без пояснений, без markdown и без текста вокруг. "
+            "Никаких ```-ограждений."
+        )
+        attempt_prompt = user_prompt
+        last_exc: Exception | None = None
+        for attempt in range(2):
+            try:
+                text, provider, model = await self.complete(
+                    system_prompt=json_system,
+                    user_prompt=attempt_prompt,
+                    reason=reason,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                )
+                return _parse_json_object(text), provider, model
+            except (ValueError, json.JSONDecodeError) as exc:
+                last_exc = exc
+                LOGGER.warning("complete_json parse failed (attempt %s): %s", attempt + 1, exc)
+                attempt_prompt = (
+                    f"{user_prompt}\n\n"
+                    "Предыдущий ответ не распарсился как JSON. "
+                    "Верни ТОЛЬКО валидный JSON-объект, ничего больше."
+                )
+            except LLMUnavailableError as exc:
+                last_exc = exc
+                break
+        self._mark("errors", "none", reason, error=str(last_exc) if last_exc else "json parse failed")
+        raise LLMUnavailableError(str(last_exc) if last_exc else "GigaChat JSON unavailable")
 
     def status(self) -> dict[str, Any]:
         return {

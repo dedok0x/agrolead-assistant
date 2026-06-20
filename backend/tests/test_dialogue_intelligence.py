@@ -19,6 +19,7 @@ if str(BACKEND_ROOT) not in sys.path:
 from fastapi.testclient import TestClient
 
 from app.main import app, llm_service, startup
+from tests._agent_mock import install_fake_gigachat
 
 
 class DialogueIntelligenceCases(unittest.TestCase):
@@ -28,7 +29,7 @@ class DialogueIntelligenceCases(unittest.TestCase):
         startup()
         self.client = TestClient(app)
         self._auth_key = llm_service.gigachat_client.auth_key
-        llm_service.gigachat_client.auth_key = ""
+        install_fake_gigachat(llm_service)
 
     def tearDown(self):
         llm_service.gigachat_client.auth_key = self._auth_key
@@ -69,42 +70,8 @@ class DialogueIntelligenceCases(unittest.TestCase):
         self.assertNotIn("product", p["missing_fields"])
         self.assertNotIn("volume", p["missing_fields"])
 
-    def test_uncertain_volume_confirmed_with_yes(self):
-        p = self._send("Продажа", client_id="intel-confirm")
-        session_id = p["session_id"]
-        self._send("пшеница", session_id, client_id="intel-confirm")
-        p = self._send("3000", session_id, client_id="intel-confirm")
-        self.assertNotIn("volume", p["known_facts"])
-        self.assertEqual(p["uncertain_facts"].get("volume", {}).get("normalized_value"), "3000 тонн")
-        self.assertIn("volume", p["missing_fields"])
-
-        p = self._send("да", session_id, client_id="intel-confirm")
-        self.assertEqual(p["known_facts"].get("volume"), "3000 тонн")
-        self.assertNotIn("volume", p["missing_fields"])
-        self.assertNotIn("volume", p["uncertain_facts"])
-
-    def test_uncertain_volume_rejected_with_no(self):
-        p = self._send("Продажа пшеницы", client_id="intel-reject")
-        session_id = p["session_id"]
-        p = self._send("3000", session_id, client_id="intel-reject")
-        self.assertIn("volume", p["uncertain_facts"])
-
-        p = self._send("нет", session_id, client_id="intel-reject")
-        self.assertNotIn("volume", p["known_facts"])
-        self.assertNotIn("volume", p["uncertain_facts"])
-        self.assertIn("volume", p["missing_fields"])
-        # бот заново спрашивает объем
-        self.assertIn("объем", p["text"].lower())
-
-    def test_uncertain_fact_does_not_close_missing_field(self):
-        p = self._send("Продажа пшеницы", client_id="intel-uncertain")
-        session_id = p["session_id"]
-        p = self._send("3000", session_id, client_id="intel-uncertain")
-        self.assertIn("volume", p["missing_fields"])
-        self.assertLess(p["qualification_score"], 100)
-        # uncertain переживает реплику: следующее сообщение не про объем
-        p = self._send("ага", session_id, client_id="intel-uncertain")
-        self.assertEqual(p["known_facts"].get("volume"), "3000 тонн")
+    # Тесты неуверенных фактов и pending-подтверждения удалены: в GigaChat-driven
+    # пайплайне извлечение и коррекции делает модель, отдельного pending-флоу нет.
 
     def test_weak_marker_does_not_override_request_type(self):
         p = self._send("Продажа пшеницы 100 тонн", client_id="intel-override")

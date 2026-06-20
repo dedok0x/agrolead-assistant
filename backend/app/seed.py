@@ -24,6 +24,7 @@ from .models import (
     RefRequestType,
     RefTransportMode,
 )
+from .knowledge_seed import KNOWLEDGE_ARTICLES
 from .security import hash_password
 
 
@@ -47,10 +48,19 @@ def _ensure_reference_catalogs(session: Session) -> None:
         ("barley", "Ячмень", "Ячмень кормовой и пивоваренный", "grain", 20),
         ("corn", "Кукуруза", "Кукуруза зерновая", "grain", 30),
         ("sunflower", "Подсолнечник", "Подсолнечник масличный", "oilseed", 40),
+        ("soy", "Соя", "Соя продовольственная и кормовая", "oilseed", 45),
+        ("rapeseed", "Рапс", "Рапс масличный", "oilseed", 48),
         ("peas", "Горох", "Горох продовольственный", "pulse", 50),
         ("chickpeas", "Нут", "Нут продовольственный", "pulse", 60),
+        ("lentil", "Чечевица", "Чечевица продовольственная", "pulse", 65),
         ("flax", "Лен", "Лен масличный", "oilseed", 70),
         ("coriander", "Кориандр", "Кориандр продовольственный", "spice", 80),
+        ("safflower", "Сафлор", "Сафлор масличный", "oilseed", 85),
+        ("millet", "Просо", "Просо крупяное (пшено)", "grain", 90),
+        ("buckwheat", "Гречиха", "Гречиха крупяная", "grain", 95),
+        ("oats", "Овёс", "Овёс кормовой и продовольственный", "grain", 100),
+        ("rye", "Рожь", "Рожь продовольственная и фуражная", "grain", 105),
+        ("sorghum", "Сорго", "Сорго зерновое", "grain", 110),
     ]
     for code, name, full_name, group, sort_order in commodities:
         _upsert_by_code(
@@ -134,9 +144,15 @@ def _ensure_reference_catalogs(session: Session) -> None:
         ("ru-kk", "Россия", "ЮФО", "Краснодарский край", "Краснодар", "", True),
         ("ru-ro", "Россия", "ЮФО", "Ростовская область", "Ростов-на-Дону", "", True),
         ("ru-st", "Россия", "СКФО", "Ставропольский край", "Ставрополь", "", True),
+        ("ru-vg", "Россия", "ЮФО", "Волгоградская область", "Волгоград", "", True),
+        ("ru-vrn", "Россия", "ЦФО", "Воронежская область", "Воронеж", "", True),
         ("ru-nov-port", "Россия", "ЮФО", "Краснодарский край", "Новороссийск", "Новороссийск", True),
         ("ru-tmn-port", "Россия", "ЮФО", "Краснодарский край", "Тамань", "Тамань", True),
+        ("ru-azov-port", "Россия", "ЮФО", "Ростовская область", "Азов", "Азов", True),
+        ("ru-eysk-port", "Россия", "ЮФО", "Краснодарский край", "Ейск", "Ейск", True),
+        ("ru-kavkaz-port", "Россия", "ЮФО", "Краснодарский край", "Кавказ", "Кавказ", True),
         ("tr-mersin", "Турция", "", "Мерсин", "Мерсин", "Мерсин", True),
+        ("eg-alex", "Египет", "", "Александрия", "Александрия", "Александрия", True),
     ]
     for code, country, district, region_name, city_name, port_name, is_active in regions:
         _upsert_by_code(
@@ -456,73 +472,37 @@ def _ensure_stock_placeholders(session: Session) -> None:
 
 
 def _ensure_knowledge(session: Session) -> None:
-    articles = [
-        (
-            "company_profile",
-            "Профиль компании",
-            "company",
-            None,
-            None,
-            "ООО «Петрохлеб-Кубань» работает как B2B трейдер и логистический оператор по зерновым и масличным.",
-            "Работаем в закупке, продаже, логистике, хранении и ВЭД.",
-            10,
-        ),
-        (
-            "products_scope",
-            "Какие культуры обрабатываем",
-            "products",
-            None,
-            None,
-            "Работаем с пшеницей, ячменем, кукурузой, подсолнечником, горохом, нутом, льном и кориандром.",
-            "Основные культуры: пшеница, ячмень, кукуруза и масличные.",
-            20,
-        ),
-        (
-            "logistics_modes",
-            "Логистика",
-            "logistics",
-            None,
-            None,
-            "Организуем авто, ж/д и водную логистику, включая мультимодальные плечи до порта.",
-            "Подбираем маршрут и транспорт под объем и срок.",
-            30,
-        ),
-        (
-            "storage_transshipment",
-            "Хранение и перевалка",
-            "storage",
-            None,
-            None,
-            "Доступны хранение, перевалка и подготовка партий к отгрузке на внутренний рынок и экспорт.",
-            "Можем взять партию на хранение и организовать отгрузку по графику.",
-            40,
-        ),
-        (
-            "pricing_policy",
-            "Как формируется цена",
-            "sales",
-            None,
-            None,
-            "Цена не является публичной фиксированной: зависит от культуры, качества, объема, базиса, логистики, сроков и условий оплаты.",
-            "Даем коммерческое предложение после фиксации ключевых параметров сделки.",
-            50,
-        ),
-    ]
-    for code, title, group, req_id, commodity_id, markdown, short_answer, sort_order in articles:
+    request_type_ids = {
+        row.code: row.id for row in session.exec(select(RefRequestType)).all() if row.id
+    }
+    for article in KNOWLEDGE_ARTICLES:
+        code = article["code"]
+        request_code = article.get("request_type_code")
+        request_type_id = request_type_ids.get(request_code) if request_code else None
         row = session.exec(select(KnowledgeArticle).where(KnowledgeArticle.code == code)).first()
         if row:
+            # Идемпотентно обновляем контент симулированного корпуса.
+            row.title = article["title"]
+            row.article_group = article["article_group"]
+            row.request_type_id = request_type_id
+            row.content_markdown = article["content_markdown"]
+            row.short_answer = article.get("short_answer", "")
+            row.is_active = True
+            row.sort_order = article.get("sort_order", 100)
+            row.updated_at = _now()
+            session.add(row)
             continue
         session.add(
             KnowledgeArticle(
                 code=code,
-                title=title,
-                article_group=group,
-                request_type_id=req_id,
-                commodity_id=commodity_id,
-                content_markdown=markdown,
-                short_answer=short_answer,
+                title=article["title"],
+                article_group=article["article_group"],
+                request_type_id=request_type_id,
+                commodity_id=None,
+                content_markdown=article["content_markdown"],
+                short_answer=article.get("short_answer", ""),
                 is_active=True,
-                sort_order=sort_order,
+                sort_order=article.get("sort_order", 100),
                 updated_at=_now(),
             )
         )

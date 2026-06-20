@@ -100,17 +100,20 @@ class RAGService:
 
     @staticmethod
     def _preferred_groups(intent: str | None) -> set[str]:
+        # Базовый набор: инструкции квалификации, номенклатура и запрещённые
+        # утверждения нужны почти всегда — на них опирается GigaChat при квалификации.
+        base = {"qualification_script", "product_catalog", "forbidden_claim"}
         if intent in {"logistics", "ask_region", "clarify_delivery"}:
-            return {"logistics_rule", "service_description", "faq"}
+            return base | {"logistics_rule", "service_description", "faq"}
         if intent in {"storage"}:
-            return {"storage_rule", "service_description", "faq"}
+            return base | {"storage_rule", "service_description", "faq"}
         if intent in {"export"}:
-            return {"export_rule", "service_description", "faq"}
+            return base | {"export_rule", "service_description", "faq"}
         if intent in {"handle_objection"}:
-            return {"objection", "sales_script", "forbidden_claim"}
+            return base | {"objection", "sales_script"}
         if intent in {"sell_grain", "buy_grain", "availability"}:
-            return {"product_catalog", "sales_script", "faq", "forbidden_claim"}
-        return {"company_profile", "service_description", "faq", "sales_script", "forbidden_claim"}
+            return base | {"sales_script", "faq"}
+        return base | {"company_profile", "service_description", "faq", "sales_script"}
 
     @staticmethod
     def _snippet(value: str, max_len: int = 420) -> str:

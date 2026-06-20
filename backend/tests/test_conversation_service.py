@@ -20,6 +20,7 @@ if str(BACKEND_ROOT) not in sys.path:
 from fastapi.testclient import TestClient
 
 from app.main import app, llm_service, startup
+from tests._agent_mock import install_fake_gigachat
 
 
 class ConversationServiceCases(unittest.TestCase):
@@ -27,7 +28,7 @@ class ConversationServiceCases(unittest.TestCase):
         startup()
         self.client = TestClient(app)
         self._auth_key = llm_service.gigachat_client.auth_key
-        llm_service.gigachat_client.auth_key = ""
+        install_fake_gigachat(llm_service)
 
     def tearDown(self):
         llm_service.gigachat_client.auth_key = self._auth_key
@@ -55,15 +56,18 @@ class ConversationServiceCases(unittest.TestCase):
         self.assertEqual(payload["known_facts"]["product"], "пшеница")
         self.assertIn("region", payload["missing_fields"])
 
-    def test_fallback_works_without_gigachat(self):
+    def test_fail_closed_without_gigachat(self):
+        # AI-only: без GigaChat диалог уходит в fail-closed, факты не извлекаются.
+        llm_service.gigachat_client.auth_key = ""
         response = self.client.post(
             "/api/chat",
-            json={"text": "Продажа пшеницы 400 тонн Краснодарский край", "client_id": "v7-fallback"},
+            json={"text": "Продажа пшеницы 400 тонн Краснодарский край", "client_id": "v7-failclosed"},
         )
         self.assertEqual(response.status_code, 200)
         payload = response.json()
-        self.assertIn(payload["provider"], {"fallback", "template-policy"})
+        self.assertEqual(payload["provider"], "fail-closed")
         self.assertTrue(payload["text"])
+        self.assertEqual(payload["known_facts"], {})
 
     def test_stream_final_event_contains_v7_state(self):
         response = self.client.post(

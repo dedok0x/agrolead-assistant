@@ -19,6 +19,7 @@ if str(BACKEND_ROOT) not in sys.path:
 from fastapi.testclient import TestClient
 
 from app.main import app, llm_service, startup
+from tests._agent_mock import install_fake_gigachat
 
 
 class SalesAssistantFlowCases(unittest.TestCase):
@@ -28,7 +29,7 @@ class SalesAssistantFlowCases(unittest.TestCase):
         startup()
         self.client = TestClient(app)
         self._auth_key = llm_service.gigachat_client.auth_key
-        llm_service.gigachat_client.auth_key = ""
+        install_fake_gigachat(llm_service)
 
     def tearDown(self):
         llm_service.gigachat_client.auth_key = self._auth_key
