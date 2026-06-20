@@ -166,9 +166,10 @@ class GigaChatAgent:
         newly = data.get("newly_extracted")
         newly_extracted = [str(item) for item in newly if str(item) in FACT_KEYS] if isinstance(newly, list) else []
 
-        is_service = bool(data.get("is_service_message", False))
-        if intent in {"smalltalk", "meta", "irrelevant"}:
-            is_service = True
+        # Служебность определяем по интенту, а не по флагу модели: GigaChat склонна
+        # выставлять is_service_message=true даже для коммерческих сообщений, что
+        # иначе блокировало бы извлечение фактов.
+        is_service = intent in {"smalltalk", "meta", "irrelevant"}
 
         reply_text = str(data.get("reply_text") or "").strip()
 

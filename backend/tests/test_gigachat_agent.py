@@ -105,7 +105,9 @@ class GigaChatAgentCases(unittest.TestCase):
         second = self._post("нет, не просо, а пшеница", client_id="agent-corr-1", session_id=session_id)
         self.assertEqual(second.json()["known_facts"]["product"], "пшеница")
 
-    def test_fact_removal_on_empty_value(self):
+    def test_empty_value_does_not_erase_known_fact(self):
+        # Модель часто эхо-возвращает незаполненные поля пустой строкой — это не
+        # должно стирать уже известный факт (коррекция идёт перезаписью значения).
         install_gigachat(llm_service, [
             turn_json(
                 reply_text="Записал просо.",
@@ -114,15 +116,15 @@ class GigaChatAgentCases(unittest.TestCase):
                 newly_extracted=["product"],
             ),
             turn_json(
-                reply_text="Убрал культуру, уточните, что фиксируем.",
+                reply_text="Какой объём в тоннах?",
                 request_type="sell_grain",
-                updated_facts={"request_type": "sell_grain", "product": ""},
+                updated_facts={"request_type": "sell_grain", "product": "", "volume": ""},
             ),
         ])
         first = self._post("продам просо", client_id="agent-rm-1")
         session_id = first.json()["session_id"]
-        second = self._post("забудьте про культуру", client_id="agent-rm-1", session_id=session_id)
-        self.assertNotIn("product", second.json()["known_facts"])
+        second = self._post("ну там посмотрим", client_id="agent-rm-1", session_id=session_id)
+        self.assertEqual(second.json()["known_facts"].get("product"), "просо")
 
     def test_fail_closed_without_gigachat(self):
         # GigaChat не сконфигурирован — fail-closed, без падения и без фактов.

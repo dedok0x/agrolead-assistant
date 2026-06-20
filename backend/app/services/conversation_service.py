@@ -380,10 +380,9 @@ class ConversationService:
             if key not in turn.updated_facts:
                 continue
             value = turn.updated_facts[key]
+            # Пустые значения не трогают известные факты: модель часто эхо-возвращает
+            # незаполненные поля пустой строкой. Коррекция идёт перезаписью значения.
             if value in ("", None):
-                if key in merged:
-                    merged.pop(key, None)
-                    self._delete_fact(session, chat_id, key)
                 continue
             merged[key] = value
             self._upsert_fact(session, chat_id, chat.lead_id, key, value, message_id, confidence=0.95, confirmed=True)
